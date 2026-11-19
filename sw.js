@@ -1,12 +1,13 @@
-const CACHE_NAME = 'vozkora-pwa-v1';
+const CACHE_NAME = 'vozkora-pwa-v2';
 const ARCHIVOS_LOCALES = [
   './',
   './index.html',
   './api.js',
-  './manifest.json'
+  './manifest.json',
+  './logo.png',
+  './mascota.png'
 ];
 
-// Instalar y guardar la interfaz en el teléfono
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(ARCHIVOS_LOCALES))
@@ -14,7 +15,6 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activar y limpiar versiones viejas
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -24,10 +24,15 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Responder desde el teléfono si no hay internet
 self.addEventListener('fetch', (event) => {
-  if (event.request.url.includes('onrender.com')) return; // Las consultas al puente van directo a red
+  if (event.request.url.includes('onrender.com')) return;
   event.respondWith(
-    caches.match(event.request).then((respuestaCache) => respuestaCache || fetch(event.request))
+    fetch(event.request)
+      .then((res) => {
+        const copia = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copia));
+        return res;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
