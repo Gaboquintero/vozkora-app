@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#10b981" />
+  <title>Vozkora ContaSoft + IA</title>
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans select-none">
+
+  <!-- Barra superior de estado -->
+  <header class="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+    <div>
+      <h1 class="text-base font-bold tracking-tight text-emerald-400">Vozkora ContaSoft + IA</h1>
+      <p class="text-[11px] text-slate-400">Siigo Contífico Ecuador • SRI</p>
+    </div>
+    <span id="badge-estado" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300">
+      Verificando...
+    </span>
+  </header>
+
+  <!-- Contenido principal -->
+  <main class="flex-1 p-4 space-y-4 max-w-md w-full mx-auto">
+
+    <!-- Tarjeta de Resumen / Sincronización -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <span class="text-xs uppercase tracking-wider text-slate-400">Catálogo Sincronizado</span>
+        <span id="origen-datos" class="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+          Sin cargar
+        </span>
+      </div>
+      <div class="flex items-baseline justify-between">
+        <div>
+          <p id="total-productos" class="text-3xl font-extrabold text-white">0</p>
+          <p class="text-xs text-slate-400">Productos disponibles en dispositivo</p>
+        </div>
+        <button onclick="cargarCatalogo()" id="btn-sincronizar"
+          class="bg-emerald-500 hover:bg-emerald-400 active:scale-95 transition text-slate-950 font-bold text-xs px-4 py-2.5 rounded-xl">
+          Sincronizar
+        </button>
+      </div>
+    </section>
+
+    <!-- Asistente Vozkora IA -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <h2 class="text-sm font-bold text-white">Facturación Rápida por Voz / Texto</h2>
+      </div>
+      <input id="comando-voz" type="text" placeholder="Ej: Factura 2 servicios a Consumidor Final..."
+        class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400" />
+      <button onclick="probarEmisionRapida()"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition text-white font-semibold text-sm py-2.5 rounded-xl">
+        Generar Comprobante
+      </button>
+      <p id="resultado-accion" class="text-xs text-slate-300 hidden bg-slate-950 p-3 rounded-xl border border-slate-800"></p>
+    </section>
+
+    <!-- Listado de productos cargados -->
+    <section class="space-y-2">
+      <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 px-1">Productos en Caché Local</h3>
+      <div id="lista-productos" class="space-y-2">
+        <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 text-xs text-slate-400 text-center">
+          Presiona "Sincronizar" para traer tus productos desde Siigo Contífico.
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Conector Render + Offline -->
+  <script src="api.js"></script>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+
+    async function iniciarApp() {
+      const badge = document.getElementById('badge-estado');
+      const online = await verificarConexionPuente();
+      if (online) {
+        badge.textContent = 'En línea';
+        badge.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300';
+      } else {
+        badge.textContent = 'Modo Offline';
+        badge.className = 'text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300';
+      }
+      await cargarCatalogo();
+    }
+
+    async function cargarCatalogo() {
+      const btn = document.getElementById('btn-sincronizar');
+      const origenEl = document.getElementById('origen-datos');
+      const totalEl = document.getElementById('total-productos');
+      const listaEl = document.getElementById('lista-productos');
+
+      btn.textContent = 'Cargando...';
+      btn.disabled = true;
+
+      const res = await obtenerProductosVozkora();
+      totalEl.textContent = res.productos.length;
+      origenEl.textContent = res.origen === 'ONLINE' ? 'Nube Contífico' : 'Caché Offline';
+
+      if (res.productos.length === 0) {
+        listaEl.innerHTML = `<div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-400 text-center">No hay productos cargados aún o la cuota de prueba Contífico está ocupada.</div>`;
+      } else {
+        listaEl.innerHTML = res.productos.slice(0, 15).map(p => `
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <p class="text-sm font-semibold text-white">${p.nombre || 'Producto sin nombre'}</p>
+              <p class="text-[11px] text-slate-400">Código: ${p.codigo || 'N/A'}</p>
+            </div>
+            <span class="text-sm font-bold text-emerald-400">$${Number(p.pvp1 || 0).toFixed(2)}</span>
+          </div>
+        `).join('');
+      }
+
+      btn.textContent = 'Sincronizar';
+      btn.disabled = false;
+    }
+
+    async function probarEmisionRapida() {
+      const texto = document.getElementById('comando-voz').value.trim();
+      const box = document.getElementById('resultado-accion');
+      if (!texto) return;
+      box.classList.remove('hidden');
+      box.textContent = 'Procesando comprobante...';
+
+      const res = await emitirDocumentoVozkora({ descripcion_ia: texto, fecha: new Date().toISOString() });
+      if (res.estado === 'ENVIADO_SRI') {
+        box.textContent = '✅ Comprobante enviado al puente Contífico.';
+      } else {
+        box.textContent = `📦 Sin conexión al servidor: guardado en cola local (${res.pendientes} pendiente/s).`;
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', iniciarApp);
+  </script>
+</body>
+</html>

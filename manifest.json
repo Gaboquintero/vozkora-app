@@ -1,0 +1,10 @@
+{
+  "name": "Vozkora ContaSoft + IA",
+  "short_name": "Vozkora",
+  "description": "Sistema Contable Inteligente integrado con Siigo Contífico y SRI",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#10b981",
+  "orientation": "portrait"
+}
