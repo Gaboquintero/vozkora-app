@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#073e3b" />
+  <meta name="theme-color" content="#ffffff" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="mascota.png" />
   <title>Vozkora ContaSoft + IA — Simulador Comercial y Demo App Android</title>
@@ -320,51 +320,52 @@
           </div>
         </div>
 
-        <!-- HEADER ESMERALDA (#073e3b) DE LA APP VOZKORA -->
-        <header class="bg-[#073e3b] text-white px-4 pt-3 pb-3.5 shrink-0 sticky top-0 z-20">
-          <div class="flex items-center justify-between gap-2">
+        <!-- HEADER BICOLOR DE LA APP VOZKORA (BLANCO ARRIBA + ESMERALDA ABAJO) -->
+        <header class="shrink-0 sticky top-0 z-20 shadow-sm">
+          <!-- Franja Superior Blanca: Mascota, Logo VOZKORA limpio y controles -->
+          <div class="bg-white text-[#17343a] px-4 pt-3 pb-2.5 border-b border-[#dce6e5] flex items-center justify-between gap-2">
             <div class="flex items-center gap-2.5">
               <img
                 src="mascota.png"
                 onerror="this.onerror=null;this.src='mascota.png';"
                 alt="Mascota Vozkora"
-                class="w-10 h-10 shrink-0 rounded-full object-cover border border-[#70d2bd]/40"
+                class="w-10 h-10 shrink-0 rounded-full object-cover border border-[#087e70]/25"
               />
               <div>
-                <div class="flex items-center gap-1.5">
-                  <span class="bg-white/95 px-2 py-0.5 rounded-lg inline-flex items-center">
-                    <img
-                      src="logo.png"
-                      onerror="this.onerror=null;this.src='logo.png';"
-                      alt="VOZKORA"
-                      class="h-4 w-auto object-contain"
-                    />
-                  </span>
-                  <span class="text-sm font-black text-[#70d2bd]">+ IA</span>
+                <div class="flex items-center gap-1">
+                  <img
+                    src="logo.png"
+                    onerror="this.onerror=null;this.src='logo.png';"
+                    alt="VOZKORA"
+                    class="h-5 w-auto object-contain"
+                  />
+                  <span class="text-sm font-black text-[#087e70]">+ IA</span>
                 </div>
-                <div class="text-[11px] text-teal-100/75 mt-0.5">ContaSoft · Ecuador</div>
+                <div class="text-[11px] font-semibold text-slate-500 mt-0.5">ContaSoft · Ecuador</div>
               </div>
             </div>
 
             <div class="flex items-center gap-1.5">
-              <button onclick="V.toggleOffline()" id="header-sync-pill" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-900/90 text-[#70d2bd] border border-[#70d2bd]/40 flex items-center gap-1 cursor-pointer" title="Simular corte de señal">
-                <span id="header-sync-dot" class="w-1.5 h-1.5 rounded-full bg-[#70d2bd]"></span>
+              <button onclick="V.toggleOffline()" id="header-sync-pill" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] flex items-center gap-1 cursor-pointer" title="Simular corte de señal">
+                <span id="header-sync-dot" class="w-1.5 h-1.5 rounded-full bg-[#087e70]"></span>
                 <span id="header-sync-text">Online</span>
               </button>
-              <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#e4f4ef] text-[#087e70]">
-                MODO DEMO
-              </span>
+              <button onclick="V.openDemoControlModal()" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white transition cursor-pointer" title="Opciones de entorno / reiniciar demo">
+                MODO DEMO ↺
+              </button>
             </div>
           </div>
 
-          <div class="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between gap-2">
+          <!-- Franja Inferior Verde Esmeralda: Empresa y Selector Rápido de Plan -->
+          <div class="bg-[#073e3b] text-white px-4 py-2.5 flex items-center justify-between gap-2">
             <div>
               <div class="text-[10px] text-teal-100/75">Empresa de demostración</div>
               <div class="text-sm font-extrabold text-white">Comercial Los Andes</div>
             </div>
-            <span id="phone-active-plan-pill" class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold bg-white/10 text-[#70d2bd] border border-white/15">
-              Plan Expansión
-            </span>
+            <button onclick="V.open('plans')" id="phone-active-plan-pill" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold bg-white/10 hover:bg-white/20 text-[#70d2bd] border border-[#70d2bd]/30 flex items-center gap-1 transition cursor-pointer" title="Cambiar de plan">
+              <span id="phone-active-plan-text">Plan Expansión</span>
+              <span>▾</span>
+            </button>
           </div>
         </header>
 
@@ -1320,7 +1321,7 @@
         savTag.classList.add('hidden');
       }
 
-      $('phone-active-plan-pill').textContent = `Plan ${plan.name}`;
+      if ($('phone-active-plan-text')) $('phone-active-plan-text').textContent = `Plan ${plan.name}`;
       $('phone-sva-counter').textContent = isComboFullActive()
         ? '⚡ Combo Full IA (6/6)'
         : `${activeCount}/6 Packs IA Activos`;
@@ -2409,13 +2410,21 @@
       if (p === 'plans') {
         return `
           ${backBtn}
-          <div class="text-base font-extrabold text-[#17343a]">🏢 Planes comerciales (6 Niveles)</div>
+          <div class="flex items-center justify-between">
+            <div class="text-base font-extrabold text-[#17343a]">🏢 Planes y Suscripción</div>
+            <button onclick="V.open('packs')" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] cursor-pointer">
+              🤖 Ver 6 Packs IA (${countActiveSVAs()}/6)
+            </button>
+          </div>
+          <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b]">
+            Toca cualquier plan para activarlo al instante en tu app y probar sus módulos incluidos.
+          </div>
           ${PLANS.map(pl => {
             const isCurr = pl.id === configState.selectedPlanId;
             return `
-              <div onclick="selectPlan('${pl.id}')" class="cursor-pointer bg-white border-2 ${isCurr ? 'border-[#087e70] bg-[#f4fbf9]' : 'border-[#e3ebea]'} rounded-2xl p-3 text-xs space-y-1">
+              <div onclick="selectPlan('${pl.id}'); toast('✓ Plan ${pl.name} activado (${pl.includedSVACount} packs IA incluidos).');" class="cursor-pointer bg-white border-2 ${isCurr ? 'border-[#087e70] bg-[#f4fbf9]' : 'border-[#e3ebea]'} rounded-2xl p-3 text-xs space-y-1">
                 <div class="flex items-center justify-between">
-                  <b>${pl.rank}. ${pl.name}</b>
+                  <b>${pl.rank}. ${pl.name} ${isCurr ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-[#087e70] text-white text-[9.5px]">ACTIVO</span>' : ''}</b>
                   <span class="font-mono font-black text-[#073e3b]">${pl.monthlyPrice === 0 ? '$0' : '$' + pl.monthlyPrice.toFixed(2) + '/mes'}</span>
                 </div>
                 <div class="text-[11px] text-[#71838a]">Anual: $${pl.annualPrice} · Hasta ${pl.includedUsers} usuarios · ${pl.includedSVACount} packs IA gratis</div>
@@ -2642,6 +2651,21 @@
         const m = $('phone-modal');
         m.classList.add('hidden');
         m.classList.remove('flex');
+      },
+
+      openDemoControlModal() {
+        const plan = getCurrentPlan();
+        this.openModal(
+          '🎛️ Control de Entorno · Vozkora',
+          `<div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] space-y-1 text-[11px]">
+             <div><strong>Entorno activo:</strong> Modo Demo / Sandbox</div>
+             <div><strong>Plan actual:</strong> ${esc(plan.name)} (${countActiveSVAs()}/6 Packs IA activos)</div>
+             <div><strong>Puente Contífico:</strong> ${appData.offline ? 'Desconectado (Offline SQLite)' : 'Conectado vía Render'}</div>
+           </div>
+           <p class="text-[11px] text-slate-600">Puedes reiniciar todos los movimientos de prueba (facturas, proformas, cobros y cola offline) a sus valores iniciales o cambiar de plan.</p>`,
+          `<button onclick="V.closeModal(); V.open('plans');" class="px-3 py-2 rounded-xl text-xs font-bold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">Cambiar Plan</button>
+           <button onclick="V.closeModal(); resetFullDemo();" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">↺ Reiniciar Demo</button>`
+        );
       },
 
       toggleBriefing() {
@@ -3373,8 +3397,8 @@
         const statusNet = $('status-net-badge');
 
         if (appData.offline) {
-          pill.className = 'px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-200 border border-amber-300/40 flex items-center gap-1 cursor-pointer';
-          dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-300 animate-ping';
+          pill.className = 'px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 cursor-pointer';
+          dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping';
           txt.textContent = 'Offline';
           statusNet.textContent = 'Sin señal · Offline';
           banner.classList.remove('hidden');
@@ -3387,8 +3411,8 @@
           appData.offlineQueueItems = [];
           appData.offlineQueue = 0;
           $('phone-offline-queue').textContent = '0 pend.';
-          pill.className = 'px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-900/90 text-[#70d2bd] border border-[#70d2bd]/40 flex items-center gap-1 cursor-pointer';
-          dot.className = 'w-1.5 h-1.5 rounded-full bg-[#70d2bd]';
+          pill.className = 'px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] flex items-center gap-1 cursor-pointer';
+          dot.className = 'w-1.5 h-1.5 rounded-full bg-[#087e70]';
           txt.textContent = 'Online';
           statusNet.textContent = '5G · Online';
           banner.classList.add('hidden');
