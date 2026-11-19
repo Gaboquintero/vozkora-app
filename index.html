@@ -76,6 +76,95 @@
   </style>
 </head>
 <body class="min-h-screen flex flex-col font-sans antialiased selection:bg-emerald-200 selection:text-teal-950">
+  <!-- ===================================================================== -->
+  <!-- PANTALLA DE INICIO DE SESIÓN VOZKORA (DEMO / EMPRESA / SUPERADMIN)    -->
+  <!-- ===================================================================== -->
+  <div id="auth-overlay" class="fixed inset-0 z-50 bg-[#f5f8f8] flex flex-col items-center justify-center p-4 overflow-y-auto">
+    <div class="w-full max-w-[400px] bg-white rounded-3xl border border-[#dce6e5] shadow-2xl overflow-hidden">
+      <!-- Cabecera blanca limpia con Mascota y Logo VOZKORA -->
+      <div class="bg-white px-6 pt-6 pb-4 text-center border-b border-[#dce6e5]">
+        <img src="mascota.png" alt="Mascota Vozkora" class="w-20 h-20 mx-auto rounded-full object-cover border-2 border-[#087e70]/30 shadow-sm mb-3" />
+        <div class="flex items-center justify-center gap-1.5">
+          <img src="logo.png" alt="VOZKORA" class="h-7 w-auto object-contain" />
+          <span class="text-lg font-black text-[#087e70]">+ IA</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">Plataforma Contable y Comercial · Ecuador</p>
+      </div>
+
+      <!-- Formulario de acceso -->
+      <div class="p-6 space-y-3.5 text-xs">
+        <div>
+          <label class="font-bold text-[#073e3b]">Correo electrónico</label>
+          <input id="login-email" type="email" value="demo@vozkora.com" placeholder="usuario@empresa.com" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] focus:outline-none focus:border-[#087e70] font-medium" />
+        </div>
+        <div>
+          <label class="font-bold text-[#073e3b]">Contraseña</label>
+          <input id="login-pass" type="password" value="DEMOVOZKORA" placeholder="••••••••" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] focus:outline-none focus:border-[#087e70] font-mono" />
+        </div>
+
+        <div id="login-error" class="hidden p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-[11px]"></div>
+
+        <button id="btn-login-submit" onclick="Auth.submitLogin()" class="w-full py-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-md transition cursor-pointer">
+          Ingresar a Vozkora →
+        </button>
+
+        <!-- Accesos rápidos de prueba -->
+        <div class="pt-2 border-t border-slate-100 space-y-1.5">
+          <div class="text-[10.5px] font-bold text-slate-400 uppercase text-center">Accesos rápidos configurados</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" onclick="Auth.fillCreds('demo@vozkora.com','DEMOVOZKORA')" class="p-2 rounded-xl bg-[#e7f5f1] hover:bg-[#d4ede6] text-[#073e3b] text-left border border-[#b9d1cd] cursor-pointer">
+              <div class="font-extrabold text-[11px]">🧪 Modo Demo</div>
+              <div class="text-[10px] text-slate-600">Empresa ACME</div>
+            </button>
+            <button type="button" onclick="Auth.fillCreds('admin@vozkora.com','ADMINVOZKORA2026')" class="p-2 rounded-xl bg-[#073e3b] hover:bg-[#0b5651] text-white text-left cursor-pointer">
+              <div class="font-extrabold text-[11px] text-[#70d2bd]">👑 Súper-Admin</div>
+              <div class="text-[10px] text-teal-100">Vozkora CRM</div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- CONSOLA MAESTRA VOZKORA CONTROL CRM (SOLO SUPERADMIN)                 -->
+  <!-- ===================================================================== -->
+  <div id="crm-overlay" class="hidden fixed inset-0 z-50 bg-[#edf3f2] flex flex-col overflow-hidden">
+    <!-- Barra superior CRM -->
+    <div class="bg-white border-b border-[#dce6e5] px-4 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
+      <div class="flex items-center gap-2.5">
+        <img src="mascota.png" alt="Mascota" class="w-9 h-9 rounded-full object-cover border border-[#087e70]/30" />
+        <div>
+          <div class="flex items-center gap-1.5">
+            <img src="logo.png" alt="VOZKORA" class="h-5 w-auto object-contain" />
+            <span class="text-xs font-black px-2 py-0.5 rounded-full bg-[#073e3b] text-[#70d2bd]">CONTROL CRM</span>
+          </div>
+          <div class="text-[10.5px] text-slate-500">Gobierno SaaS · Empresas, Tickets y Repositorio Auditoría</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="CRM.switchToAppMode()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] cursor-pointer">
+          📱 Ver App Móvil
+        </button>
+        <button onclick="Auth.logout()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 cursor-pointer">
+          Salir
+        </button>
+      </div>
+    </div>
+
+    <!-- Pestañas CRM -->
+    <div class="bg-[#073e3b] text-white px-4 py-2 flex gap-2 overflow-x-auto shrink-0 text-xs font-bold">
+      <button id="crm-tab-users" onclick="CRM.setTab('users')" class="px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0">🏢 Empresas y Usuarios</button>
+      <button id="crm-tab-tickets" onclick="CRM.setTab('tickets')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🎫 Tickets Solicitudes</button>
+      <button id="crm-tab-repo" onclick="CRM.setTab('repo')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">📊 Hojas Auditoría (Excel)</button>
+    </div>
+
+    <!-- Contenido dinámico CRM -->
+    <div id="crm-body" class="flex-1 overflow-y-auto p-4 max-w-5xl w-full mx-auto space-y-4 text-xs">
+      Cargando consola maestra...
+    </div>
+  </div>
+
 
   <!-- ===================================================================== -->
   <!-- BARRA SUPERIOR CORPORATIVA — VOZKORA INGENIERÍA TECH S.A.S.           -->
@@ -350,17 +439,17 @@
                 <span id="header-sync-dot" class="w-1.5 h-1.5 rounded-full bg-[#087e70]"></span>
                 <span id="header-sync-text">Online</span>
               </button>
-              <button onclick="V.openDemoControlModal()" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white transition cursor-pointer" title="Opciones de entorno / reiniciar demo">
-                MODO DEMO ↺
+              <button onclick="V.openDemoControlModal()" id="header-env-badge" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white transition cursor-pointer" title="Opciones de cuenta / tickets / cerrar sesión">
+                DEMO · ACME ▾
               </button>
             </div>
           </div>
 
-          <!-- Franja Inferior Verde Esmeralda: Empresa y Selector Rápido de Plan -->
+          <!-- Franja Inferior Verde Esmeralda: Empresa Activa y Selector Rápido de Plan -->
           <div class="bg-[#073e3b] text-white px-4 py-2.5 flex items-center justify-between gap-2">
             <div>
-              <div class="text-[10px] text-teal-100/75">Empresa de demostración</div>
-              <div class="text-sm font-extrabold text-white">Comercial Los Andes</div>
+              <div id="phone-company-subtitle" class="text-[10px] text-teal-100/75">Demo · RUC 123456789001</div>
+              <div id="phone-company-title" class="text-sm font-extrabold text-white">ACME</div>
             </div>
             <button onclick="V.open('plans')" id="phone-active-plan-pill" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold bg-white/10 hover:bg-white/20 text-[#70d2bd] border border-[#70d2bd]/30 flex items-center gap-1 transition cursor-pointer" title="Cambiar de plan">
               <span id="phone-active-plan-text">Plan Expansión</span>
@@ -2655,17 +2744,86 @@
 
       openDemoControlModal() {
         const plan = getCurrentPlan();
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+          empresa_nombre: 'ACME', empresa_ruc: '123456789001', email: 'demo@vozkora.com', rol: 'DEMO', entorno: 'DEMO'
+        };
+        const isSuper = ses.rol === 'SUPERADMIN';
+        const isDemo = ses.rol === 'DEMO' || ses.entorno === 'DEMO';
         this.openModal(
-          '🎛️ Control de Entorno · Vozkora',
+          '🎛️ Cuenta y Control · Vozkora',
           `<div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] space-y-1 text-[11px]">
-             <div><strong>Entorno activo:</strong> Modo Demo / Sandbox</div>
-             <div><strong>Plan actual:</strong> ${esc(plan.name)} (${countActiveSVAs()}/6 Packs IA activos)</div>
-             <div><strong>Puente Contífico:</strong> ${appData.offline ? 'Desconectado (Offline SQLite)' : 'Conectado vía Render'}</div>
+             <div><strong>Empresa:</strong> ${esc(ses.empresa_nombre)} (RUC: ${esc(ses.empresa_ruc)})</div>
+             <div><strong>Usuario:</strong> ${esc(ses.email)} · Rol: <strong>${esc(ses.rol)}</strong></div>
+             <div><strong>Entorno:</strong> ${esc(ses.entorno)} · Plan: <strong>${esc(plan.name)}</strong></div>
            </div>
-           <p class="text-[11px] text-slate-600">Puedes reiniciar todos los movimientos de prueba (facturas, proformas, cobros y cola offline) a sus valores iniciales o cambiar de plan.</p>`,
-          `<button onclick="V.closeModal(); V.open('plans');" class="px-3 py-2 rounded-xl text-xs font-bold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">Cambiar Plan</button>
-           <button onclick="V.closeModal(); resetFullDemo();" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">↺ Reiniciar Demo</button>`
+           <div class="grid grid-cols-1 gap-1.5 pt-1">
+             <button onclick="V.closeModal(); V.openNewUserTicketModal();" class="w-full py-2 px-3 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] text-left cursor-pointer">
+               🎫 Solicitar Nuevo Usuario por Ticket (Seguridad)
+             </button>
+             ${isSuper ? `
+               <button onclick="V.closeModal(); CRM.open();" class="w-full py-2 px-3 rounded-xl text-xs font-extrabold bg-emerald-700 text-white text-left cursor-pointer">
+                 👑 Abrir Consola Maestra Vozkora Control CRM
+               </button>
+             ` : ''}
+             ${isDemo ? `
+               <button onclick="V.closeModal(); resetFullDemo();" class="w-full py-2 px-3 rounded-xl text-xs font-bold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] text-left cursor-pointer">
+                 ↺ Reiniciar Datos de Prueba (ACME)
+               </button>
+             ` : ''}
+           </div>`,
+          `<button onclick="V.closeModal(); Auth.logout();" class="px-3 py-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 cursor-pointer">Cerrar Sesión</button>
+           <button onclick="V.closeModal();" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Listo</button>`
         );
+      },
+
+      openNewUserTicketModal() {
+        this.openModal(
+          '🎫 Solicitar Nuevo Usuario (Ticket)',
+          `<p class="text-[11px] text-slate-600">Por seguridad y control de licencias, toda alta de usuario se envía por ticket al equipo administrador de Vozkora.</p>
+           <div>
+             <label class="font-bold">Nombre completo del colaborador</label>
+             <input id="tkUserName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. Carlos Mendoza">
+           </div>
+           <div>
+             <label class="font-bold">Correo electrónico para acceso</label>
+             <input id="tkUserEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="carlos@empresa.com">
+           </div>
+           <div>
+             <label class="font-bold">Perfil / Permisos solicitados</label>
+             <select id="tkUserRole" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
+               <option value="Vendedor Ruta (Facturación + Cobros)">Vendedor Ruta (Facturación + Cobros)</option>
+               <option value="Bodeguero (Inventario + Guías)">Bodeguero (Inventario + Guías)</option>
+               <option value="Administrador Empresa (Acceso Total)">Administrador Empresa (Acceso Total)</option>
+             </select>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.submitUserTicket()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Enviar Ticket</button>`
+        );
+      },
+
+      async submitUserTicket() {
+        const nombre = $('tkUserName').value.trim();
+        const email = $('tkUserEmail').value.trim().toLowerCase();
+        const perfil = $('tkUserRole').value;
+        if (!nombre || !email) return toast('Completa el nombre y correo del nuevo usuario.');
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+          empresa_ruc: '123456789001', empresa_nombre: 'ACME', email: 'demo@vozkora.com'
+        };
+        try {
+          if (typeof crearTicketVozkora === 'function') {
+            await crearTicketVozkora({
+              empresa_ruc: ses.empresa_ruc,
+              empresa_nombre: ses.empresa_nombre,
+              solicitado_por: ses.email,
+              tipo_solicitud: 'NUEVO_USUARIO',
+              detalle: { nombre, email_nuevo: email, perfil }
+            });
+          }
+          this.closeModal();
+          toast('✓ Ticket enviado a Vozkora CRM. Recibirás confirmación al aprobarse.');
+        } catch (e) {
+          toast('Error enviando ticket: ' + e.message);
+        }
       },
 
       toggleBriefing() {
@@ -2847,6 +3005,20 @@
           });
         }
 
+        if (typeof registrarEnRepositorio === 'function') {
+          registrarEnRepositorio('repo_facturas', {
+            numero_factura: invId,
+            cliente_ruc_ci: '1790012345001',
+            cliente_nombre: clientName,
+            subtotal: Number(fin.netSubtotal.toFixed(2)),
+            iva_porcentaje: appData.selectedIvaRate,
+            iva_monto: Number(fin.ivaAmt.toFixed(2)),
+            total: Number(fin.grandTotal.toFixed(2)),
+            forma_pago: method,
+            items: appData.invoices[appData.invoices.length - 1],
+            estado_sri: appData.offline ? 'PENDIENTE_OFFLINE' : 'AUTORIZADA_SRI'
+          });
+        }
         this.openModal(
           appData.offline ? '💾 Guardada en Cola Offline' : '⚡ Factura SRI Emitida',
           `<p>Se creó la factura <strong>${invId}</strong> para <strong>${esc(clientName)}</strong>.</p>
@@ -2968,6 +3140,15 @@
           enqueueOfflineOp('Nota de Crédito', ncId, `${inv.client} · Ref ${inv.id} (-${appMoney(amount)})`, () => {
             const item = appData.creditNotes.find(x => x.id === ncId);
             if (item) item.syncStatus = 'Autorizada SRI';
+          });
+        }
+        if (typeof registrarEnRepositorio === 'function') {
+          registrarEnRepositorio('repo_notas_credito', {
+            numero_nc: ncId,
+            factura_referencia: inv.id,
+            cliente_nombre: inv.client,
+            motivo: reason,
+            monto: amount
           });
         }
         renderPhone('creditnotes');
@@ -3112,6 +3293,16 @@
         appData.quoteCart = [];
         appData.quoteDiscountMode = 'none';
         appData.quoteDiscountPct = 0;
+        if (typeof registrarEnRepositorio === 'function') {
+          registrarEnRepositorio('repo_proformas', {
+            numero_proforma: qId,
+            cliente_nombre: client,
+            subtotal: Number(qFin.grossSubtotal.toFixed(2)),
+            iva_monto: Number(qFin.ivaAmt.toFixed(2)),
+            total: Number(qFin.grandTotal.toFixed(2)),
+            items: appData.quotes[0].items
+          });
+        }
         renderPhone('quotes');
         toast(isOff ? `💾 Proforma ${qId} guardada en cola Offline (PDF disponible).` : `✓ Proforma ${qId} (${appMoney(qFin.grandTotal)}) creada en Contífico y lista en PDF.`);
       },
@@ -3206,6 +3397,13 @@
           enqueueOfflineOp('Cliente Nuevo', id, `${name} (${phone})`, () => {
             const cl = appData.clients.find(c => c.id === id);
             if (cl) cl.pendingSync = false;
+          });
+        }
+        if (typeof registrarEnRepositorio === 'function') {
+          registrarEnRepositorio('repo_clientes', {
+            cliente_ruc_ci: id,
+            cliente_nombre: name,
+            cliente_telefono: phone
           });
         }
         this.closeModal();
@@ -3373,6 +3571,14 @@
         if (isOff) {
           enqueueOfflineOp('Cobro Cartera', 'COB-' + String(appData.payments.length).padStart(3, '0'), `${clientName} · ${appMoney(amt)} (${method})`);
         }
+        if (typeof registrarEnRepositorio === 'function') {
+          registrarEnRepositorio('repo_cobros', {
+            cliente_nombre: clientName,
+            monto: amt,
+            medio_pago: method,
+            referencia_comprobante: 'COB-' + Date.now()
+          });
+        }
         this.closeModal();
         renderPhone('receivables');
         toast(isOff ? `💾 Cobro de ${appMoney(amt)} guardado en cola Offline.` : `✓ Cobro de ${appMoney(amt)} registrado y descontado de cartera.`);
@@ -3444,6 +3650,15 @@
           enqueueOfflineOp('Orden de Trabajo', id, `${client} · ${desc}`, () => {
             const ord = appData.orders.find(x => x.id === id);
             if (ord) ord.pendingSync = false;
+          });
+        }
+        if (typeof registrarEnRepositorio === 'function') {
+          registrarEnRepositorio('repo_ordenes_trabajo', {
+            codigo_orden: id,
+            cliente_nombre: client,
+            descripcion: desc,
+            estado: 'Abierta',
+            historial_cambios: [{ fecha: dateStr, estado: 'Abierta', obs }]
           });
         }
         renderPhone('workorders');
@@ -3647,6 +3862,438 @@
     }
 
     window.addEventListener('DOMContentLoaded', sincronizarPuenteVozkora);
+  </script>
+  <script>
+    // =====================================================================
+    // CONTROLADOR DE AUTENTICACIÓN (DEMO ACME / EMPRESA / SUPERADMIN)
+    // =====================================================================
+    window.Auth = {
+      fillCreds(email, pass) {
+        $('login-email').value = email;
+        $('login-pass').value = pass;
+      },
+
+      async submitLogin() {
+        const email = $('login-email').value;
+        const pass = $('login-pass').value;
+        const errBox = $('login-error');
+        const btn = $('btn-login-submit');
+        errBox.classList.add('hidden');
+        btn.textContent = 'Verificando en Supabase...';
+        btn.disabled = true;
+
+        try {
+          const res = await loginVozkora(email, pass);
+          if (!res.ok) {
+            errBox.textContent = res.error;
+            errBox.classList.remove('hidden');
+            btn.textContent = 'Ingresar a Vozkora →';
+            btn.disabled = false;
+            return;
+          }
+          this.applySession(res.user);
+        } catch (e) {
+          errBox.textContent = 'Error de conexión con Supabase: ' + e.message;
+          errBox.classList.remove('hidden');
+        } finally {
+          btn.textContent = 'Ingresar a Vozkora →';
+          btn.disabled = false;
+        }
+      },
+
+      applySession(user) {
+        $('auth-overlay').classList.add('hidden');
+
+        // Aplicar plan y packs IA configurados para ese usuario/empresa
+        if (user.plan_activo && PLANS.some(p => p.id === user.plan_activo)) {
+          selectPlan(user.plan_activo);
+        }
+        if (Array.isArray(user.packs_ia)) {
+          const allPacks = ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'];
+          allPacks.forEach(pk => { configState.activeSVAs[pk] = user.packs_ia.includes(pk); });
+          configState.selectedSvaOrder = user.packs_ia.slice();
+        }
+
+        // Actualizar encabezado móvil con Empresa, RUC y Entorno real
+        const envLabel = user.rol === 'SUPERADMIN' ? 'SÚPER-ADMIN' : (user.entorno || 'DEMO');
+        if ($('header-env-badge')) $('header-env-badge').textContent = `${envLabel} · ${user.empresa_nombre} ▾`;
+        if ($('phone-company-subtitle')) $('phone-company-subtitle').textContent = `${envLabel} · RUC ${user.empresa_ruc}`;
+        if ($('phone-company-title')) $('phone-company-title').textContent = user.empresa_nombre;
+
+        renderAll();
+
+        // Si entra con admin@vozkora.com (SUPERADMIN), abre directo Vozkora Control CRM
+        if (user.rol === 'SUPERADMIN') {
+          CRM.open();
+        } else {
+          $('crm-overlay').classList.add('hidden');
+          toast(`✓ Bienvenido ${user.email} (${user.empresa_nombre})`);
+        }
+      },
+
+      logout() {
+        cerrarSesionVozkora();
+        $('crm-overlay').classList.add('hidden');
+        $('auth-overlay').classList.remove('hidden');
+        toast('Sesión cerrada.');
+      }
+    };
+
+    // =====================================================================
+    // CONSOLA MAESTRA VOZKORA CONTROL CRM (SUPERADMIN)
+    // =====================================================================
+    window.CRM = {
+      currentTab: 'users',
+      cachedUsers: [],
+      cachedTickets: [],
+      repoTable: 'repo_facturas',
+      repoRows: [],
+
+      open() {
+        $('crm-overlay').classList.remove('hidden');
+        this.setTab(this.currentTab);
+      },
+
+      switchToAppMode() {
+        $('crm-overlay').classList.add('hidden');
+        toast('Vista App Móvil activa. Toca el botón superior derecho para volver al CRM.');
+      },
+
+      setTab(tab) {
+        this.currentTab = tab;
+        ['users', 'tickets', 'repo'].forEach(t => {
+          const btn = $('crm-tab-' + t);
+          if (btn) {
+            btn.className = (t === tab)
+              ? 'px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0'
+              : 'px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0';
+          }
+        });
+        if (tab === 'users') this.loadUsers();
+        else if (tab === 'tickets') this.loadTickets();
+        else if (tab === 'repo') this.loadRepo(this.repoTable);
+      },
+
+      async loadUsers() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando empresas y usuarios desde Supabase...</div>';
+        try {
+          this.cachedUsers = await crmListarUsuarios();
+          body.innerHTML = `
+            <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 class="text-sm font-extrabold text-[#073e3b]">🏢 Empresas y Usuarios Registrados (${this.cachedUsers.length})</h3>
+                  <p class="text-[11px] text-slate-500">Gestiona altas, bajas, cambio de plan, entorno (Sandbox/Producción) y permisos.</p>
+                </div>
+                <button onclick="CRM.openNewUserForm()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
+                  + Crear Empresa / Usuario
+                </button>
+              </div>
+
+              <div class="space-y-2.5">
+                ${this.cachedUsers.map((u, idx) => `
+                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border ${u.activo ? 'border-[#dce6e5]' : 'border-rose-300 bg-rose-50/50'} space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span class="font-extrabold text-sm text-[#073e3b]">${esc(u.empresa_nombre)}</span>
+                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd]">${esc(u.rol)}</span>
+                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-white border border-slate-200">${esc(u.entorno)}</span>
+                      </div>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${u.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+                        ${u.activo ? '● Activo' : '● Suspendido'}
+                      </span>
+                    </div>
+                    <div class="text-[11px] text-slate-600 font-mono">
+                      RUC: ${esc(u.empresa_ruc)} · Tel: ${esc(u.empresa_telefono || 'N/A')} · Usuario: <strong>${esc(u.email)}</strong>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 pt-1">
+                      <select onchange="CRM.changeUserPlan('${u.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
+                        ${PLANS.map(pl => `<option value="${pl.id}" ${u.plan_activo === pl.id ? 'selected' : ''}>Plan: ${pl.name}</option>`).join('')}
+                      </select>
+                      <select onchange="CRM.changeUserEnv('${u.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
+                        <option value="DEMO" ${u.entorno === 'DEMO' ? 'selected' : ''}>Entorno: DEMO</option>
+                        <option value="SANDBOX" ${u.entorno === 'SANDBOX' ? 'selected' : ''}>Entorno: SANDBOX (Pruebas)</option>
+                        <option value="PRODUCCION" ${u.entorno === 'PRODUCCION' ? 'selected' : ''}>Entorno: PRODUCCIÓN</option>
+                      </select>
+                      <button onclick="CRM.toggleUserActive('${u.id}', ${!u.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${u.activo ? 'bg-rose-100 text-rose-800' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        ${u.activo ? 'Suspender' : 'Reactivar'}
+                      </button>
+                      <button onclick="CRM.openEditPermsModal(${idx})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
+                        🔑 Permisos y API Contífico
+                      </button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold">Error cargando usuarios: ${esc(e.message)}</div>`;
+        }
+      },
+
+      async changeUserPlan(id, plan_activo) {
+        await crmActualizarUsuario(id, { plan_activo });
+        toast('✓ Plan actualizado en Supabase.');
+        this.loadUsers();
+      },
+
+      async changeUserEnv(id, entorno) {
+        await crmActualizarUsuario(id, { entorno });
+        toast('✓ Entorno actualizado a ' + entorno);
+        this.loadUsers();
+      },
+
+      async toggleUserActive(id, activo) {
+        await crmActualizarUsuario(id, { activo });
+        toast(activo ? '✓ Cuenta reactivada.' : '⛔ Cuenta suspendida.');
+        this.loadUsers();
+      },
+
+      openNewUserForm(prefill = {}) {
+        V.openModal(
+          '+ Alta de Empresa / Usuario en Vozkora CRM',
+          `<div class="space-y-2">
+             <input id="crmNewEmp" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Nombre Empresa (ej. Distribuidora Norte)" value="${esc(prefill.empresa_nombre || '')}">
+             <div class="grid grid-cols-2 gap-2">
+               <input id="crmNewRuc" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono" placeholder="RUC (13 dígitos)" value="${esc(prefill.empresa_ruc || '')}">
+               <input id="crmNewTel" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono" placeholder="Teléfono WhatsApp" value="${esc(prefill.empresa_telefono || '')}">
+             </div>
+             <input id="crmNewEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Correo acceso (ej. admin@empresa.com)" value="${esc(prefill.email || '')}">
+             <input id="crmNewPass" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono" placeholder="Contraseña asignada" value="VOZKORA2026">
+             <div class="grid grid-cols-2 gap-2">
+               <select id="crmNewRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white">
+                 <option value="ADMIN_EMPRESA">Rol: Admin Empresa</option>
+                 <option value="OPERADOR">Rol: Operador / Vendedor</option>
+               </select>
+               <select id="crmNewEnv" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white">
+                 <option value="SANDBOX">Entorno: SANDBOX (Pruebas)</option>
+                 <option value="PRODUCCION">Entorno: PRODUCCIÓN</option>
+                 <option value="DEMO">Entorno: DEMO</option>
+               </select>
+             </div>
+             <select id="crmNewPlan" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white">
+               ${PLANS.map(pl => `<option value="${pl.id}" ${pl.id === 'expansion' ? 'selected' : ''}>Plan: ${pl.name}</option>`).join('')}
+             </select>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveNewUser()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Crear Usuario</button>`
+        );
+      },
+
+      async saveNewUser() {
+        const empresa_nombre = $('crmNewEmp').value.trim();
+        const empresa_ruc = $('crmNewRuc').value.trim();
+        const empresa_telefono = $('crmNewTel').value.trim();
+        const email = $('crmNewEmail').value.trim().toLowerCase();
+        const clave = $('crmNewPass').value.trim();
+        const rol = $('crmNewRol').value;
+        const entorno = $('crmNewEnv').value;
+        const plan_activo = $('crmNewPlan').value;
+
+        if (!empresa_nombre || !empresa_ruc || !email || !clave) {
+          return toast('Completa empresa, RUC, correo y contraseña.');
+        }
+        try {
+          await crmCrearUsuario({
+            empresa_nombre, empresa_ruc, empresa_telefono, email, clave, rol, entorno, plan_activo,
+            packs_ia: ['voz', 'ventas'],
+            activo: true
+          });
+          V.closeModal();
+          toast('✓ Usuario creado y guardado en Supabase.');
+          this.loadUsers();
+        } catch (e) {
+          toast('Error: ' + e.message);
+        }
+      },
+
+      openEditPermsModal(idx) {
+        const u = this.cachedUsers[idx];
+        if (!u) return;
+        const perms = u.permisos || {};
+        const permKeys = [
+          ['facturar', 'Emitir Facturas'],
+          ['proformas', 'Crear Proformas'],
+          ['clientes', 'Gestionar Clientes'],
+          ['inventario_ver', 'Ver Inventario'],
+          ['inventario_editar', 'Editar Bodega'],
+          ['cobranza', 'Cobrar Cartera'],
+          ['bancos', 'Ver Bancos'],
+          ['reportes', 'Ver Reportes'],
+          ['configuracion', 'Entrenar IA']
+        ];
+        V.openModal(
+          `🔑 Permisos y Contífico · ${u.empresa_nombre}`,
+          `<div class="space-y-2">
+             <div class="text-[11px] font-bold text-[#073e3b]">Llaves API Siigo Contífico (${esc(u.entorno)}):</div>
+             <input id="crmApiKey" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono text-[11px]" placeholder="API Key Contífico" value="${esc(u.contifico_api_key || '')}">
+             <input id="crmPosToken" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono text-[11px]" placeholder="Token POS Contífico" value="${esc(u.contifico_pos_token || '')}">
+             <div class="text-[11px] font-bold text-[#073e3b] pt-1">Permisos del usuario (${esc(u.email)}):</div>
+             <div class="grid grid-cols-2 gap-1.5">
+               ${permKeys.map(pk => `
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-[#f5f8f8] border border-slate-200 text-[11px]">
+                   <input type="checkbox" id="perm_${pk[0]}" ${perms[pk[0]] ? 'checked' : ''}>
+                   <span>${pk[1]}</span>
+                 </label>
+               `).join('')}
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.savePermsAndApi('${u.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar</button>`
+        );
+      },
+
+      async savePermsAndApi(id) {
+        const keys = ['facturar','proformas','clientes','inventario_ver','inventario_editar','cobranza','bancos','reportes','configuracion'];
+        const permisos = {};
+        keys.forEach(k => { permisos[k] = !!$('perm_' + k)?.checked; });
+        await crmActualizarUsuario(id, {
+          contifico_api_key: $('crmApiKey').value.trim(),
+          contifico_pos_token: $('crmPosToken').value.trim(),
+          permisos
+        });
+        V.closeModal();
+        toast('✓ Permisos y credenciales Contífico actualizados.');
+        this.loadUsers();
+      },
+
+      async loadTickets() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando tickets de solicitud...</div>';
+        try {
+          this.cachedTickets = await crmListarTickets();
+          body.innerHTML = `
+            <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+              <h3 class="text-sm font-extrabold text-[#073e3b]">🎫 Bandeja de Tickets de Usuarios (${this.cachedTickets.length})</h3>
+              ${this.cachedTickets.length === 0 ? '<p class="text-slate-500">No hay tickets pendientes por ahora.</p>' : ''}
+              <div class="space-y-2">
+                ${this.cachedTickets.map((tk, idx) => `
+                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+                    <div class="flex justify-between items-center">
+                      <strong class="text-[#073e3b]">${esc(tk.empresa_nombre)} (RUC: ${esc(tk.empresa_ruc)})</strong>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${tk.estado === 'PENDIENTE' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}">${esc(tk.estado)}</span>
+                    </div>
+                    <div class="text-[11px] text-slate-600">Solicitado por: ${esc(tk.solicitado_por)}</div>
+                    <div class="p-2 rounded-xl bg-white border border-slate-200 text-[11px]">
+                      <strong>Nuevo usuario:</strong> ${esc(tk.detalle?.nombre || '')} (${esc(tk.detalle?.email_nuevo || '')}) · Perfil: ${esc(tk.detalle?.perfil || '')}
+                    </div>
+                    ${tk.estado === 'PENDIENTE' ? `
+                      <div class="flex gap-2 pt-1">
+                        <button onclick="CRM.approveTicket(${idx})" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] text-white cursor-pointer">✓ Aprobar y Crear Usuario</button>
+                        <button onclick="CRM.rejectTicket('${tk.id}')" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-rose-100 text-rose-800 cursor-pointer">Rechazar</button>
+                      </div>
+                    ` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      async approveTicket(idx) {
+        const tk = this.cachedTickets[idx];
+        if (!tk) return;
+        await crmActualizarTicket(tk.id, 'APROBADO');
+        this.openNewUserForm({
+          empresa_nombre: tk.empresa_nombre,
+          empresa_ruc: tk.empresa_ruc,
+          email: tk.detalle?.email_nuevo || ''
+        });
+        this.loadTickets();
+      },
+
+      async rejectTicket(id) {
+        await crmActualizarTicket(id, 'RECHAZADO');
+        toast('Ticket marcado como rechazado.');
+        this.loadTickets();
+      },
+
+      async loadRepo(tabla) {
+        this.repoTable = tabla;
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Consultando hoja de auditoría en Supabase...</div>';
+        const sheets = [
+          ['repo_facturas', '🧾 Facturas SRI'],
+          ['repo_clientes', '👥 Clientes'],
+          ['repo_notas_credito', '↩️ Notas Crédito'],
+          ['repo_proformas', '📄 Proformas'],
+          ['repo_cobros', '💰 Cobros'],
+          ['repo_ordenes_trabajo', '👷 Órdenes Trabajo']
+        ];
+        try {
+          this.repoRows = await consultarRepositorio(tabla);
+          const cols = this.repoRows.length > 0 ? Object.keys(this.repoRows[0]).filter(k => typeof this.repoRows[0][k] !== 'object') : [];
+          body.innerHTML = `
+            <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 class="text-sm font-extrabold text-[#073e3b]">📊 Repositorio Maestro de Auditoría (Hojas tipo Excel)</h3>
+                  <p class="text-[11px] text-slate-500">Respaldo histórico inmutable por empresa y usuario para soporte y reclamos.</p>
+                </div>
+                <button onclick="CRM.exportRepoCsv()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
+                  📥 Descargar Excel / CSV
+                </button>
+              </div>
+
+              <div class="flex flex-wrap gap-1.5">
+                ${sheets.map(s => `
+                  <button onclick="CRM.loadRepo('${s[0]}')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${tabla === s[0] ? 'bg-[#087e70] text-white' : 'bg-[#f5f8f8] text-[#073e3b] border border-[#dce6e5]'}">
+                    ${s[1]}
+                  </button>
+                `).join('')}
+              </div>
+
+              ${this.repoRows.length === 0 ? '<p class="text-slate-500 py-4">Aún no hay registros en esta hoja. Realiza una operación en la app para verla reflejada aquí al instante.</p>' : `
+                <div class="overflow-x-auto border border-[#dce6e5] rounded-xl">
+                  <table class="w-full text-left border-collapse text-[11px]">
+                    <thead class="bg-[#073e3b] text-white">
+                      <tr>${cols.map(c => `<th class="p-2 font-bold whitespace-nowrap">${esc(c)}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                      ${this.repoRows.map(r => `
+                        <tr class="border-b border-slate-100 hover:bg-[#f5f8f8]">
+                          ${cols.map(c => `<td class="p-2 whitespace-nowrap font-mono">${esc(r[c] ?? '')}</td>`).join('')}
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `}
+            </div>
+          `;
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      exportRepoCsv() {
+        if (!this.repoRows.length) return toast('No hay filas para exportar en esta hoja.');
+        const cols = Object.keys(this.repoRows[0]);
+        const csv = [
+          cols.join(';'),
+          ...this.repoRows.map(r => cols.map(c => `"${String(typeof r[c] === 'object' ? JSON.stringify(r[c]) : (r[c] ?? '')).replace(/"/g, '""')}"`).join(';'))
+        ].join('
+');
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${this.repoTable}_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+        toast('📥 Archivo Excel/CSV descargado.');
+      }
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const existing = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+      if (existing && existing.email) {
+        Auth.applySession(existing);
+      }
+    });
   </script>
 </body>
 </html>
