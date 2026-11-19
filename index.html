@@ -154,7 +154,8 @@
 
     <!-- Pestañas CRM -->
     <div class="bg-[#073e3b] text-white px-4 py-2 flex gap-2 overflow-x-auto shrink-0 text-xs font-bold">
-      <button id="crm-tab-users" onclick="CRM.setTab('users')" class="px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0">🏢 Empresas y Usuarios</button>
+      <button id="crm-tab-companies" onclick="CRM.setTab('companies')" class="px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0">🏢 Empresas (Clientes SaaS)</button>
+      <button id="crm-tab-users" onclick="CRM.setTab('users')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">👥 Usuarios y Cupos</button>
       <button id="crm-tab-tickets" onclick="CRM.setTab('tickets')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🎫 Tickets Solicitudes</button>
       <button id="crm-tab-repo" onclick="CRM.setTab('repo')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">📊 Hojas Auditoría (Excel)</button>
     </div>
@@ -469,6 +470,12 @@
           <!-- Renderizado dinámico por JS -->
         </main>
 
+        <!-- BOTÓN FLOTANTE DE AYUDA Y CENTRO DE TICKETS (SIEMPRE VISIBLE EN LA APP) -->
+        <button onclick="V.openHelpCenterModal()" class="fixed lg:absolute bottom-[68px] right-4 z-30 px-3.5 py-2.5 rounded-full bg-[#073e3b] hover:bg-[#087e70] text-white border-2 border-[#70d2bd] shadow-xl flex items-center gap-2 text-xs font-extrabold transition transform hover:scale-105 cursor-pointer" title="Centro de Ayuda, Soporte y Tickets">
+          <span class="text-base leading-none">🛟</span>
+          <span>Ayuda</span>
+        </button>
+
         <!-- BARRA DE NAVEGACIÓN INFERIOR FIJA (4 PESTAÑAS) -->
         <nav class="fixed lg:static bottom-0 inset-x-0 z-20 bg-white border-t border-[#e1e9e8] px-1.5 py-2 grid grid-cols-4 gap-1 shrink-0">
           <button class="nav-btn active flex flex-col items-center justify-center py-1.5 rounded-xl text-[11px] transition cursor-pointer" data-page="home" onclick="V.open('home')">
@@ -493,17 +500,7 @@
           Vozkora ContaSoft + IA · Prototipo V1 · Datos ficticios
         </div>
 
-        <!-- MODAL INTERNO DEL TELÉFONO (Sustituye alert() y prompt()) -->
-        <div id="phone-modal" class="hidden fixed lg:absolute inset-0 z-40 bg-slate-950/60 backdrop-blur-[2px] p-4 items-center justify-center">
-          <div class="bg-white w-full max-h-[90%] overflow-y-auto phone-scroll rounded-2xl p-4 border border-[#dce6e5] shadow-2xl space-y-3 text-[#17343a]">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h4 id="phone-modal-title" class="text-sm font-extrabold text-[#073e3b]">Título</h4>
-              <button onclick="V.closeModal()" class="text-slate-400 hover:text-slate-700 font-bold text-sm cursor-pointer">✕</button>
-            </div>
-            <div id="phone-modal-body" class="text-xs space-y-2"></div>
-            <div id="phone-modal-actions" class="flex justify-end gap-2 pt-1"></div>
-          </div>
-        </div>
+
       </div>
     </aside>
   </main>
@@ -521,7 +518,7 @@
   </footer>
 
   <!-- TOAST NOTIFICATIONS -->
-  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden bg-[#073e3b] text-white border border-[#70d2bd]/40 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold max-w-[92vw] text-center"></div>
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] hidden bg-[#073e3b] text-white border border-[#70d2bd]/40 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold max-w-[92vw] text-center"></div>
 
   <!-- MODAL DE SOLICITUD DE IMPLEMENTACIÓN (PANEL IZQUIERDO) -->
   <div id="quote-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
@@ -1514,6 +1511,7 @@
       else if (page === 'sales') screen.innerHTML = viewSales();
       else if (page === 'inventory') screen.innerHTML = viewInventory();
       else if (page === 'more') screen.innerHTML = viewMore();
+      else if (page === 'helpcenter') { screen.innerHTML = viewMore(); V.openHelpCenterModal(); }
       else screen.innerHTML = viewModule(page);
     }
 
@@ -1707,7 +1705,8 @@
             ['📈', 'Reportes', 'reports'],
             ['🏢', 'Planes y precios', 'plans'],
             ['⚙️', 'Configuración IA', 'settings'],
-            ['🔄', 'Sincronización', 'sync']
+            ['🔄', 'Sincronización', 'sync'],
+            ['🛟', 'Ayuda y Tickets', 'helpcenter']
           ].map(x => `
             <button onclick="V.open('${x[2]}')" class="bg-white hover:bg-[#f4fbf9] border border-[#e3ebea] rounded-2xl p-3 text-left transition cursor-pointer">
               <span class="text-xl block">${x[0]}</span>
@@ -2332,7 +2331,7 @@
         return `
           ${backBtn}
           <div class="flex items-center justify-between">
-            <div class="text-base font-extrabold text-[#17343a]">👥 Directorio de clientes</div>
+            <div><div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (API Contífico)</div><div class="text-[10px] text-[#087e70] font-semibold">Los clientes creados aquí viajan por API a Siigo Contífico</div></div>
             <div class="flex gap-1.5">
               <button onclick="V.simulateRucPhoto()" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] cursor-pointer">
                 🪪 Foto RUC
@@ -2776,6 +2775,164 @@
         );
       },
 
+      openHelpCenterModal() {
+        const opciones = [
+          {
+            id: 'NUEVO_USUARIO',
+            icon: '👤➕',
+            title: 'Crear / Alta de Usuario',
+            desc: 'Solicitar acceso y permisos para un nuevo colaborador',
+            color: 'bg-[#e7f5f1] border-[#b9d1cd] text-[#073e3b]'
+          },
+          {
+            id: 'SOPORTE_WHATSAPP',
+            icon: '💬',
+            title: 'Soporte Técnico WhatsApp',
+            desc: 'Chat directo inmediato con ingeniería Vozkora Ecuador',
+            color: 'bg-emerald-50 border-emerald-200 text-emerald-900',
+            isWhatsapp: true
+          },
+          {
+            id: 'VENTAS_UPGRADE',
+            icon: '🚀',
+            title: 'Ventas y Mejora de Plan',
+            desc: 'Subir de plan, activar Packs IA o usuarios extra',
+            color: 'bg-cyan-50 border-cyan-200 text-cyan-950'
+          },
+          {
+            id: 'PLAN_REFERIDOS',
+            icon: '🎁',
+            title: 'Plan de Referidos (Gana %)',
+            desc: 'Refiere otra empresa y obtén meses gratis o comisión',
+            color: 'bg-amber-50 border-amber-200 text-amber-950'
+          },
+          {
+            id: 'CONFIG_SRI_CONTIFICO',
+            icon: '🏛️',
+            title: 'Configuración SRI / Contífico',
+            desc: 'Ayuda con firma electrónica, API Key o Token POS',
+            color: 'bg-slate-50 border-slate-200 text-slate-900'
+          },
+          {
+            id: 'CAPACITACION_IA',
+            icon: '🎓',
+            title: 'Capacitación y Entrenamiento IA',
+            desc: 'Agendar sesión en vivo para entrenar voz y jerga',
+            color: 'bg-indigo-50 border-indigo-200 text-indigo-950'
+          },
+          {
+            id: 'REPORTE_NOVEDAD',
+            icon: '🛠️',
+            title: 'Reportar Falla o Novedad',
+            desc: 'Notificar un error técnico o sugerir mejora en la app',
+            color: 'bg-rose-50 border-rose-200 text-rose-950'
+          },
+          {
+            id: 'FACTURACION_SUSCRIPCION',
+            icon: '💳',
+            title: 'Pagos y Factura de Suscripción',
+            desc: 'Reportar transferencia dLocal Go o pedir comprobante',
+            color: 'bg-teal-50 border-teal-200 text-teal-950'
+          },
+          {
+            id: 'BAJA_SUSPENSION',
+            icon: '⏸️',
+            title: 'Pausar o Modificar Cuenta',
+            desc: 'Solicitar congelamiento temporal o cambio de titular',
+            color: 'bg-gray-50 border-gray-200 text-gray-800'
+          }
+        ];
+
+        this.openModal(
+          '🛟 Centro de Ayuda y Tickets · Vozkora',
+          `<p class="text-[11px] text-slate-600">Selecciona el motivo de tu solicitud. Todos los tickets viajan directo a nuestra consola <strong>Vozkora Control CRM</strong>:</p>
+           <div class="grid grid-cols-1 gap-2 max-h-[55vh] overflow-y-auto pr-1">
+             ${opciones.map(op => `
+               <button onclick="${op.isWhatsapp ? 'V.openWhatsappSupport()' : `V.openTicketFormByCategory('${op.id}', '${op.icon} ${op.title}')`}" class="w-full p-2.5 rounded-2xl border ${op.color} hover:shadow-sm transition flex items-center gap-3 text-left cursor-pointer">
+                 <span class="text-xl w-9 h-9 rounded-xl bg-white/90 flex items-center justify-center shrink-0 shadow-xs">${op.icon}</span>
+                 <div class="min-w-0 flex-1">
+                   <div class="font-extrabold text-xs leading-tight">${op.title}</div>
+                   <div class="text-[10.5px] opacity-80 truncate mt-0.5">${op.desc}</div>
+                 </div>
+                 <span class="font-bold text-xs opacity-60">→</span>
+               </button>
+             `).join('')}
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-white cursor-pointer">Cerrar</button>`
+        );
+      },
+
+      openWhatsappSupport() {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+          empresa_nombre: 'ACME', empresa_ruc: '123456789001', email: 'demo@vozkora.com'
+        };
+        const msg = encodeURIComponent(`Hola Soporte Técnico Vozkora, soy ${ses.email} de la empresa ${ses.empresa_nombre} (RUC: ${ses.empresa_ruc}). Necesito asistencia.`);
+        window.open(`https://wa.me/593999999999?text=${msg}`, '_blank');
+        toast('💬 Abriendo chat de Soporte Técnico WhatsApp...');
+      },
+
+      openTicketFormByCategory(tipoSolicitud, tituloVisual) {
+        if (tipoSolicitud === 'NUEVO_USUARIO') {
+          return this.openNewUserTicketModal();
+        }
+        const placeholders = {
+          VENTAS_UPGRADE: 'Ej. Deseo subir al Plan Dominio y activar el Pack Cobranza y Bancos IA.',
+          PLAN_REFERIDOS: 'Ej. Quiero referir a Distribuidora El Oro (RUC 179..., Tel. 099...).',
+          CONFIG_SRI_CONTIFICO: 'Ej. Necesito ayuda vinculando mi firma electrónica .p12 y Token POS.',
+          CAPACITACION_IA: 'Ej. Queremos agendar capacitación para 4 vendedores el viernes a las 10 AM.',
+          REPORTE_NOVEDAD: 'Ej. Describe qué pantalla estabas usando y qué mensaje apareció.',
+          FACTURACION_SUSCRIPCION: 'Ej. Adjunto referencia de transferencia Banco Pichincha #84920 por $24,99.',
+          BAJA_SUSPENSION: 'Ej. Solicito pausar temporalmente la suscripción a partir del próximo mes.'
+        };
+        const ph = placeholders[tipoSolicitud] || 'Escribe aquí el detalle de tu solicitud...';
+
+        this.openModal(
+          tituloVisual,
+          `<p class="text-[11px] text-slate-600">Tu ticket quedará registrado con prioridad en <strong>Vozkora Control CRM</strong> para atención inmediata:</p>
+           <div>
+             <label class="font-bold">Teléfono / WhatsApp de contacto</label>
+             <input id="tkGenPhone" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono" placeholder="Ej. 0991234567">
+           </div>
+           <div>
+             <label class="font-bold">Detalle de la solicitud *</label>
+             <textarea id="tkGenDesc" rows="3" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="${ph}"></textarea>
+           </div>`,
+          `<button onclick="V.openHelpCenterModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">← Atrás</button>
+           <button onclick="V.submitGeneralTicket('${tipoSolicitud}', '${esc(tituloVisual)}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Enviar Ticket</button>`
+        );
+      },
+
+      async submitGeneralTicket(tipoSolicitud, tituloVisual) {
+        const phone = ($('tkGenPhone')?.value || '').trim();
+        const desc = ($('tkGenDesc')?.value || '').trim();
+        if (!desc) return toast('Por favor describe el detalle de tu ticket.');
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+          empresa_ruc: '123456789001', empresa_nombre: 'ACME', email: 'demo@vozkora.com'
+        };
+        try {
+          if (typeof crearTicketVozkora === 'function') {
+            await crearTicketVozkora({
+              empresa_ruc: ses.empresa_ruc,
+              empresa_nombre: ses.empresa_nombre,
+              solicitado_por: ses.email,
+              tipo_solicitud: tipoSolicitud,
+              detalle: {
+                categoria: tituloVisual,
+                telefono_contacto: phone || ses.empresa_telefono || 'N/A',
+                descripcion: desc,
+                historial: [
+                  { fecha: nowFormatted(), de_estado: 'NUEVO', a_estado: 'ABIERTO', motivo: 'Solicitud creada por el cliente: ' + desc, autor: ses.email }
+                ]
+              }
+            });
+          }
+          this.closeModal();
+          toast('✓ Ticket enviado a Vozkora Control CRM. Te responderemos pronto.');
+        } catch (e) {
+          toast('Error enviando ticket: ' + e.message);
+        }
+      },
+
       openNewUserTicketModal() {
         this.openModal(
           '🎫 Solicitar Nuevo Usuario (Ticket)',
@@ -2816,7 +2973,16 @@
               empresa_nombre: ses.empresa_nombre,
               solicitado_por: ses.email,
               tipo_solicitud: 'NUEVO_USUARIO',
-              detalle: { nombre, email_nuevo: email, perfil }
+              detalle: {
+                categoria: '👤➕ Alta de Nuevo Usuario',
+                nombre,
+                email_nuevo: email,
+                perfil,
+                descripcion: `Solicita alta de usuario para ${nombre} (${email}) con perfil ${perfil}.`,
+                historial: [
+                  { fecha: nowFormatted(), de_estado: 'NUEVO', a_estado: 'ABIERTO', motivo: `Solicitud de usuario nuevo: ${nombre} (${email}) - ${perfil}`, autor: ses.email }
+                ]
+              }
             });
           }
           this.closeModal();
@@ -3972,11 +4138,22 @@
     // CONSOLA MAESTRA VOZKORA CONTROL CRM (SUPERADMIN)
     // =====================================================================
     window.CRM = {
-      currentTab: 'users',
+      currentTab: 'companies',
+      cachedCompanies: [],
+      companySearch: '',
+      companyFilterStatus: 'ALL',
       cachedUsers: [],
+      userFilterEmpresa: 'ALL',
+      userSearch: '',
       cachedTickets: [],
+      ticketFilterStatus: 'ABIERTOS',
       repoTable: 'repo_facturas',
       repoRows: [],
+      repoFilterEmpresa: 'ALL',
+      repoFilterEntorno: 'ALL',
+      repoFilterDesde: '',
+      repoFilterHasta: '',
+      repoSearch: '',
 
       open() {
         $('crm-overlay').classList.remove('hidden');
@@ -3990,7 +4167,7 @@
 
       setTab(tab) {
         this.currentTab = tab;
-        ['users', 'tickets', 'repo'].forEach(t => {
+        ['companies', 'users', 'tickets', 'repo'].forEach(t => {
           const btn = $('crm-tab-' + t);
           if (btn) {
             btn.className = (t === tab)
@@ -3998,143 +4175,461 @@
               : 'px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0';
           }
         });
-        if (tab === 'users') this.loadUsers();
+        if (tab === 'companies') this.loadCompanies();
+        else if (tab === 'users') this.loadUsers();
         else if (tab === 'tickets') this.loadTickets();
         else if (tab === 'repo') this.loadRepo(this.repoTable);
       },
 
-      async loadUsers() {
+      // -------------------------------------------------------------------
+      // PESTAÑA 1: EMPRESAS (REGISTRO PRIVADO DE CLIENTES SAAS VOZKORA)
+      // -------------------------------------------------------------------
+      async loadCompanies() {
         const body = $('crm-body');
-        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando empresas y usuarios desde Supabase...</div>';
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando registro privado de empresas...</div>';
         try {
-          this.cachedUsers = await crmListarUsuarios();
-          body.innerHTML = `
-            <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 class="text-sm font-extrabold text-[#073e3b]">🏢 Empresas y Usuarios Registrados (${this.cachedUsers.length})</h3>
-                  <p class="text-[11px] text-slate-500">Gestiona altas, bajas, cambio de plan, entorno (Sandbox/Producción) y permisos.</p>
-                </div>
-                <button onclick="CRM.openNewUserForm()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
-                  + Crear Empresa / Usuario
+          const [emps, usrs] = await Promise.all([crmListarEmpresas(), crmListarUsuarios()]);
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.renderCompaniesView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold">Error cargando empresas: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderCompaniesView() {
+        const body = $('crm-body');
+        const q = (this.companySearch || '').toLowerCase();
+        const filtered = this.cachedCompanies.filter(c => {
+          if (this.companyFilterStatus === 'ACTIVAS' && !c.activa) return false;
+          if (this.companyFilterStatus === 'SUSPENDIDAS' && c.activa) return false;
+          if (q && !(
+            (c.nombre || '').toLowerCase().includes(q) ||
+            (c.ruc || '').toLowerCase().includes(q)
+          )) return false;
+          return true;
+        });
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🏢 Registro Privado de Empresas (${this.cachedCompanies.length})</h3>
+                <p class="text-[11px] text-slate-500">Tus clientes SaaS contratados: define su Plan, Cupo máximo de usuarios, Entorno y APIs de Contífico.</p>
+              </div>
+              <button onclick="CRM.openNewCompanyModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                + Registrar Nueva Empresa
+              </button>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+              <div class="flex gap-1.5">
+                <button onclick="CRM.companyFilterStatus='ALL'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
+                  Todas (${this.cachedCompanies.length})
+                </button>
+                <button onclick="CRM.companyFilterStatus='ACTIVAS'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'ACTIVAS' ? 'bg-[#087e70] text-white' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
+                  Activas (${this.cachedCompanies.filter(x => x.activa).length})
+                </button>
+                <button onclick="CRM.companyFilterStatus='SUSPENDIDAS'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'SUSPENDIDAS' ? 'bg-rose-600 text-white' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
+                  Suspendidas (${this.cachedCompanies.filter(x => !x.activa).length})
                 </button>
               </div>
+              <input type="text" value="${esc(this.companySearch)}" oninput="CRM.companySearch=this.value; CRM.renderCompaniesView();" placeholder="🔍 Buscar empresa o RUC..." class="w-full sm:w-64 px-3 py-1.5 rounded-xl border border-[#d7e1e0] text-[11px]" />
+            </div>
 
-              <div class="space-y-2.5">
-                ${this.cachedUsers.map((u, idx) => `
-                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border ${u.activo ? 'border-[#dce6e5]' : 'border-rose-300 bg-rose-50/50'} space-y-2">
+            <div class="space-y-2.5">
+              ${filtered.map(emp => {
+                const realIdx = this.cachedCompanies.findIndex(x => x.id === emp.id);
+                const empUsers = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo);
+                const usedCount = empUsers.length;
+                const maxCount = Number(emp.max_usuarios) || 1;
+                const hasKeys = !!(emp.contifico_api_key && emp.contifico_pos_token);
+                return `
+                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border ${emp.activa ? 'border-[#dce6e5]' : 'border-rose-300 bg-rose-50/50'} space-y-2">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <span class="font-extrabold text-sm text-[#073e3b]">${esc(u.empresa_nombre)}</span>
-                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd]">${esc(u.rol)}</span>
-                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-white border border-slate-200">${esc(u.entorno)}</span>
+                        <span class="font-extrabold text-sm text-[#073e3b]">${esc(emp.nombre)}</span>
+                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd]">${esc(emp.entorno)}</span>
+                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${usedCount >= maxCount ? 'bg-amber-100 text-amber-900' : 'bg-[#e7f5f1] text-[#087e70]'}">
+                          👥 Cupo Usuarios: ${usedCount} / ${maxCount}
+                        </span>
+                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${hasKeys ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">
+                          ${hasKeys ? '🔑 API Contífico OK' : '⚠️ Falta API Contífico'}
+                        </span>
                       </div>
-                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${u.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
-                        ${u.activo ? '● Activo' : '● Suspendido'}
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${emp.activa ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+                        ${emp.activa ? '● Activa' : '● Suspendida'}
                       </span>
                     </div>
+
                     <div class="text-[11px] text-slate-600 font-mono">
-                      RUC: ${esc(u.empresa_ruc)} · Tel: ${esc(u.empresa_telefono || 'N/A')} · Usuario: <strong>${esc(u.email)}</strong>
+                      RUC: <strong>${esc(emp.ruc)}</strong> · Tel: ${esc(emp.telefono || 'N/A')} · Contacto: ${esc(emp.email_contacto || 'N/A')}
                     </div>
+
                     <div class="flex flex-wrap items-center gap-2 pt-1">
-                      <select onchange="CRM.changeUserPlan('${u.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
-                        ${PLANS.map(pl => `<option value="${pl.id}" ${u.plan_activo === pl.id ? 'selected' : ''}>Plan: ${pl.name}</option>`).join('')}
+                      <select onchange="CRM.changeCompanyPlan('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
+                        ${PLANS.map(pl => `<option value="${pl.id}" ${emp.plan_activo === pl.id ? 'selected' : ''}>Plan: ${pl.name} (${pl.includedUsers} usu.)</option>`).join('')}
                       </select>
-                      <select onchange="CRM.changeUserEnv('${u.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
-                        <option value="DEMO" ${u.entorno === 'DEMO' ? 'selected' : ''}>Entorno: DEMO</option>
-                        <option value="SANDBOX" ${u.entorno === 'SANDBOX' ? 'selected' : ''}>Entorno: SANDBOX (Pruebas)</option>
-                        <option value="PRODUCCION" ${u.entorno === 'PRODUCCION' ? 'selected' : ''}>Entorno: PRODUCCIÓN</option>
+                      <div class="inline-flex items-center gap-1 bg-white border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px]">
+                        <span class="font-bold text-slate-600">Cupo máx:</span>
+                        <input type="number" min="1" max="500" value="${maxCount}" onchange="CRM.changeCompanyQuota('${emp.id}', this.value)" class="w-12 text-center font-mono font-extrabold text-[#073e3b] border-b border-slate-300" />
+                      </div>
+                      <select onchange="CRM.changeCompanyEnv('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
+                        <option value="DEMO" ${emp.entorno === 'DEMO' ? 'selected' : ''}>Entorno: DEMO</option>
+                        <option value="SANDBOX" ${emp.entorno === 'SANDBOX' ? 'selected' : ''}>Entorno: SANDBOX</option>
+                        <option value="PRODUCCION" ${emp.entorno === 'PRODUCCION' ? 'selected' : ''}>Entorno: PRODUCCIÓN</option>
                       </select>
-                      <button onclick="CRM.toggleUserActive('${u.id}', ${!u.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${u.activo ? 'bg-rose-100 text-rose-800' : 'bg-emerald-600 text-white'} cursor-pointer">
-                        ${u.activo ? 'Suspender' : 'Reactivar'}
+                      <button onclick="CRM.openCompanyApiModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                        🔑 API Contífico
                       </button>
-                      <button onclick="CRM.openEditPermsModal(${idx})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
-                        🔑 Permisos y API Contífico
+                      <button onclick="CRM.userFilterEmpresa='${esc(emp.ruc)}'; CRM.setTab('users');" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
+                        👥 Ver Usuarios (${usedCount})
+                      </button>
+                      <button onclick="CRM.toggleCompanyActive('${emp.id}', ${!emp.activa})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${emp.activa ? 'bg-rose-100 text-rose-800' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        ${emp.activa ? 'Suspender' : 'Reactivar'}
                       </button>
                     </div>
                   </div>
-                `).join('')}
-              </div>
+                `;
+              }).join('')}
             </div>
-          `;
+          </div>
+        `;
+      },
+
+      openNewCompanyModal() {
+        V.openModal(
+          '🏢 Registrar Nueva Empresa Cliente (Vozkora CRM)',
+          `<div class="space-y-2">
+             <div>
+               <label class="font-bold text-[11px]">Razón Social / Nombre Empresa *</label>
+               <input id="empNewName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Distribuidora El Oro S.A.">
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">RUC (13 dígitos) *</label>
+                 <input id="empNewRuc" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0790012345001">
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Teléfono WhatsApp</label>
+                 <input id="empNewTel" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0991234567">
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Correo del Representante / Dueño</label>
+               <input id="empNewEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="gerencia@empresa.com">
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Plan Contratado</label>
+                 <select id="empNewPlan" onchange="const p=PLANS.find(x=>x.id===this.value); if(p && $('empNewQuota')) $('empNewQuota').value=p.includedUsers;" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                   ${PLANS.map(pl => `<option value="${pl.id}" ${pl.id === 'expansion' ? 'selected' : ''}>${pl.name} (${pl.includedUsers} usu. base)</option>`).join('')}
+                 </select>
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Cupo Máx. Usuarios (Base + Extras)</label>
+                 <input id="empNewQuota" type="number" min="1" max="500" value="5" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold">
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Entorno Inicial</label>
+               <select id="empNewEnv" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                 <option value="SANDBOX">SANDBOX (Pruebas Contífico)</option>
+                 <option value="PRODUCCION">PRODUCCIÓN (SRI Real)</option>
+                 <option value="DEMO">DEMO</option>
+               </select>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveNewCompany()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Empresa</button>`
+        );
+      },
+
+      async saveNewCompany() {
+        const nombre = $('empNewName').value.trim();
+        const ruc = $('empNewRuc').value.trim();
+        const telefono = $('empNewTel').value.trim();
+        const email_contacto = $('empNewEmail').value.trim().toLowerCase();
+        const plan_activo = $('empNewPlan').value;
+        const max_usuarios = Math.max(1, parseInt($('empNewQuota').value, 10) || 1);
+        const entorno = $('empNewEnv').value;
+        if (!nombre || !ruc) return toast('Ingresa nombre y RUC de la empresa.');
+        try {
+          await crmCrearEmpresa({ nombre, ruc, telefono, email_contacto, plan_activo, max_usuarios, entorno, activa: true });
+          V.closeModal();
+          toast(`✓ Empresa ${nombre} registrada con cupo de ${max_usuarios} usuario(s).`);
+          this.loadCompanies();
+        } catch (e) {
+          toast('Error creando empresa: ' + e.message);
+        }
+      },
+
+      async changeCompanyPlan(id, plan_activo) {
+        const pl = PLANS.find(x => x.id === plan_activo);
+        const max_usuarios = pl ? pl.includedUsers : 5;
+        await crmActualizarEmpresa(id, { plan_activo, max_usuarios });
+        toast(`✓ Plan actualizado a ${pl ? pl.name : plan_activo} (Cupo base: ${max_usuarios} usuarios).`);
+        this.loadCompanies();
+      },
+
+      async changeCompanyQuota(id, val) {
+        const max_usuarios = Math.max(1, parseInt(val, 10) || 1);
+        await crmActualizarEmpresa(id, { max_usuarios });
+        toast(`✓ Cupo máximo actualizado a ${max_usuarios} usuario(s).`);
+        this.loadCompanies();
+      },
+
+      async changeCompanyEnv(id, entorno) {
+        await crmActualizarEmpresa(id, { entorno });
+        toast('✓ Entorno de empresa cambiado a ' + entorno);
+        this.loadCompanies();
+      },
+
+      async toggleCompanyActive(id, activa) {
+        await crmActualizarEmpresa(id, { activa });
+        toast(activa ? '✓ Empresa reactivada.' : '⛔ Empresa suspendida.');
+        this.loadCompanies();
+      },
+
+      openCompanyApiModal(idx) {
+        const emp = this.cachedCompanies[idx];
+        if (!emp) return;
+        V.openModal(
+          `🔑 API Siigo Contífico · ${emp.nombre}`,
+          `<div class="space-y-2.5">
+             <p class="text-[11px] text-slate-600">Estas credenciales se aplicarán a todos los usuarios asignados a <strong>${esc(emp.nombre)}</strong> (RUC: ${esc(emp.ruc)}) en entorno <strong>${esc(emp.entorno)}</strong>:</p>
+             <div>
+               <label class="text-[11px] font-bold text-[#073e3b]">API Key Contífico</label>
+               <input id="empApiKey" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[11px]" placeholder="Pega aquí el API Key de Contífico" value="${esc(emp.contifico_api_key || '')}">
+             </div>
+             <div>
+               <label class="text-[11px] font-bold text-[#073e3b]">Token POS Contífico</label>
+               <input id="empPosToken" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[11px]" placeholder="Pega aquí el Token POS de Contífico" value="${esc(emp.contifico_pos_token || '')}">
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveCompanyApi('${emp.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Credenciales</button>`
+        );
+      },
+
+      async saveCompanyApi(id) {
+        try {
+          await crmActualizarEmpresa(id, {
+            contifico_api_key: $('empApiKey').value.trim(),
+            contifico_pos_token: $('empPosToken').value.trim()
+          });
+          V.closeModal();
+          toast('✓ Credenciales API de Contífico guardadas para la empresa.');
+          this.loadCompanies();
+        } catch (e) {
+          toast('Error: ' + e.message);
+        }
+      },
+
+      // -------------------------------------------------------------------
+      // PESTAÑA 2: USUARIOS POR EMPRESA (CUPO POR PLAN + 1 SOLO DISPOSITIVO)
+      // -------------------------------------------------------------------
+      async loadUsers() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando usuarios y cupos por plan...</div>';
+        try {
+          const [emps, usrs] = await Promise.all([crmListarEmpresas(), crmListarUsuarios()]);
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.renderUsersView();
         } catch (e) {
           body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold">Error cargando usuarios: ${esc(e.message)}</div>`;
         }
       },
 
-      async changeUserPlan(id, plan_activo) {
-        await crmActualizarUsuario(id, { plan_activo });
-        toast('✓ Plan actualizado en Supabase.');
-        this.loadUsers();
+      renderUsersView() {
+        const body = $('crm-body');
+        const q = (this.userSearch || '').toLowerCase();
+        const filtered = this.cachedUsers.filter(u => {
+          if (this.userFilterEmpresa !== 'ALL' && u.empresa_ruc !== this.userFilterEmpresa) return false;
+          if (q && !(
+            (u.nombre_completo || '').toLowerCase().includes(q) ||
+            (u.email || '').toLowerCase().includes(q) ||
+            (u.empresa_nombre || '').toLowerCase().includes(q)
+          )) return false;
+          return true;
+        });
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">👥 Usuarios de Acceso a la App (${this.cachedUsers.length})</h3>
+                <p class="text-[11px] text-slate-500">Cada usuario opera exclusivamente sobre su empresa asignada, respeta el cupo del plan y solo entra en 1 dispositivo.</p>
+              </div>
+              <button onclick="CRM.openNewUserForm()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                + Crear Usuario en Empresa
+              </button>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+              <select onchange="CRM.userFilterEmpresa=this.value; CRM.renderUsersView();" class="border border-[#d7e1e0] rounded-xl px-3 py-1.5 bg-[#f5f8f8] text-[11px] font-bold">
+                <option value="ALL">Todas las empresas (${this.cachedUsers.length} usuarios)</option>
+                ${this.cachedCompanies.map(emp => {
+                  const cnt = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+                  return `<option value="${esc(emp.ruc)}" ${this.userFilterEmpresa === emp.ruc ? 'selected' : ''}>${esc(emp.nombre)} — Cupo: ${cnt}/${emp.max_usuarios}</option>`;
+                }).join('')}
+              </select>
+              <input type="text" value="${esc(this.userSearch)}" oninput="CRM.userSearch=this.value; CRM.renderUsersView();" placeholder="🔍 Buscar usuario o correo..." class="w-full sm:w-64 px-3 py-1.5 rounded-xl border border-[#d7e1e0] text-[11px]" />
+            </div>
+
+            <div class="space-y-2.5">
+              ${filtered.map(u => {
+                const realIdx = this.cachedUsers.findIndex(x => x.id === u.id);
+                const hasDeviceLock = !!u.session_token;
+                return `
+                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border ${u.activo ? 'border-[#dce6e5]' : 'border-rose-300 bg-rose-50/50'} space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span class="font-extrabold text-sm text-[#073e3b]">${esc(u.nombre_completo || u.email)}</span>
+                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd]">${esc(u.rol)}</span>
+                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-white border border-slate-200">🏢 ${esc(u.empresa_nombre)}</span>
+                      </div>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${hasDeviceLock ? 'bg-cyan-100 text-cyan-900' : 'bg-slate-200 text-slate-700'}">
+                        ${hasDeviceLock ? `📱 En uso (${esc(u.dispositivo_info || '1 disp.')})` : '⚪ Dispositivo libre'}
+                      </span>
+                    </div>
+                    <div class="text-[11px] text-slate-600 font-mono">
+                      Correo: <strong>${esc(u.email)}</strong> · Clave: <strong>${esc(u.clave)}</strong> · RUC Empresa: ${esc(u.empresa_ruc)}
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 pt-1">
+                      <button onclick="CRM.openEditPermsModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                        🛡️ Permisos del Usuario
+                      </button>
+                      ${hasDeviceLock ? `
+                        <button onclick="CRM.releaseUserDevice('${u.id}', '${esc(u.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer">
+                          🔓 Liberar Dispositivo
+                        </button>
+                      ` : ''}
+                      <button onclick="CRM.toggleUserActive('${u.id}', ${!u.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${u.activo ? 'bg-rose-100 text-rose-800' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        ${u.activo ? 'Bloquear Usuario' : 'Activar Usuario'}
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
       },
 
-      async changeUserEnv(id, entorno) {
-        await crmActualizarUsuario(id, { entorno });
-        toast('✓ Entorno actualizado a ' + entorno);
+      async releaseUserDevice(id, email) {
+        await crmActualizarUsuario(id, { session_token: null, dispositivo_info: null });
+        toast(`🔓 Sesión de dispositivo liberada para ${email}. Ya puede ingresar en un nuevo equipo.`);
         this.loadUsers();
       },
 
       async toggleUserActive(id, activo) {
         await crmActualizarUsuario(id, { activo });
-        toast(activo ? '✓ Cuenta reactivada.' : '⛔ Cuenta suspendida.');
+        toast(activo ? '✓ Usuario activado.' : '⛔ Usuario bloqueado.');
         this.loadUsers();
       },
 
       openNewUserForm(prefill = {}) {
+        if (!this.cachedCompanies.length) {
+          return toast('Primero registra una empresa en la pestaña Empresas.');
+        }
+        const defaultEmp = this.cachedCompanies.find(c => c.ruc === prefill.empresa_ruc) || this.cachedCompanies[0];
+        const getQuotaText = (empId) => {
+          const emp = this.cachedCompanies.find(c => c.id === empId);
+          if (!emp) return '';
+          const used = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+          return `Plan ${emp.plan_activo.toUpperCase()}: ${used} de ${emp.max_usuarios} usuarios activos usados.`;
+        };
+
         V.openModal(
-          '+ Alta de Empresa / Usuario en Vozkora CRM',
+          '+ Crear Usuario Asignado a Empresa',
           `<div class="space-y-2">
-             <input id="crmNewEmp" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Nombre Empresa (ej. Distribuidora Norte)" value="${esc(prefill.empresa_nombre || '')}">
-             <div class="grid grid-cols-2 gap-2">
-               <input id="crmNewRuc" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono" placeholder="RUC (13 dígitos)" value="${esc(prefill.empresa_ruc || '')}">
-               <input id="crmNewTel" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono" placeholder="Teléfono WhatsApp" value="${esc(prefill.empresa_telefono || '')}">
-             </div>
-             <input id="crmNewEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Correo acceso (ej. admin@empresa.com)" value="${esc(prefill.email || '')}">
-             <input id="crmNewPass" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono" placeholder="Contraseña asignada" value="VOZKORA2026">
-             <div class="grid grid-cols-2 gap-2">
-               <select id="crmNewRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white">
-                 <option value="ADMIN_EMPRESA">Rol: Admin Empresa</option>
-                 <option value="OPERADOR">Rol: Operador / Vendedor</option>
+             <div>
+               <label class="font-bold text-[11px]">1. Selecciona la Empresa Cliente *</label>
+               <select id="usrNewCompanyId" onchange="const el=$('usrQuotaIndicator'); if(el) el.textContent=CRM.getQuotaStatusText(this.value);" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 ${this.cachedCompanies.map(emp => {
+                   const used = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+                   return `<option value="${emp.id}" ${defaultEmp && emp.id === defaultEmp.id ? 'selected' : ''}>${esc(emp.nombre)} (RUC: ${esc(emp.ruc)}) — Cupo: ${used}/${emp.max_usuarios}</option>`;
+                 }).join('')}
                </select>
-               <select id="crmNewEnv" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white">
-                 <option value="SANDBOX">Entorno: SANDBOX (Pruebas)</option>
-                 <option value="PRODUCCION">Entorno: PRODUCCIÓN</option>
-                 <option value="DEMO">Entorno: DEMO</option>
+               <div id="usrQuotaIndicator" class="text-[10.5px] font-bold text-[#087e70] mt-1">${defaultEmp ? getQuotaText(defaultEmp.id) : ''}</div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">2. Nombre Completo del Colaborador *</label>
+               <input id="usrNewFullName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Gabriela Gómez" value="${esc(prefill.nombre || '')}">
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Correo de Acceso *</label>
+                 <input id="usrNewEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="ggg@matriz.com" value="${esc(prefill.email || '')}">
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Contraseña *</label>
+                 <input id="usrNewPass" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="VOZKORA2026">
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Rol dentro de la Empresa</label>
+               <select id="usrNewRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                 <option value="ADMIN_EMPRESA">Administrador de Empresa</option>
+                 <option value="OPERADOR" selected>Operador / Vendedor (1 solo dispositivo)</option>
                </select>
              </div>
-             <select id="crmNewPlan" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white">
-               ${PLANS.map(pl => `<option value="${pl.id}" ${pl.id === 'expansion' ? 'selected' : ''}>Plan: ${pl.name}</option>`).join('')}
-             </select>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="CRM.saveNewUser()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Crear Usuario</button>`
+           <button onclick="CRM.saveNewUser()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Validar Cupo y Crear</button>`
         );
       },
 
-      async saveNewUser() {
-        const empresa_nombre = $('crmNewEmp').value.trim();
-        const empresa_ruc = $('crmNewRuc').value.trim();
-        const empresa_telefono = $('crmNewTel').value.trim();
-        const email = $('crmNewEmail').value.trim().toLowerCase();
-        const clave = $('crmNewPass').value.trim();
-        const rol = $('crmNewRol').value;
-        const entorno = $('crmNewEnv').value;
-        const plan_activo = $('crmNewPlan').value;
-
-        if (!empresa_nombre || !empresa_ruc || !email || !clave) {
-          return toast('Completa empresa, RUC, correo y contraseña.');
+      getQuotaStatusText(empId) {
+        const emp = this.cachedCompanies.find(c => c.id === empId);
+        if (!emp) return '';
+        const used = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+        if (used >= emp.max_usuarios) {
+          return `⚠️ CUPO LLENO (${used}/${emp.max_usuarios}): Amplía el cupo de usuarios de ${emp.nombre} antes de crear otro.`;
         }
+        return `✓ Cupo disponible en Plan ${emp.plan_activo.toUpperCase()}: ${used} de ${emp.max_usuarios} usuarios usados.`;
+      },
+
+      async saveNewUser() {
+        const empId = $('usrNewCompanyId').value;
+        const emp = this.cachedCompanies.find(c => c.id === empId);
+        const nombre_completo = $('usrNewFullName').value.trim();
+        const email = $('usrNewEmail').value.trim().toLowerCase();
+        const clave = $('usrNewPass').value.trim();
+        const rol = $('usrNewRol').value;
+
+        if (!emp || !nombre_completo || !email || !clave) {
+          return toast('Completa empresa, nombre, correo y contraseña.');
+        }
+
+        // Cruce estricto contra el cupo contratado en el plan de la empresa
+        const activeUsersCount = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+        if (activeUsersCount >= emp.max_usuarios) {
+          return toast(`⛔ Límite alcanzado: ${emp.nombre} tiene ${activeUsersCount}/${emp.max_usuarios} usuarios en su plan ${emp.plan_activo.toUpperCase()}. Amplía el cupo en Empresas.`);
+        }
+
         try {
           await crmCrearUsuario({
-            empresa_nombre, empresa_ruc, empresa_telefono, email, clave, rol, entorno, plan_activo,
-            packs_ia: ['voz', 'ventas'],
+            empresa_id: emp.id,
+            empresa_nombre: emp.nombre,
+            empresa_ruc: emp.ruc,
+            empresa_telefono: emp.telefono || '',
+            nombre_completo,
+            email,
+            clave,
+            rol,
+            entorno: emp.entorno,
+            plan_activo: emp.plan_activo,
+            packs_ia: emp.packs_ia || ['voz', 'ventas'],
             activo: true
           });
           V.closeModal();
-          toast('✓ Usuario creado y guardado en Supabase.');
+          toast(`✓ Usuario ${email} creado en ${emp.nombre} (${activeUsersCount + 1}/${emp.max_usuarios} cupos).`);
           this.loadUsers();
         } catch (e) {
-          toast('Error: ' + e.message);
+          toast('Error creando usuario: ' + e.message);
         }
       },
 
@@ -4145,7 +4640,7 @@
         const permKeys = [
           ['facturar', 'Emitir Facturas'],
           ['proformas', 'Crear Proformas'],
-          ['clientes', 'Gestionar Clientes'],
+          ['clientes', 'Crear Clientes (API Contífico)'],
           ['inventario_ver', 'Ver Inventario'],
           ['inventario_editar', 'Editar Bodega'],
           ['cobranza', 'Cobrar Cartera'],
@@ -4154,15 +4649,14 @@
           ['configuracion', 'Entrenar IA']
         ];
         V.openModal(
-          `🔑 Permisos y Contífico · ${u.empresa_nombre}`,
-          `<div class="space-y-2">
-             <div class="text-[11px] font-bold text-[#073e3b]">Llaves API Siigo Contífico (${esc(u.entorno)}):</div>
-             <input id="crmApiKey" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono text-[11px]" placeholder="API Key Contífico" value="${esc(u.contifico_api_key || '')}">
-             <input id="crmPosToken" class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono text-[11px]" placeholder="Token POS Contífico" value="${esc(u.contifico_pos_token || '')}">
-             <div class="text-[11px] font-bold text-[#073e3b] pt-1">Permisos del usuario (${esc(u.email)}):</div>
+          `🛡️ Permisos · ${u.nombre_completo || u.email}`,
+          `<div class="space-y-2.5">
+             <div class="p-2 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b]">
+               Empresa asignada: <strong>${esc(u.empresa_nombre)}</strong> (RUC: ${esc(u.empresa_ruc)})
+             </div>
              <div class="grid grid-cols-2 gap-1.5">
                ${permKeys.map(pk => `
-                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-[#f5f8f8] border border-slate-200 text-[11px]">
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-[#f5f8f8] border border-slate-200 text-[11px] cursor-pointer">
                    <input type="checkbox" id="perm_${pk[0]}" ${perms[pk[0]] ? 'checked' : ''}>
                    <span>${pk[1]}</span>
                  </label>
@@ -4170,7 +4664,7 @@
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="CRM.savePermsAndApi('${u.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar</button>`
+           <button onclick="CRM.savePermsAndApi('${u.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Permisos</button>`
         );
       },
 
@@ -4178,141 +4672,434 @@
         const keys = ['facturar','proformas','clientes','inventario_ver','inventario_editar','cobranza','bancos','reportes','configuracion'];
         const permisos = {};
         keys.forEach(k => { permisos[k] = !!$('perm_' + k)?.checked; });
-        await crmActualizarUsuario(id, {
-          contifico_api_key: $('crmApiKey').value.trim(),
-          contifico_pos_token: $('crmPosToken').value.trim(),
-          permisos
-        });
-        V.closeModal();
-        toast('✓ Permisos y credenciales Contífico actualizados.');
-        this.loadUsers();
+        try {
+          await crmActualizarUsuario(id, { permisos });
+          V.closeModal();
+          toast('✓ Permisos del usuario actualizados.');
+          this.loadUsers();
+        } catch (e) {
+          toast('Error guardando: ' + e.message);
+        }
+      },
+
+      // -------------------------------------------------------------------
+      // PESTAÑA 3: TICKETS CON FLUJO BIDIRECCIONAL, MOTIVO OBLIGATORIO Y BITÁCORA
+      // -------------------------------------------------------------------
+      ticketLabel(st) {
+        if (st === 'PENDIENTE') return '🟡 Abierto';
+        if (st === 'EN_PROCESO') return '🔵 En Proceso';
+        if (st === 'APROBADO') return '🟢 Cerrado (Resuelto)';
+        if (st === 'RECHAZADO') return '🔴 Cerrado (Rechazado)';
+        return st;
       },
 
       async loadTickets() {
         const body = $('crm-body');
         body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando tickets de solicitud...</div>';
         try {
-          this.cachedTickets = await crmListarTickets();
-          body.innerHTML = `
-            <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-              <h3 class="text-sm font-extrabold text-[#073e3b]">🎫 Bandeja de Tickets de Usuarios (${this.cachedTickets.length})</h3>
-              ${this.cachedTickets.length === 0 ? '<p class="text-slate-500">No hay tickets pendientes por ahora.</p>' : ''}
-              <div class="space-y-2">
-                ${this.cachedTickets.map((tk, idx) => `
-                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
-                    <div class="flex justify-between items-center">
-                      <strong class="text-[#073e3b]">${esc(tk.empresa_nombre)} (RUC: ${esc(tk.empresa_ruc)})</strong>
-                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${tk.estado === 'PENDIENTE' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}">${esc(tk.estado)}</span>
-                    </div>
-                    <div class="text-[11px] text-slate-600">Solicitado por: ${esc(tk.solicitado_por)}</div>
-                    <div class="p-2 rounded-xl bg-white border border-slate-200 text-[11px]">
-                      <strong>Nuevo usuario:</strong> ${esc(tk.detalle?.nombre || '')} (${esc(tk.detalle?.email_nuevo || '')}) · Perfil: ${esc(tk.detalle?.perfil || '')}
-                    </div>
-                    ${tk.estado === 'PENDIENTE' ? `
-                      <div class="flex gap-2 pt-1">
-                        <button onclick="CRM.approveTicket(${idx})" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] text-white cursor-pointer">✓ Aprobar y Crear Usuario</button>
-                        <button onclick="CRM.rejectTicket('${tk.id}')" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-rose-100 text-rose-800 cursor-pointer">Rechazar</button>
-                      </div>
-                    ` : ''}
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `;
+          const [tks, emps, usrs] = await Promise.all([crmListarTickets(), crmListarEmpresas(), crmListarUsuarios()]);
+          this.cachedTickets = tks;
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.renderTicketsView();
         } catch (e) {
           body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
         }
       },
 
-      async approveTicket(idx) {
+      renderTicketsView() {
+        const body = $('crm-body');
+        const abiertos = this.cachedTickets.filter(t => t.estado === 'PENDIENTE');
+        const enProceso = this.cachedTickets.filter(t => t.estado === 'EN_PROCESO');
+        const cerrados = this.cachedTickets.filter(t => t.estado === 'APROBADO' || t.estado === 'RECHAZADO');
+
+        let listToShow = abiertos;
+        if (this.ticketFilterStatus === 'EN_PROCESO') listToShow = enProceso;
+        else if (this.ticketFilterStatus === 'CERRADOS') listToShow = cerrados;
+        else if (this.ticketFilterStatus === 'TODOS') listToShow = this.cachedTickets;
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div>
+              <h3 class="text-sm font-extrabold text-[#073e3b]">🎫 Bandeja de Tickets (${this.cachedTickets.length})</h3>
+              <p class="text-[11px] text-slate-500">Cambia libremente entre Abierto, En Proceso o Cerrado (ida y vuelta) registrando siempre el motivo en bitácora.</p>
+            </div>
+
+            <div class="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2.5">
+              <button onclick="CRM.ticketFilterStatus='ABIERTOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'ABIERTOS' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
+                🟡 Abiertos (${abiertos.length})
+              </button>
+              <button onclick="CRM.ticketFilterStatus='EN_PROCESO'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'EN_PROCESO' ? 'bg-cyan-700 text-white' : 'bg-cyan-50 text-cyan-900 border border-cyan-200'}">
+                🔵 En Proceso (${enProceso.length})
+              </button>
+              <button onclick="CRM.ticketFilterStatus='CERRADOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'CERRADOS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">
+                🟢 Cerrados (${cerrados.length})
+              </button>
+              <button onclick="CRM.ticketFilterStatus='TODOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.ticketFilterStatus === 'TODOS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
+                Todos (${this.cachedTickets.length})
+              </button>
+            </div>
+
+            ${listToShow.length === 0 ? '<p class="text-slate-500 py-3">No hay tickets en esta sub-ventana.</p>' : ''}
+            <div class="space-y-2.5">
+              ${listToShow.map(tk => {
+                const realIdx = this.cachedTickets.findIndex(x => x.id === tk.id);
+                const det = tk.detalle || {};
+                const hist = Array.isArray(det.historial) ? det.historial : [];
+                const lastNote = hist.length > 0 ? hist[hist.length - 1] : null;
+                const badgeCls = tk.estado === 'PENDIENTE'
+                  ? 'bg-amber-100 text-amber-900'
+                  : (tk.estado === 'EN_PROCESO'
+                    ? 'bg-cyan-100 text-cyan-900'
+                    : (tk.estado === 'APROBADO' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'));
+
+                const clientFullMsg = tk.tipo_solicitud === 'NUEVO_USUARIO'
+                  ? `Solicita crear usuario para <strong>${esc(det.nombre || 'N/A')}</strong> (${esc(det.email_nuevo || 'N/A')}) · Perfil: <strong>${esc(det.perfil || 'N/A')}</strong>${det.descripcion ? ' · Nota: ' + esc(det.descripcion) : ''}`
+                  : `${esc(det.descripcion || det.motivo || JSON.stringify(det))}`;
+
+                return `
+                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                    <div class="flex flex-wrap justify-between items-center gap-2">
+                      <div>
+                        <strong class="text-sm text-[#073e3b]">${esc(tk.empresa_nombre)}</strong>
+                        <span class="text-[11px] font-mono text-slate-500 ml-1">(RUC: ${esc(tk.empresa_ruc)})</span>
+                      </div>
+                      <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${badgeCls}">${this.ticketLabel(tk.estado)}</span>
+                    </div>
+
+                    <div class="text-[11px] text-slate-600">
+                      Categoría: <strong>${esc(det.categoria || tk.tipo_solicitud)}</strong> · Enviado por: <strong>${esc(tk.solicitado_por)}</strong> · Tel: <span class="font-mono">${esc(det.telefono_contacto || 'N/A')}</span> · Fecha: ${esc((tk.creado_en || '').slice(0, 16).replace('T', ' '))}
+                    </div>
+
+                    <!-- Mensaje original del cliente SIEMPRE VISIBLE en cualquier estado -->
+                    <div class="p-2.5 rounded-xl bg-white border border-slate-200 text-[11.5px] text-slate-800 space-y-1">
+                      <div class="text-[10px] font-extrabold uppercase text-[#087e70]">📩 Solicitud / Mensaje del Cliente:</div>
+                      <div>${clientFullMsg}</div>
+                    </div>
+
+                    ${hist.length > 0 ? `
+                      <div class="p-2.5 rounded-xl bg-[#e7f5f1]/60 border border-[#b9d1cd] text-[10.5px] text-[#073e3b] space-y-1">
+                        <div class="font-extrabold uppercase text-[9.5px] text-[#087e70]">📜 Historial Completo de Movimientos (${hist.length}):</div>
+                        ${hist.map((h, i) => `
+                          <div class="border-t border-[#b9d1cd]/50 pt-1 first:border-0 first:pt-0">
+                            <span class="font-bold">#${i + 1} [${esc(h.fecha)}] ${esc(h.de_estado)} → ${esc(h.a_estado)}:</span>
+                            <span>${esc(h.motivo)}</span>
+                            <span class="text-slate-500">(${esc(h.autor || 'Sistema')})</span>
+                          </div>
+                        `).join('')}
+                      </div>
+                    ` : ''}
+
+                    <!-- Controles libres de cambio de estado (Ida y Vuelta) + Bitácora -->
+                    <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                      ${tk.estado !== 'PENDIENTE' ? `
+                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'PENDIENTE')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer">
+                          🟡 Pasar a Abierto
+                        </button>
+                      ` : ''}
+                      ${tk.estado !== 'EN_PROCESO' ? `
+                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'EN_PROCESO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-cyan-100 hover:bg-cyan-200 text-cyan-900 cursor-pointer">
+                          🔵 Pasar a En Proceso
+                        </button>
+                      ` : ''}
+                      ${tk.estado !== 'APROBADO' ? `
+                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'APROBADO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                          🟢 Cerrar (Resuelto)
+                        </button>
+                      ` : ''}
+                      ${tk.estado !== 'RECHAZADO' ? `
+                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'RECHAZADO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 cursor-pointer">
+                          🔴 Cerrar (Rechazado)
+                        </button>
+                      ` : ''}
+
+                      <button onclick="CRM.openTicketBitacoraModal(${realIdx})" class="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                        📜 Bitácora (${hist.length || 1})
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      },
+
+      openTicketTransitionModal(idx, targetEstado) {
         const tk = this.cachedTickets[idx];
         if (!tk) return;
-        await crmActualizarTicket(tk.id, 'APROBADO');
-        this.openNewUserForm({
-          empresa_nombre: tk.empresa_nombre,
-          empresa_ruc: tk.empresa_ruc,
-          email: tk.detalle?.email_nuevo || ''
+        const fromLabel = this.ticketLabel(tk.estado);
+        const toLabel = this.ticketLabel(targetEstado);
+        const isUserCreation = tk.tipo_solicitud === 'NUEVO_USUARIO' && targetEstado === 'APROBADO';
+
+        V.openModal(
+          `🔄 Cambiar Estado de Ticket`,
+          `<div class="space-y-2.5">
+             <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] space-y-1">
+               <div><strong>Empresa:</strong> ${esc(tk.empresa_nombre)} (RUC: ${esc(tk.empresa_ruc)})</div>
+               <div><strong>Cambio de estado:</strong> ${fromLabel} → <strong>${toLabel}</strong></div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px] text-[#073e3b]">Motivo / Observación obligatoria del cambio *</label>
+               <textarea id="tkTransitionReason" rows="3" class="w-full border border-[#d7e1e0] rounded-xl p-2.5 mt-1 text-xs focus:outline-none focus:border-[#087e70]" placeholder="Escribe obligatoriamente el porqué del cambio de estado o la solución aplicada..."></textarea>
+             </div>
+             ${isUserCreation ? `
+               <label class="flex items-center gap-2 p-2 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] font-bold text-[#073e3b] cursor-pointer">
+                 <input type="checkbox" id="tkAlsoCreateUser" checked />
+                 <span>Abrir formulario para crear el usuario (${esc(tk.detalle?.email_nuevo || '')}) inmediatamente</span>
+               </label>
+             ` : ''}
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.confirmTicketTransition(${idx}, '${targetEstado}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Cambio en Bitácora</button>`
+        );
+      },
+
+      async confirmTicketTransition(idx, targetEstado) {
+        const tk = this.cachedTickets[idx];
+        if (!tk) return;
+        const motivo = ($('tkTransitionReason')?.value || '').trim();
+        if (!motivo) {
+          return toast('⚠️ Debes escribir obligatoriamente el motivo del cambio de estado.');
+        }
+
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { email: 'admin@vozkora.com' };
+        const det = Object.assign({}, tk.detalle || {});
+        const prevHist = Array.isArray(det.historial) ? det.historial.slice() : [
+          {
+            fecha: (tk.creado_en || '').slice(0, 16).replace('T', ' ') || nowFormatted(),
+            de_estado: 'NUEVO',
+            a_estado: '🟡 Abierto',
+            motivo: det.descripcion || 'Solicitud inicial del cliente',
+            autor: tk.solicitado_por
+          }
+        ];
+
+        prevHist.push({
+          fecha: nowFormatted(),
+          de_estado: this.ticketLabel(tk.estado),
+          a_estado: this.ticketLabel(targetEstado),
+          motivo,
+          autor: ses.email
         });
-        this.loadTickets();
+        det.historial = prevHist;
+
+        const alsoCreateUser = !!$('tkAlsoCreateUser')?.checked;
+
+        try {
+          const updatedRow = await crmActualizarTicket(tk.id, targetEstado, det);
+          if (updatedRow) {
+            this.cachedTickets[idx] = updatedRow;
+          } else {
+            this.cachedTickets[idx].estado = targetEstado;
+            this.cachedTickets[idx].detalle = det;
+          }
+          V.closeModal();
+          toast(`✓ Ticket actualizado a ${this.ticketLabel(targetEstado)} y guardado en bitácora.`);
+          await this.loadTickets();
+
+          if (alsoCreateUser && tk.tipo_solicitud === 'NUEVO_USUARIO' && targetEstado === 'APROBADO') {
+            this.openNewUserForm({
+              empresa_ruc: tk.empresa_ruc,
+              nombre: det.nombre || '',
+              email: det.email_nuevo || ''
+            });
+          }
+        } catch (e) {
+          toast('Error actualizando ticket: ' + e.message);
+        }
       },
 
-      async rejectTicket(id) {
-        await crmActualizarTicket(id, 'RECHAZADO');
-        toast('Ticket marcado como rechazado.');
-        this.loadTickets();
+      openTicketBitacoraModal(idx) {
+        const tk = this.cachedTickets[idx];
+        if (!tk) return;
+        const det = tk.detalle || {};
+        const hist = Array.isArray(det.historial) && det.historial.length > 0
+          ? det.historial
+          : [{
+              fecha: (tk.creado_en || '').slice(0, 16).replace('T', ' ') || nowFormatted(),
+              de_estado: 'NUEVO',
+              a_estado: this.ticketLabel(tk.estado),
+              motivo: det.descripcion || 'Solicitud registrada por el cliente',
+              autor: tk.solicitado_por
+            }];
+
+        const clientMsg = tk.tipo_solicitud === 'NUEVO_USUARIO'
+          ? `Alta de usuario: ${det.nombre || ''} (${det.email_nuevo || ''}) · Perfil: ${det.perfil || ''}`
+          : (det.descripcion || 'Sin descripción adicional');
+
+        V.openModal(
+          `📜 Bitácora Completa del Ticket`,
+          `<div class="space-y-2.5">
+             <div class="p-2.5 rounded-xl bg-[#073e3b] text-white text-[11px] space-y-1">
+               <div class="flex justify-between items-center">
+                 <strong>${esc(tk.empresa_nombre)}</strong>
+                 <span class="px-2 py-0.5 rounded-full bg-white/15 text-[#70d2bd] text-[10px] font-bold">${this.ticketLabel(tk.estado)}</span>
+               </div>
+               <div class="text-teal-100 text-[10.5px]">RUC: ${esc(tk.empresa_ruc)} · Solicitante: ${esc(tk.solicitado_por)}</div>
+               <div class="pt-1 border-t border-white/15 text-teal-50"><strong>Mensaje original:</strong> ${esc(clientMsg)}</div>
+             </div>
+
+             <div class="text-[11px] font-extrabold text-[#073e3b]">Historial cronológico de estados y motivos (${hist.length}):</div>
+             <div class="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+               ${hist.map((h, i) => `
+                 <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] space-y-1">
+                   <div class="flex justify-between items-center font-bold text-[#073e3b]">
+                     <span>#${i + 1} · ${esc(h.de_estado)} → ${esc(h.a_estado)}</span>
+                     <span class="font-mono text-[10px] text-slate-500">${esc(h.fecha)}</span>
+                   </div>
+                   <div class="text-slate-700"><strong>Motivo:</strong> ${esc(h.motivo)}</div>
+                   <div class="text-[10px] text-slate-500">Registrado por: ${esc(h.autor || 'Sistema')}</div>
+                 </div>
+               `).join('')}
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Cerrar Bitácora</button>`
+        );
       },
 
+      // -------------------------------------------------------------------
+      // PESTAÑA 4: HOJAS DE AUDITORÍA (EXCEL) CON FILTROS AVANZADOS
+      // -------------------------------------------------------------------
       async loadRepo(tabla) {
         this.repoTable = tabla;
         const body = $('crm-body');
         body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Consultando hoja de auditoría en Supabase...</div>';
+        try {
+          this.repoRows = await consultarRepositorio(tabla);
+          this.renderRepoView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      getFilteredRepoRows() {
+        const q = (this.repoSearch || '').toLowerCase();
+        return this.repoRows.filter(r => {
+          if (this.repoFilterEmpresa !== 'ALL' && r.empresa_ruc !== this.repoFilterEmpresa) return false;
+          if (this.repoFilterEntorno !== 'ALL' && r.entorno !== this.repoFilterEntorno) return false;
+          const rowDate = (r.creado_en || '').slice(0, 10);
+          if (this.repoFilterDesde && rowDate && rowDate < this.repoFilterDesde) return false;
+          if (this.repoFilterHasta && rowDate && rowDate > this.repoFilterHasta) return false;
+          if (q) {
+            const hay = Object.values(r).some(v => String(v ?? '').toLowerCase().includes(q));
+            if (!hay) return false;
+          }
+          return true;
+        });
+      },
+
+      renderRepoView() {
+        const body = $('crm-body');
         const sheets = [
           ['repo_facturas', '🧾 Facturas SRI'],
-          ['repo_clientes', '👥 Clientes'],
+          ['repo_clientes', '👥 Clientes (API Contífico)'],
           ['repo_notas_credito', '↩️ Notas Crédito'],
           ['repo_proformas', '📄 Proformas'],
           ['repo_cobros', '💰 Cobros'],
           ['repo_ordenes_trabajo', '👷 Órdenes Trabajo']
         ];
-        try {
-          this.repoRows = await consultarRepositorio(tabla);
-          const cols = this.repoRows.length > 0 ? Object.keys(this.repoRows[0]).filter(k => typeof this.repoRows[0][k] !== 'object') : [];
-          body.innerHTML = `
-            <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 class="text-sm font-extrabold text-[#073e3b]">📊 Repositorio Maestro de Auditoría (Hojas tipo Excel)</h3>
-                  <p class="text-[11px] text-slate-500">Respaldo histórico inmutable por empresa y usuario para soporte y reclamos.</p>
-                </div>
-                <button onclick="CRM.exportRepoCsv()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
-                  📥 Descargar Excel / CSV
-                </button>
-              </div>
 
-              <div class="flex flex-wrap gap-1.5">
-                ${sheets.map(s => `
-                  <button onclick="CRM.loadRepo('${s[0]}')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${tabla === s[0] ? 'bg-[#087e70] text-white' : 'bg-[#f5f8f8] text-[#073e3b] border border-[#dce6e5]'}">
-                    ${s[1]}
-                  </button>
-                `).join('')}
-              </div>
+        const empresasMap = {};
+        this.repoRows.forEach(r => {
+          if (r.empresa_ruc) empresasMap[r.empresa_ruc] = r.empresa_nombre || r.empresa_ruc;
+        });
 
-              ${this.repoRows.length === 0 ? '<p class="text-slate-500 py-4">Aún no hay registros en esta hoja. Realiza una operación en la app para verla reflejada aquí al instante.</p>' : `
-                <div class="overflow-x-auto border border-[#dce6e5] rounded-xl">
-                  <table class="w-full text-left border-collapse text-[11px]">
-                    <thead class="bg-[#073e3b] text-white">
-                      <tr>${cols.map(c => `<th class="p-2 font-bold whitespace-nowrap">${esc(c)}</th>`).join('')}</tr>
-                    </thead>
-                    <tbody>
-                      ${this.repoRows.map(r => `
-                        <tr class="border-b border-slate-100 hover:bg-[#f5f8f8]">
-                          ${cols.map(c => `<td class="p-2 whitespace-nowrap font-mono">${esc(r[c] ?? '')}</td>`).join('')}
-                        </tr>
-                      `).join('')}
-                    </tbody>
-                  </table>
-                </div>
-              `}
+        const filteredRows = this.getFilteredRepoRows();
+        const cols = filteredRows.length > 0
+          ? Object.keys(filteredRows[0]).filter(k => typeof filteredRows[0][k] !== 'object' && k !== 'id')
+          : [];
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">📊 Repositorio Maestro de Auditoría (Hojas tipo Excel)</h3>
+                <p class="text-[11px] text-slate-500">Filtra por empresa, entorno, fechas o texto y exporta exactamente lo filtrado a CSV/Excel.</p>
+              </div>
+              <button onclick="CRM.exportRepoCsv()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
+                📥 Descargar Excel / CSV (${filteredRows.length})
+              </button>
             </div>
-          `;
-        } catch (e) {
-          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
-        }
+
+            <div class="flex flex-wrap gap-1.5">
+              ${sheets.map(s => `
+                <button onclick="CRM.loadRepo('${s[0]}')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.repoTable === s[0] ? 'bg-[#087e70] text-white' : 'bg-[#f5f8f8] text-[#073e3b] border border-[#dce6e5]'}">
+                  ${s[1]}
+                </button>
+              `).join('')}
+            </div>
+
+            <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-[11px]">
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Empresa / RUC</label>
+                <select onchange="CRM.repoFilterEmpresa=this.value; CRM.renderRepoView();" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 bg-white font-semibold">
+                  <option value="ALL">Todas las empresas</option>
+                  ${Object.entries(empresasMap).map(([ruc, nom]) => `
+                    <option value="${esc(ruc)}" ${this.repoFilterEmpresa === ruc ? 'selected' : ''}>${esc(nom)} (${esc(ruc)})</option>
+                  `).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Entorno</label>
+                <select onchange="CRM.repoFilterEntorno=this.value; CRM.renderRepoView();" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 bg-white font-semibold">
+                  <option value="ALL" ${this.repoFilterEntorno === 'ALL' ? 'selected' : ''}>Todos (Demo/Sandbox/Prod)</option>
+                  <option value="DEMO" ${this.repoFilterEntorno === 'DEMO' ? 'selected' : ''}>DEMO</option>
+                  <option value="SANDBOX" ${this.repoFilterEntorno === 'SANDBOX' ? 'selected' : ''}>SANDBOX</option>
+                  <option value="PRODUCCION" ${this.repoFilterEntorno === 'PRODUCCION' ? 'selected' : ''}>PRODUCCIÓN</option>
+                </select>
+              </div>
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Desde fecha</label>
+                <input type="date" value="${esc(this.repoFilterDesde)}" onchange="CRM.repoFilterDesde=this.value; CRM.renderRepoView();" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white font-mono" />
+              </div>
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Hasta fecha</label>
+                <input type="date" value="${esc(this.repoFilterHasta)}" onchange="CRM.repoFilterHasta=this.value; CRM.renderRepoView();" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white font-mono" />
+              </div>
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Buscar número / cliente</label>
+                <div class="flex gap-1">
+                  <input type="text" value="${esc(this.repoSearch)}" oninput="CRM.repoSearch=this.value; CRM.renderRepoView();" placeholder="Ej. FAC-001, Sol..." class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white" />
+                  <button onclick="CRM.repoFilterEmpresa='ALL'; CRM.repoFilterEntorno='ALL'; CRM.repoFilterDesde=''; CRM.repoFilterHasta=''; CRM.repoSearch=''; CRM.renderRepoView();" class="px-2 py-1 rounded-lg bg-white border border-slate-300 font-bold text-slate-600 cursor-pointer" title="Limpiar filtros">↺</button>
+                </div>
+              </div>
+            </div>
+
+            ${filteredRows.length === 0 ? '<p class="text-slate-500 py-4">No hay registros que coincidan con los filtros seleccionados.</p>' : `
+              <div class="overflow-x-auto border border-[#dce6e5] rounded-xl">
+                <table class="w-full text-left border-collapse text-[11px]">
+                  <thead class="bg-[#073e3b] text-white">
+                    <tr>${cols.map(c => `<th class="p-2 font-bold whitespace-nowrap">${esc(c)}</th>`).join('')}</tr>
+                  </thead>
+                  <tbody>
+                    ${filteredRows.map(r => `
+                      <tr class="border-b border-slate-100 hover:bg-[#f5f8f8]">
+                        ${cols.map(c => `<td class="p-2 whitespace-nowrap font-mono">${esc(r[c] ?? '')}</td>`).join('')}
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+        `;
       },
 
       exportRepoCsv() {
-        if (!this.repoRows.length) return toast('No hay filas para exportar en esta hoja.');
-        const cols = Object.keys(this.repoRows[0]);
+        const rows = this.getFilteredRepoRows();
+        if (!rows.length) return toast('No hay filas filtradas para exportar.');
+        const cols = Object.keys(rows[0]);
         const csv = [
           cols.join(';'),
-          ...this.repoRows.map(r => cols.map(c => `"${String(typeof r[c] === 'object' ? JSON.stringify(r[c]) : (r[c] ?? '')).replace(/"/g, '""')}"`).join(';'))
+          ...rows.map(r => cols.map(c => `"${String(typeof r[c] === 'object' ? JSON.stringify(r[c]) : (r[c] ?? '')).replace(/"/g, '""')}"`).join(';'))
         ].join('\n');
-        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `${this.repoTable}_${new Date().toISOString().slice(0,10)}.csv`;
         a.click();
-        toast('📥 Archivo Excel/CSV descargado.');
+        toast(`📥 Excel/CSV descargado (${rows.length} registros).`);
       }
     };
 
@@ -4323,5 +5110,16 @@
       }
     });
   </script>
+  <!-- MODAL GLOBAL INTERACTIVO (SOBRE APP Y CRM) -->
+  <div id="phone-modal" class="hidden fixed inset-0 z-[90] bg-slate-950/65 backdrop-blur-[2px] p-4 items-center justify-center">
+    <div class="bg-white w-full max-w-[460px] max-h-[90vh] overflow-y-auto phone-scroll rounded-3xl p-5 border border-[#dce6e5] shadow-2xl space-y-3 text-[#17343a]">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <h4 id="phone-modal-title" class="text-sm font-extrabold text-[#073e3b]">Título</h4>
+        <button onclick="V.closeModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">✕</button>
+      </div>
+      <div id="phone-modal-body" class="text-xs space-y-2.5"></div>
+      <div id="phone-modal-actions" class="flex justify-end gap-2 pt-2 border-t border-slate-100"></div>
+    </div>
+  </div>
 </body>
 </html>
