@@ -1,17 +1,23 @@
 // =========================================================================
-// VOZKORA CONTASOFT + IA — CONECTOR SUPABASE (EMPRESAS / USUARIOS / API)
+// VOZKORA CONTASOFT + IA — CONECTOR SUPABASE PRODUCCIÓN (EMPRESAS/STORAGE/API)
 // =========================================================================
 const VOZKORA_CONFIG = {
   PUENTE_URL: 'https://vozkora-puente-contifico.onrender.com',
   EMPRESA_ID: '1b4f7aed-9583-4853-bcda-bf98c3d7f250',
+  SUPABASE_BASE: 'https://dgzikmjfozhxdanhnnhx.supabase.co',
   SUPABASE_URL: 'https://dgzikmjfozhxdanhnnhx.supabase.co/rest/v1',
+  SUPABASE_STORAGE_URL: 'https://dgzikmjfozhxdanhnnhx.supabase.co/storage/v1',
+  STORAGE_BUCKET: 'vozkora-documentos',
   SUPABASE_KEY: 'sb_publishable_HbDtW4JNH1cTpXkqwNUhwg_UnsBP6og',
+  DEFAULT_PAYMENT_URL: 'https://www.google.com/search?q=Pasarela+de+Pago+Vozkora+dLocal+Go',
+  ASESOR_VIP_WHATSAPP: '593999999999',
   STORAGE_KEYS: {
     SESION: 'vozkora_sesion_activa',
     DEVICE_ID: 'vozkora_device_id_local',
     PRODUCTOS: 'vozkora_cache_productos',
     CLIENTES: 'vozkora_cache_clientes',
-    COLA_OFFLINE: 'vozkora_cola_pendientes'
+    COLA_OFFLINE: 'vozkora_cola_pendientes',
+    PAYMENT_URL: 'vozkora_crm_payment_url'
   }
 };
 
@@ -22,6 +28,16 @@ function supaHeaders(extra = {}) {
     'Content-Type': 'application/json',
     'Prefer': 'return=representation'
   }, extra);
+}
+
+function obtenerUrlPasarela() {
+  return localStorage.getItem(VOZKORA_CONFIG.STORAGE_KEYS.PAYMENT_URL) || VOZKORA_CONFIG.DEFAULT_PAYMENT_URL;
+}
+
+function guardarUrlPasarela(url) {
+  const clean = String(url || '').trim() || VOZKORA_CONFIG.DEFAULT_PAYMENT_URL;
+  localStorage.setItem(VOZKORA_CONFIG.STORAGE_KEYS.PAYMENT_URL, clean);
+  return clean;
 }
 
 function obtenerDeviceIdLocal() {
@@ -43,8 +59,109 @@ function obtenerNombreDispositivo() {
 }
 
 // -------------------------------------------------------------------------
-// A. AUTENTICACIÓN CON VALIDACIÓN DE EMPRESA + BLOQUEO 1 SOLO DISPOSITIVO
+// CÁLCULO DE FECHAS DE CORTE (SIEMPRE DÍA 01 DEL MES)
+// - MENSUAL: 01 del mes siguiente (ciclo 1 al 30/31 o 28/29 Feb)
+// - ANUAL: 01 del mismo mes del año siguiente (ej. 19/11/2026 -> 01/11/2027)
 // -------------------------------------------------------------------------
+function calcularProximoCorte(periodicidad = 'MENSUAL', baseDate = new Date()) {
+  const d = new Date(baseDate);
+  const year = d.getFullYear();
+  const month = d.getMonth(); // 0-11
+  if (String(periodicidad).toUpperCase() === 'ANUAL') {
+    const mm = String(month + 1).padStart(2, '0');
+    return `${year + 1}-${mm}-01`;
+  }
+  const nextMonthDate = new Date(year, month + 1, 1);
+  const y2 = nextMonthDate.getFullYear();
+  const m2 = String(nextMonthDate.getMonth() + 1).padStart(2, '0');
+  return `${y2}-${m2}-01`;
+}
+
+// Evaluar estado de cobranza/corte de una empresa en tiempo real:
+// - Si control_corte === false -> 'EXENTO'
+// - Si exento_hasta >= hoy -> 'EXENTO_HASTA'
+// - Si hoy < fecha_proximo_corte -> 'AL_DIA'
+// - Si hoy >= fecha_proximo_corte y diffDays <= 5 -> 'PENDIENTE_RENOVACION' (Franja roja superior)
+// - Si diffDays > 5 -> 'BLOQUEADO_CORTE' (Bloqueo total de la App)
+function evaluarEstadoSuscripcion(emp) {
+  if (!emp) return { estado: 'AL_DIA', diasMora: 0, fechaCorte: '' };
+  if (emp.rol === 'DEMO' || emp.entorno === 'DEMO') {
+    return { estado: 'EXENTO', diasMora: 0, fechaCorte: emp.fecha_proximo_corte || '' };
+  }
+  if (emp.control_corte === false) {
+    return { estado: 'EXENTO', diasMora: 0, fechaCorte: emp.fecha_proximo_corte || '' };
+  }
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+
+  if (emp.exento_hasta && emp.exento_hasta >= todayStr) {
+    return { estado: 'EXENTO_HASTA', diasMora: 0, fechaCorte: emp.fecha_proximo_corte || '', exentoHasta: emp.exento_hasta };
+  }
+
+  const corteStr = emp.fecha_proximo_corte || calcularProximoCorte(emp.periodicidad || 'MENSUAL');
+  const corteDate = new Date(corteStr + 'T00:00:00');
+  const todayMidnight = new Date(todayStr + 'T00:00:00');
+  const diffDays = Math.floor((todayMidnight - corteDate) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { estado: 'AL_DIA', diasMora: 0, fechaCorte: corteStr };
+  }
+  if (diffDays <= 5) {
+    return { estado: 'PENDIENTE_RENOVACION', diasMora: diffDays, fechaCorte: corteStr };
+  }
+  return { estado: 'BLOQUEADO_CORTE', diasMora: diffDays, fechaCorte: corteStr };
+}
+
+// -------------------------------------------------------------------------
+// A. AUTENTICACIÓN Y SINCRONIZACIÓN DE SESIÓN DESDE SUPABASE
+// -------------------------------------------------------------------------
+async function refrescarSesionDesdeSupabase(sesionActual) {
+  if (!sesionActual || !sesionActual.email) return sesionActual;
+  try {
+    const uResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?email=eq.${encodeURIComponent(sesionActual.email)}&select=*`, { headers: supaHeaders() });
+    if (!uResp.ok) return sesionActual;
+    const uRows = await uResp.json();
+    if (!uRows || uRows.length === 0) return sesionActual;
+    const user = uRows[0];
+
+    let empresa = null;
+    if (user.empresa_id) {
+      const eResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?id=eq.${encodeURIComponent(user.empresa_id)}&select=*`, { headers: supaHeaders() });
+      if (eResp.ok) {
+        const eRows = await eResp.json();
+        if (eRows && eRows.length > 0) empresa = eRows[0];
+      }
+    } else if (user.empresa_ruc) {
+      const eResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?ruc=eq.${encodeURIComponent(user.empresa_ruc)}&select=*`, { headers: supaHeaders() });
+      if (eResp.ok) {
+        const eRows = await eResp.json();
+        if (eRows && eRows.length > 0) empresa = eRows[0];
+      }
+    }
+
+    const sesionFresca = Object.assign({}, sesionActual, user, {
+      empresa_id: empresa ? empresa.id : user.empresa_id,
+      empresa_nombre: empresa ? empresa.nombre : user.empresa_nombre,
+      empresa_ruc: empresa ? empresa.ruc : user.empresa_ruc,
+      empresa_telefono: empresa ? empresa.telefono : user.empresa_telefono,
+      plan_activo: empresa ? empresa.plan_activo : user.plan_activo,
+      periodicidad: empresa ? (empresa.periodicidad || 'MENSUAL') : 'MENSUAL',
+      fecha_proximo_corte: empresa ? (empresa.fecha_proximo_corte || calcularProximoCorte('MENSUAL')) : calcularProximoCorte('MENSUAL'),
+      control_corte: empresa ? (empresa.control_corte !== false) : true,
+      exento_hasta: empresa ? (empresa.exento_hasta || null) : null,
+      max_usuarios: empresa ? empresa.max_usuarios : 5,
+      packs_ia: empresa ? empresa.packs_ia : user.packs_ia,
+      entorno: empresa ? empresa.entorno : user.entorno,
+      contifico_api_key: empresa ? empresa.contifico_api_key : user.contifico_api_key,
+      contifico_pos_token: empresa ? empresa.contifico_pos_token : user.contifico_pos_token
+    });
+    localStorage.setItem(VOZKORA_CONFIG.STORAGE_KEYS.SESION, JSON.stringify(sesionFresca));
+    return sesionFresca;
+  } catch (e) {
+    return sesionActual;
+  }
+}
+
 async function loginVozkora(email, clave) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   const cleanPass = String(clave || '').trim();
@@ -63,7 +180,6 @@ async function loginVozkora(email, clave) {
     return { ok: false, error: 'Este usuario está suspendido. Contacta al administrador.' };
   }
 
-  // Consultar la empresa vinculada para heredar plan, entorno, API Contífico y estado activo
   let empresa = null;
   if (user.empresa_id) {
     const empResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?id=eq.${encodeURIComponent(user.empresa_id)}&select=*`, { headers: supaHeaders() });
@@ -83,7 +199,6 @@ async function loginVozkora(email, clave) {
     return { ok: false, error: `La empresa ${empresa.nombre} se encuentra suspendida en Vozkora.` };
   }
 
-  // Bloqueo de sesión única por dispositivo (excepto DEMO y SUPERADMIN)
   const localDevId = obtenerDeviceIdLocal();
   if (user.rol !== 'DEMO' && user.rol !== 'SUPERADMIN') {
     if (user.session_token && user.session_token !== localDevId) {
@@ -92,7 +207,6 @@ async function loginVozkora(email, clave) {
         error: `⛔ Acceso bloqueado: El usuario ${user.email} ya tiene sesión activa en otro dispositivo (${user.dispositivo_info || 'Otro equipo'}). Solicita liberar dispositivo en Soporte / CRM.`
       };
     }
-    // Registrar este dispositivo como sesión única activa
     await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?id=eq.${encodeURIComponent(user.id)}`, {
       method: 'PATCH',
       headers: supaHeaders(),
@@ -105,13 +219,16 @@ async function loginVozkora(email, clave) {
     user.session_token = localDevId;
   }
 
-  // Mezclar datos vigentes de la empresa en la sesión del usuario
   const sesionCompleta = Object.assign({}, user, {
     empresa_id: empresa ? empresa.id : user.empresa_id,
     empresa_nombre: empresa ? empresa.nombre : user.empresa_nombre,
     empresa_ruc: empresa ? empresa.ruc : user.empresa_ruc,
     empresa_telefono: empresa ? empresa.telefono : user.empresa_telefono,
     plan_activo: empresa ? empresa.plan_activo : user.plan_activo,
+    periodicidad: empresa ? (empresa.periodicidad || 'MENSUAL') : 'MENSUAL',
+    fecha_proximo_corte: empresa ? (empresa.fecha_proximo_corte || calcularProximoCorte('MENSUAL')) : calcularProximoCorte('MENSUAL'),
+    control_corte: empresa ? (empresa.control_corte !== false) : true,
+    exento_hasta: empresa ? (empresa.exento_hasta || null) : null,
     max_usuarios: empresa ? empresa.max_usuarios : 5,
     packs_ia: empresa ? empresa.packs_ia : user.packs_ia,
     entorno: empresa ? empresa.entorno : user.entorno,
@@ -146,7 +263,7 @@ async function cerrarSesionVozkora() {
 }
 
 // -------------------------------------------------------------------------
-// B. VOZKORA CONTROL CRM — GESTIÓN DE EMPRESAS (REGISTRO PRIVADO SAAS)
+// B. VOZKORA CONTROL CRM — GESTIÓN DE EMPRESAS (PERIODICIDAD, CORTE Y API)
 // -------------------------------------------------------------------------
 async function crmListarEmpresas() {
   const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?select=*&order=creado_en.desc`;
@@ -156,11 +273,18 @@ async function crmListarEmpresas() {
 }
 
 async function crmCrearEmpresa(payload) {
+  const per = payload.periodicidad || 'MENSUAL';
+  const body = Object.assign({
+    periodicidad: per,
+    fecha_proximo_corte: payload.fecha_proximo_corte || calcularProximoCorte(per),
+    control_corte: payload.control_corte !== undefined ? payload.control_corte : true,
+    exento_hasta: payload.exento_hasta || null
+  }, payload);
   const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas`;
   const resp = await fetch(url, {
     method: 'POST',
     headers: supaHeaders(),
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   });
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.message || 'Error creando empresa');
@@ -214,7 +338,7 @@ async function crmActualizarUsuario(id, campos) {
 }
 
 // -------------------------------------------------------------------------
-// D. SISTEMA DE TICKETS DE ALTA DE USUARIOS / SOPORTE / VENTAS
+// D. SISTEMA DE TICKETS DE SOPORTE / ALTA DE USUARIOS
 // -------------------------------------------------------------------------
 async function crearTicketVozkora(ticketPayload) {
   const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_tickets`;
@@ -252,7 +376,38 @@ async function crmActualizarTicket(id, estado, detalleObj = null) {
 }
 
 // -------------------------------------------------------------------------
-// E. REPOSITORIO MAESTRO DE AUDITORÍA ("HOJAS TIPO EXCEL" EN SUPABASE)
+// E. SUBIDA REAL DE PDF DE RUC A SUPABASE STORAGE (vozkora-documentos)
+// -------------------------------------------------------------------------
+async function subirPdfRucSupabase(file, clienteRuc) {
+  const ses = obtenerSesionVozkora();
+  const empRuc = ses ? ses.empresa_ruc : '123456789001';
+  const safeName = (file.name || 'ruc.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const objectPath = `${empRuc}/${clienteRuc || 'SIN_RUC'}_${Date.now()}_${safeName}`;
+  const uploadUrl = `${VOZKORA_CONFIG.SUPABASE_STORAGE_URL}/object/${VOZKORA_CONFIG.STORAGE_BUCKET}/${objectPath}`;
+
+  const resp = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'apikey': VOZKORA_CONFIG.SUPABASE_KEY,
+      'Authorization': 'Bearer ' + VOZKORA_CONFIG.SUPABASE_KEY,
+      'Content-Type': file.type || 'application/pdf',
+      'x-upsert': 'true'
+    },
+    body: file
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.message || err.error || ('Error Storage HTTP ' + resp.status));
+  }
+
+  const publicUrl = `${VOZKORA_CONFIG.SUPABASE_STORAGE_URL}/object/public/${VOZKORA_CONFIG.STORAGE_BUCKET}/${objectPath}`;
+  return { ok: true, url: publicUrl, path: objectPath, fileName: file.name };
+}
+
+// -------------------------------------------------------------------------
+// F. REPOSITORIO MAESTRO DE AUDITORÍA ("HOJAS TIPO EXCEL" EN SUPABASE)
+//    + ACTUALIZACIÓN REAL DE REGISTROS OFFLINE (PENDIENTE_OFFLINE -> AUTORIZADA)
 // -------------------------------------------------------------------------
 async function registrarEnRepositorio(tabla, fila) {
   try {
@@ -269,6 +424,23 @@ async function registrarEnRepositorio(tabla, fila) {
       headers: supaHeaders(),
       body: JSON.stringify(registro)
     });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return Array.isArray(data) ? data[0] : data;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function actualizarRegistroRepositorio(tabla, idFila, campos) {
+  if (!idFila) return false;
+  try {
+    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/${tabla}?id=eq.${encodeURIComponent(idFila)}`;
+    const resp = await fetch(url, {
+      method: 'PATCH',
+      headers: supaHeaders(),
+      body: JSON.stringify(campos)
+    });
     return resp.ok;
   } catch (e) {
     return false;
@@ -276,7 +448,7 @@ async function registrarEnRepositorio(tabla, fila) {
 }
 
 async function consultarRepositorio(tabla, empresaRucFiltro = '') {
-  let url = `${VOZKORA_CONFIG.SUPABASE_URL}/${tabla}?select=*&order=creado_en.desc&limit=100`;
+  let url = `${VOZKORA_CONFIG.SUPABASE_URL}/${tabla}?select=*&order=creado_en.desc&limit=200`;
   if (empresaRucFiltro) {
     url += `&empresa_ruc=eq.${encodeURIComponent(empresaRucFiltro)}`;
   }
@@ -286,7 +458,7 @@ async function consultarRepositorio(tabla, empresaRucFiltro = '') {
 }
 
 // -------------------------------------------------------------------------
-// F. PUENTE RENDER + SIIGO CONTÍFICO + MODO OFFLINE
+// G. PUENTE RENDER + SIIGO CONTÍFICO + MODO OFFLINE
 // -------------------------------------------------------------------------
 async function verificarConexionPuente() {
   try {
@@ -314,62 +486,4 @@ async function obtenerProductosVozkora() {
     const locales = JSON.parse(localStorage.getItem(cacheKey) || '[]');
     return { origen: 'OFFLINE', productos: locales };
   }
-}
-
-async function emitirDocumentoVozkora(payloadFactura) {
-  try {
-    const resp = await fetch(
-      `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${VOZKORA_CONFIG.EMPRESA_ID}/documento`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadFactura)
-      }
-    );
-    const data = await resp.json();
-    if (!resp.ok || !data.ok) throw new Error(data.error || 'Fallo en envío');
-    return { estado: 'ENVIADO_SRI', respuesta: data };
-  } catch (err) {
-    const cola = JSON.parse(localStorage.getItem(VOZKORA_CONFIG.STORAGE_KEYS.COLA_OFFLINE) || '[]');
-    cola.push({
-      id_local: 'OFF-' + Date.now(),
-      fecha_registro: new Date().toISOString(),
-      payload: payloadFactura
-    });
-    localStorage.setItem(VOZKORA_CONFIG.STORAGE_KEYS.COLA_OFFLINE, JSON.stringify(cola));
-    return { estado: 'GUARDADO_OFFLINE', pendientes: cola.length };
-  }
-}
-
-async function sincronizarColaOffline() {
-  const colaKey = VOZKORA_CONFIG.STORAGE_KEYS.COLA_OFFLINE;
-  const cola = JSON.parse(localStorage.getItem(colaKey) || '[]');
-  if (cola.length === 0) return { sincronizados: 0, restantes: 0 };
-
-  const restantes = [];
-  let sincronizados = 0;
-
-  for (const item of cola) {
-    try {
-      const resp = await fetch(
-        `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${VOZKORA_CONFIG.EMPRESA_ID}/documento`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item.payload)
-        }
-      );
-      const data = await resp.json();
-      if (resp.ok && data.ok) {
-        sincronizados++;
-      } else {
-        restantes.push(item);
-      }
-    } catch (e) {
-      restantes.push(item);
-    }
-  }
-
-  localStorage.setItem(colaKey, JSON.stringify(restantes));
-  return { sincronizados, restantes: restantes.length };
 }

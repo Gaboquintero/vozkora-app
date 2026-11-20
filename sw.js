@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vozkora-pwa-v2';
+const CACHE_NAME = 'vozkora-pwa-v3';
 const ARCHIVOS_LOCALES = [
   './',
   './index.html',
@@ -25,7 +25,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.url.includes('onrender.com')) return;
+  if (event.request.url.includes('onrender.com') || event.request.url.includes('supabase.co')) return;
   event.respondWith(
     fetch(event.request)
       .then((res) => {

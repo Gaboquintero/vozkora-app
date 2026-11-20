@@ -156,6 +156,7 @@
     <div class="bg-[#073e3b] text-white px-4 py-2 flex gap-2 overflow-x-auto shrink-0 text-xs font-bold">
       <button id="crm-tab-companies" onclick="CRM.setTab('companies')" class="px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0">🏢 Empresas (Clientes SaaS)</button>
       <button id="crm-tab-users" onclick="CRM.setTab('users')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">👥 Usuarios y Cupos</button>
+      <button id="crm-tab-billing" onclick="CRM.setTab('billing')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">💳 Cobranzas y Cortes</button>
       <button id="crm-tab-tickets" onclick="CRM.setTab('tickets')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🎫 Tickets Solicitudes</button>
       <button id="crm-tab-repo" onclick="CRM.setTab('repo')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">📊 Hojas Auditoría (Excel)</button>
     </div>
@@ -446,18 +447,49 @@
             </div>
           </div>
 
-          <!-- Franja Inferior Verde Esmeralda: Empresa Activa y Selector Rápido de Plan -->
+          <!-- Franja Inferior Verde Esmeralda: Empresa Activa, Periodicidad y Plan -->
           <div class="bg-[#073e3b] text-white px-4 py-2.5 flex items-center justify-between gap-2">
-            <div>
-              <div id="phone-company-subtitle" class="text-[10px] text-teal-100/75">Demo · RUC 123456789001</div>
-              <div id="phone-company-title" class="text-sm font-extrabold text-white">ACME</div>
+            <div class="min-w-0">
+              <div id="phone-company-subtitle" class="text-[10px] text-teal-100/75 truncate">Demo · RUC 123456789001</div>
+              <div class="flex items-center gap-1.5">
+                <div id="phone-company-title" class="text-sm font-extrabold text-white truncate">ACME</div>
+                <span id="phone-periodicity-badge" class="px-1.5 py-0.5 rounded text-[9.5px] font-extrabold bg-white/15 text-[#70d2bd] shrink-0">📅 MENSUAL</span>
+              </div>
             </div>
-            <button onclick="V.open('plans')" id="phone-active-plan-pill" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold bg-white/10 hover:bg-white/20 text-[#70d2bd] border border-[#70d2bd]/30 flex items-center gap-1 transition cursor-pointer" title="Cambiar de plan">
+            <button onclick="V.open('plans')" id="phone-active-plan-pill" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold bg-white/10 hover:bg-white/20 text-[#70d2bd] border border-[#70d2bd]/30 flex items-center gap-1 transition cursor-pointer shrink-0" title="Ver detalles de tu suscripción">
               <span id="phone-active-plan-text">Plan Expansión</span>
               <span>▾</span>
             </button>
           </div>
         </header>
+
+        <!-- REGLA 1: FRANJA ROJA SUPERIOR PENDIENTE RENOVACIÓN (DÍAS 1 AL 5 DESPUÉS DEL CORTE) -->
+        <div id="phone-renewal-warning-banner" class="hidden px-3.5 py-2 bg-rose-600 text-white text-[11px] font-extrabold flex items-center justify-between gap-2 shrink-0 shadow">
+          <span>⚠️ PENDIENTE RENOVACIÓN · Corte día 01 vencido</span>
+          <button onclick="V.openRenewalCheckoutModal()" class="px-2.5 py-1 rounded-lg bg-white text-rose-700 text-[10px] font-black shrink-0 cursor-pointer">
+            Renovar ahora
+          </button>
+        </div>
+
+        <!-- REGLA 2: BLOQUEO TOTAL POR MORA (+5 DÍAS DESPUÉS DEL CORTE) -->
+        <div id="phone-suspension-lock" class="hidden absolute inset-0 z-40 bg-[#073e3b]/95 backdrop-blur-sm text-white p-6 flex flex-col items-center justify-center text-center space-y-4">
+          <div class="w-16 h-16 rounded-full bg-rose-500/20 border-2 border-rose-400 flex items-center justify-center text-3xl">🔒</div>
+          <div class="space-y-1">
+            <span class="px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-extrabold uppercase">Servicio Suspendido por Corte</span>
+            <h3 class="text-lg font-black text-white pt-1">¿Desea generar la renovación?</h3>
+            <p id="phone-suspension-desc" class="text-xs text-teal-100 leading-relaxed">
+              Han transcurrido más de 5 días desde su fecha de corte (día 01). Todas las funciones de la App están temporalmente bloqueadas hasta registrar la renovación.
+            </p>
+          </div>
+          <div class="w-full space-y-2 pt-2">
+            <button onclick="V.acceptSuspensionRenewal()" class="w-full py-3 rounded-2xl text-xs font-extrabold bg-[#70d2bd] hover:bg-white text-[#073e3b] shadow-lg cursor-pointer">
+              ✓ Aceptar y Generar Renovación
+            </button>
+            <button onclick="Auth.logout()" class="w-full py-2 rounded-xl text-[11px] font-bold text-teal-200 hover:text-white cursor-pointer">
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
 
         <!-- Banner Offline (Visible cuando offline === true) -->
         <div id="phone-offline-banner" onclick="V.open('sync')" class="hidden px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200/80 border-b border-amber-300 text-[11px] font-bold text-amber-900 flex items-center justify-between shrink-0 cursor-pointer" title="Toca para ver la cola SQLite local">
@@ -586,7 +618,7 @@
         features: [
           '1 usuario incluido',
           'Sync Offline + Facturación SRI',
-          'RIDE WhatsApp + Cobranza ruta',
+          'Sin auditoría preventiva automática',
           '5 pruebas Voz IA · 0 packs gratis'
         ]
       },
@@ -961,7 +993,7 @@
       return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
-    function enqueueOfflineOp(moduleName, refCode, detail, onSyncCallback) {
+    function enqueueOfflineOp(moduleName, refCode, detail, onSyncCallback, repoTable = null, repoRowId = null) {
       if (!appData.offline) return false;
       appData.offlineQueueItems.unshift({
         id: 'SQL-' + String(appData.offlineQueueItems.length + 1).padStart(3, '0'),
@@ -969,7 +1001,9 @@
         ref: refCode,
         detail: detail,
         time: nowFormatted().split(' ')[1],
-        onSync: onSyncCallback || null
+        onSync: onSyncCallback || null,
+        repoTable,
+        repoRowId
       });
       appData.offlineQueue = appData.offlineQueueItems.length;
       const badge = $('phone-offline-queue');
@@ -1756,7 +1790,7 @@
                 🏛️ Impuestos SRI
               </button>
               ${p === 'pos' ? `
-                <button onclick="V.scanBarcodePOS()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
+                <button onclick="V.openRealCameraModal('pos')" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
                   📷 Escáner
                 </button>
               ` : ''}
@@ -2326,17 +2360,23 @@
         `;
       }
 
-      // 9. CLIENTES + FOTO RUC
+      // 9. CLIENTES + CÁMARA FOTO RUC + ADJUNTAR PDF RUC (SUPABASE STORAGE)
       if (p === 'clients') {
         return `
           ${backBtn}
-          <div class="flex items-center justify-between">
-            <div><div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (API Contífico)</div><div class="text-[10px] text-[#087e70] font-semibold">Los clientes creados aquí viajan por API a Siigo Contífico</div></div>
-            <div class="flex gap-1.5">
-              <button onclick="V.simulateRucPhoto()" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] cursor-pointer">
-                🪪 Foto RUC
+          <div class="space-y-1.5">
+            <div>
+              <div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (API Contífico)</div>
+              <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados en Supabase y listos para API Siigo Contífico</div>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button onclick="V.openRealCameraModal('ruc')" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
+                📷 Foto RUC
               </button>
-              <button onclick="V.openNewClientModal()" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] text-white cursor-pointer">
+              <button onclick="V.openAttachRucPdfModal()" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-cyan-50 text-cyan-900 border border-cyan-200 cursor-pointer">
+                📄 PDF RUC
+              </button>
+              <button onclick="V.openNewClientModal()" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#087e70] text-white cursor-pointer">
                 + Nuevo
               </button>
             </div>
@@ -2344,12 +2384,15 @@
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 text-xs">
             ${appData.clients.map(c => `
-              <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
-                <div>
-                  <div class="font-bold text-[#17343a]">${esc(c.name)}</div>
+              <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0 gap-2">
+                <div class="min-w-0">
+                  <div class="font-bold text-[#17343a] truncate">${esc(c.name)}</div>
                   <div class="text-[11px] font-mono text-[#71838a]">RUC/CI: ${esc(c.id)} · ${esc(c.phone)}</div>
+                  ${c.rucPdfUrl ? `<a href="${esc(c.rucPdfUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200 text-[10px] font-bold">📄 Ver / Descargar PDF RUC</a>` : ''}
                 </div>
-                ${c.pendingSync ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">⏳ Pend. Sync</span>' : '<span class="text-[#087e70] font-bold">✓ SRI</span>'}
+                <div class="shrink-0">
+                  ${c.pendingSync ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">⏳ Pend. Sync</span>' : '<span class="text-[#087e70] font-bold">✓ SRI</span>'}
+                </div>
               </div>
             `).join('')}
           </div>
@@ -2464,18 +2507,43 @@
         `;
       }
 
-      // 12. LOS 6 PACKS IA
+      // 12. LOS 6 PACKS IA (BLOQUEADO PARA CAMBIO LIBRE EN PRODUCCIÓN/SANDBOX)
       if (p === 'packs') {
         const plan = getCurrentPlan();
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { rol: 'DEMO', entorno: 'DEMO', periodicidad: 'MENSUAL' };
+        const isDemoMode = ses.rol === 'DEMO' || ses.entorno === 'DEMO';
+        const isAnualVip = String(ses.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
         const activeIds = configState.selectedSvaOrder.filter(id => configState.activeSVAs[id]);
         const freeIds = plan.includesComboFull ? SVA_PACKS.map(x => x.id) : activeIds.slice(0, plan.includedSVACount);
 
         return `
           ${backBtn}
-          <div class="text-base font-extrabold text-[#17343a]">🤖 Los 6 Packs IA (Sincronizados)</div>
+          <div class="flex items-center justify-between">
+            <div class="text-base font-extrabold text-[#17343a]">🤖 Los 6 Packs IA</div>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isAnualVip ? 'bg-amber-100 text-amber-900' : 'bg-[#e7f5f1] text-[#073e3b]'}">
+              ${isAnualVip ? '👑 ANUAL · CLIENTE VIP' : '📅 MENSUAL'}
+            </span>
+          </div>
           ${SVA_PACKS.map((pk, idx) => {
             const isOn = configState.activeSVAs[pk.id];
             const isFree = isOn && freeIds.includes(pk.id);
+            let btnHtml = '';
+            if (isDemoMode) {
+              btnHtml = `<button onclick="toggleSVA('${pk.id}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold ${isOn ? 'bg-slate-100 text-slate-700' : 'bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd]'} cursor-pointer">
+                ${isOn ? 'Desactivar (Modo Demo)' : 'Probar pack (Modo Demo)'}
+              </button>`;
+            } else if (isOn) {
+              btnHtml = `<span class="inline-block px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold text-[10.5px]">✓ Habilitado en tu suscripción</span>`;
+            } else if (isAnualVip) {
+              btnHtml = `<button onclick="V.openVipAdvisorWhatsapp('Activar Pack IA: ${pk.name}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-amber-500 hover:bg-amber-600 text-white cursor-pointer">
+                👑 Solicitar con Asesor VIP WhatsApp
+              </button>`;
+            } else {
+              btnHtml = `<button onclick="V.openProratedSvaCheckout('${pk.id}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                💳 Activar Pack (Calcular Prorrateo)
+              </button>`;
+            }
+
             return `
               <div class="bg-white border ${isOn ? 'border-[#087e70]' : 'border-[#e3ebea]'} rounded-2xl p-3 space-y-1.5 text-xs">
                 <div class="flex items-center justify-between gap-2">
@@ -2485,17 +2553,22 @@
                   </span>
                 </div>
                 <p class="text-[11px] text-[#71838a]">${pk.desc}</p>
-                <button onclick="toggleSVA('${pk.id}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold ${isOn ? 'bg-slate-100 text-slate-700' : 'bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd]'} cursor-pointer">
-                  ${isOn ? 'Desactivar en simulador' : 'Activar pack ahora'}
-                </button>
+                ${btnHtml}
               </div>
             `;
           }).join('')}
         `;
       }
 
-      // 13. PLANES Y PRECIOS
+      // 13. PLANES Y SUSCRIPCIÓN (PERIODICIDAD VISIBLE + PRORRATEO MENSUAL O ASESOR VIP ANUAL)
       if (p === 'plans') {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+          rol: 'DEMO', entorno: 'DEMO', periodicidad: 'MENSUAL', fecha_proximo_corte: calcularProximoCorte('MENSUAL'), max_usuarios: 5
+        };
+        const isDemoMode = ses.rol === 'DEMO' || ses.entorno === 'DEMO';
+        const isAnualVip = String(ses.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+        const currPlan = getCurrentPlan();
+
         return `
           ${backBtn}
           <div class="flex items-center justify-between">
@@ -2504,18 +2577,62 @@
               🤖 Ver 6 Packs IA (${countActiveSVAs()}/6)
             </button>
           </div>
-          <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b]">
-            Toca cualquier plan para activarlo al instante en tu app y probar sus módulos incluidos.
+
+          <!-- Tarjeta de Estado de Suscripción Actual -->
+          <div class="p-3 rounded-2xl bg-[#073e3b] text-white text-xs space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-teal-200">Tu Suscripción Vigente</span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isAnualVip ? 'bg-amber-400 text-[#073e3b]' : 'bg-[#70d2bd] text-[#073e3b]'}">
+                ${isAnualVip ? '👑 ANUAL · CLIENTE VIP' : '📅 PAGO MENSUAL'}
+              </span>
+            </div>
+            <div class="text-sm font-black">Plan ${esc(currPlan.name)} · Cupo: ${ses.max_usuarios || currPlan.includedUsers} usuario(s)</div>
+            <div class="text-[11px] text-teal-100">Próxima fecha de corte: <strong class="font-mono text-white">${esc(ses.fecha_proximo_corte || 'Día 01')}</strong></div>
+            ${!isDemoMode ? `
+              <div class="pt-1">
+                <button onclick="${isAnualVip ? `V.openVipAdvisorWhatsapp('Contratar usuarios adicionales')` : `V.openExtraUsersCheckout()`}" class="w-full py-1.5 px-3 rounded-xl text-[11px] font-extrabold bg-white/15 hover:bg-white/25 text-[#70d2bd] cursor-pointer">
+                  ${isAnualVip ? '👑 Solicitar Usuarios Extra con Asesor VIP' : '➕ Agregar Usuarios Adicionales ($1,00 USD c/u)'}
+                </button>
+              </div>
+            ` : ''}
           </div>
+
+          ${isDemoMode ? `
+            <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b]">
+              🧪 <strong>Modo Demo:</strong> Toca cualquier plan para probar sus módulos. En empresas reales, los cambios pasan por cálculo de prorrateo o asesor VIP.
+            </div>
+          ` : ''}
+
           ${PLANS.map(pl => {
             const isCurr = pl.id === configState.selectedPlanId;
+            let actionHtml = '';
+            if (isDemoMode) {
+              actionHtml = `onclick="selectPlan('${pl.id}'); toast('✓ Plan ${pl.name} activado en Modo Demo.');"`;
+            } else if (isCurr) {
+              actionHtml = '';
+            } else if (isAnualVip) {
+              actionHtml = `onclick="V.openVipAdvisorWhatsapp('Cambio de Plan Anual a ${pl.name}')"`;
+            } else if (pl.rank > currPlan.rank) {
+              actionHtml = `onclick="V.openProratedPlanUpgradeCheckout('${pl.id}')"`;
+            } else {
+              actionHtml = `onclick="V.openVipAdvisorWhatsapp('Consulta ajuste de plan a ${pl.name}')"`;
+            }
+
             return `
-              <div onclick="selectPlan('${pl.id}'); toast('✓ Plan ${pl.name} activado (${pl.includedSVACount} packs IA incluidos).');" class="cursor-pointer bg-white border-2 ${isCurr ? 'border-[#087e70] bg-[#f4fbf9]' : 'border-[#e3ebea]'} rounded-2xl p-3 text-xs space-y-1">
+              <div ${actionHtml} class="${isCurr ? 'border-2 border-[#087e70] bg-[#f4fbf9]' : 'border border-[#e3ebea] bg-white cursor-pointer hover:border-[#087e70]'} rounded-2xl p-3 text-xs space-y-1.5">
                 <div class="flex items-center justify-between">
-                  <b>${pl.rank}. ${pl.name} ${isCurr ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-[#087e70] text-white text-[9.5px]">ACTIVO</span>' : ''}</b>
+                  <b>${pl.rank}. ${pl.name} ${isCurr ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-[#087e70] text-white text-[9.5px]">PLAN ACTUAL</span>' : ''}</b>
                   <span class="font-mono font-black text-[#073e3b]">${pl.monthlyPrice === 0 ? '$0' : '$' + pl.monthlyPrice.toFixed(2) + '/mes'}</span>
                 </div>
                 <div class="text-[11px] text-[#71838a]">Anual: $${pl.annualPrice} · Hasta ${pl.includedUsers} usuarios · ${pl.includedSVACount} packs IA gratis</div>
+                ${!isDemoMode && !isCurr ? `
+                  <div class="pt-0.5 text-[10.5px] font-extrabold ${isAnualVip ? 'text-amber-700' : 'text-[#087e70]'}">
+                    ${isAnualVip
+                      ? '👑 Cliente VIP Anual: Toca para hablar con tu asesor WhatsApp →'
+                      : (pl.rank > currPlan.rank ? '💳 Toca para ver prorrateo exacto e ir a Pasarela de Pago →' : '💬 Contactar asesor para ajuste de ciclo →')
+                    }
+                  </div>
+                ` : ''}
               </div>
             `;
           }).join('')}
@@ -2739,6 +2856,298 @@
         const m = $('phone-modal');
         m.classList.add('hidden');
         m.classList.remove('flex');
+      },
+
+      // --- CÁLCULO DE DÍAS RESTANTES HASTA EL CORTE (DÍA 01 / CICLO 30 DÍAS) ---
+      getRemainingCycleDays() {
+        const today = new Date();
+        const dayOfMonth = today.getDate();
+        // Ciclo estándar comercial de 30 días hacia el corte del día 01
+        const rem = Math.max(1, 30 - dayOfMonth + 1);
+        return Math.min(30, rem);
+      },
+
+      openExternalPaymentGateway(concepto, montoUsd) {
+        const baseUrl = typeof obtenerUrlPasarela === 'function' ? obtenerUrlPasarela() : 'https://www.google.com';
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const sep = baseUrl.includes('?') ? '&' : '?';
+        const finalUrl = `${baseUrl}${sep}empresa=${encodeURIComponent(ses.empresa_ruc || '')}&concepto=${encodeURIComponent(concepto)}&monto=${Number(montoUsd).toFixed(2)}`;
+        // Abre en el navegador externo del dispositivo móvil
+        window.open(finalUrl, '_blank', 'noopener,noreferrer');
+        toast('🌐 Abriendo pasarela de pago en el navegador de tu celular...');
+      },
+
+      openVipAdvisorWhatsapp(solicitudTexto) {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+          empresa_nombre: 'Cliente VIP', empresa_ruc: '', email: ''
+        };
+        const currPlan = getCurrentPlan();
+        const phone = (typeof VOZKORA_CONFIG !== 'undefined' && VOZKORA_CONFIG.ASESOR_VIP_WHATSAPP) ? VOZKORA_CONFIG.ASESOR_VIP_WHATSAPP : '593999999999';
+        const msg = encodeURIComponent(
+          `👑 Hola Asesor VIP Vozkora, soy ${ses.email} de la empresa *${ses.empresa_nombre}* (RUC: ${ses.empresa_ruc}). ` +
+          `Tengo suscripción *ANUAL (Plan ${currPlan.name})* y deseo gestionar: *${solicitudTexto}*.`
+        );
+        window.open(`https://wa.me/${phone}?text=${msg}`, '_blank', 'noopener,noreferrer');
+        toast('👑 Conectando con tu Asesor VIP en WhatsApp...');
+      },
+
+      // --- UPGRADE PRORRATEADO PARA CLIENTE MENSUAL (DIRECTO A PASARELA) ---
+      openProratedPlanUpgradeCheckout(targetPlanId) {
+        const currPlan = getCurrentPlan();
+        const newPlan = PLANS.find(p => p.id === targetPlanId);
+        if (!newPlan) return;
+        const diasRestantes = this.getRemainingCycleDays();
+        const saldoAFavor = Number(((currPlan.monthlyPrice / 30) * diasRestantes).toFixed(2));
+        const costoNuevoProrrateado = Number(((newPlan.monthlyPrice / 30) * diasRestantes).toFixed(2));
+        const totalAPagarHoy = Math.max(0, Number((costoNuevoProrrateado - saldoAFavor).toFixed(2)));
+
+        this.openModal(
+          `💳 Upgrade de Plan · ${currPlan.name} → ${newPlan.name}`,
+          `<div class="space-y-2.5">
+             <p class="text-[11px] text-slate-600">
+               Como tu corte mensual es el <strong>día 01</strong>, solo pagas la diferencia proporcional por los <strong>${diasRestantes} días restantes</strong> de este mes:
+             </p>
+             <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5 text-[11px]">
+               <div class="flex justify-between">
+                 <span>Nuevo Plan ${esc(newPlan.name)} ($${newPlan.monthlyPrice.toFixed(2)} / 30 × ${diasRestantes} días):</span>
+                 <strong class="font-mono">${appMoney(costoNuevoProrrateado)}</strong>
+               </div>
+               <div class="flex justify-between text-[#087e70]">
+                 <span>(-) Saldo a favor Plan ${esc(currPlan.name)} ($${currPlan.monthlyPrice.toFixed(2)} / 30 × ${diasRestantes} días):</span>
+                 <strong class="font-mono">-${appMoney(saldoAFavor)}</strong>
+               </div>
+               <div class="flex justify-between border-t border-slate-200 pt-1.5 text-sm font-black text-[#073e3b]">
+                 <span>TOTAL A PAGAR HOY (Prorrateo):</span>
+                 <span class="font-mono">${appMoney(totalAPagarHoy)} USD</span>
+               </div>
+             </div>
+             <div class="text-[10.5px] text-slate-500">
+               * A partir del próximo corte (día 01), tu renovación mensual será de <strong>$${newPlan.monthlyPrice.toFixed(2)} USD + IVA</strong>.
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.closeModal(); V.openExternalPaymentGateway('Upgrade Plan ${newPlan.name}', ${totalAPagarHoy});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Ir a Pasarela de Pago →</button>`
+        );
+      },
+
+      // --- SVA (PACK IA) PRORRATEADO PARA CLIENTE MENSUAL ---
+      openProratedSvaCheckout(svaId) {
+        const pack = SVA_PACKS.find(p => p.id === svaId);
+        if (!pack) return;
+        const diasRestantes = this.getRemainingCycleDays();
+        const totalSvaHoy = Number(((pack.monthlyPrice / 30) * diasRestantes).toFixed(2));
+
+        this.openModal(
+          `🤖 Activar ${pack.name}`,
+          `<div class="space-y-2.5">
+             <p class="text-[11px] text-slate-600">
+               Cálculo proporcional por los <strong>${diasRestantes} días restantes</strong> hasta tu próximo corte del día 01:
+             </p>
+             <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5 text-[11px]">
+               <div class="flex justify-between">
+                 <span>Tarifa mensual ${esc(pack.name)}:</span>
+                 <strong class="font-mono">$${pack.monthlyPrice.toFixed(2)} / mes</strong>
+               </div>
+               <div class="flex justify-between">
+                 <span>Prorrateo ($${pack.monthlyPrice.toFixed(2)} / 30 × ${diasRestantes} días):</span>
+                 <strong class="font-mono">${appMoney(totalSvaHoy)}</strong>
+               </div>
+               <div class="flex justify-between border-t border-slate-200 pt-1.5 text-sm font-black text-[#073e3b]">
+                 <span>TOTAL A PAGAR HOY:</span>
+                 <span class="font-mono">${appMoney(totalSvaHoy)} USD</span>
+               </div>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.closeModal(); V.openExternalPaymentGateway('Activar ${pack.name}', ${totalSvaHoy});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Ir a Pasarela de Pago →</button>`
+        );
+      },
+
+      // --- USUARIOS ADICIONALES COMPLETOS ($1.00 USD C/U SIN PRORRATEO) ---
+      openExtraUsersCheckout() {
+        this.openModal(
+          '👥 Contratar Usuarios Adicionales',
+          `<div class="space-y-2.5">
+             <p class="text-[11px] text-slate-600">
+               Cada usuario adicional tiene un valor completo de <strong>$1,00 USD</strong> por ciclo (sin prorrateo).
+             </p>
+             <div>
+               <label class="font-bold text-[11px]">Cantidad de usuarios extra a agregar:</label>
+               <input id="extraUsersQtyInput" type="number" min="1" max="50" value="1" oninput="const q=Math.max(1, parseInt(this.value,10)||1); $('extraUsersTotalLbl').textContent='$'+q.toFixed(2)+' USD';" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono font-bold text-sm" />
+             </div>
+             <div class="p-3 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] flex justify-between items-center">
+               <span class="font-bold text-[#073e3b]">Total a pagar hoy:</span>
+               <strong id="extraUsersTotalLbl" class="font-mono text-base text-[#087e70]">$1.00 USD</strong>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="const q=Math.max(1, parseInt($('extraUsersQtyInput')?.value,10)||1); V.closeModal(); V.openExternalPaymentGateway(q + ' Usuario(s) Extra', q * 1.00);" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Ir a Pasarela de Pago →</button>`
+        );
+      },
+
+      // --- RENOVACIÓN POR CORTE (REGLA 1 AVISO ROJO / REGLA 2 BLOQUEO +5 DÍAS) ---
+      openRenewalCheckoutModal() {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const currPlan = getCurrentPlan();
+        const isAnual = String(ses.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+        const basePrice = isAnual ? currPlan.annualPrice : currPlan.monthlyPrice;
+        const extraUsers = Math.max(0, (Number(ses.max_usuarios) || currPlan.includedUsers) - currPlan.includedUsers);
+        const extraCost = extraUsers * (isAnual ? currPlan.extraUserAnnual : currPlan.extraUserMonthly);
+        const totalRenovacion = Number((basePrice + extraCost).toFixed(2));
+
+        this.openModal(
+          '🔄 Renovación de Suscripción Vozkora',
+          `<div class="space-y-2">
+             <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1 text-[11px]">
+               <div><strong>Empresa:</strong> ${esc(ses.empresa_nombre || '')} (RUC: ${esc(ses.empresa_ruc || '')})</div>
+               <div><strong>Plan:</strong> ${esc(currPlan.name)} · Periodicidad: <strong>${isAnual ? 'ANUAL (VIP)' : 'MENSUAL'}</strong></div>
+               <div><strong>Fecha de corte vencida:</strong> <span class="font-mono text-rose-700 font-bold">${esc(ses.fecha_proximo_corte || '')}</span></div>
+               <div class="flex justify-between pt-1.5 border-t border-slate-200 text-sm font-black text-[#073e3b]">
+                 <span>Total Renovación:</span>
+                 <span class="font-mono">${appMoney(totalRenovacion)} USD</span>
+               </div>
+             </div>
+             <p class="text-[10.5px] text-slate-600">Al tocar continuar se abrirá la pasarela de pago en el navegador de tu teléfono.</p>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cerrar</button>
+           <button onclick="V.closeModal(); V.openExternalPaymentGateway('Renovacion ${isAnual ? 'Anual' : 'Mensual'} Plan ${currPlan.name}', ${totalRenovacion});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-rose-600 text-white cursor-pointer">Pagar Renovación en Navegador →</button>`
+        );
+      },
+
+      acceptSuspensionRenewal() {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const currPlan = getCurrentPlan();
+        const isAnual = String(ses.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+        const basePrice = isAnual ? currPlan.annualPrice : currPlan.monthlyPrice;
+        this.openExternalPaymentGateway(`Renovacion Urgente Plan ${currPlan.name}`, basePrice);
+      },
+
+      // --- CÁMARA TRASERA REAL DEL CELULAR (POS ESCÁNER Y FOTO RUC) ---
+      activeMediaStream: null,
+      openRealCameraModal(purpose = 'ruc') {
+        const title = purpose === 'pos' ? '📷 Escáner Cámara POS' : '📷 Capturar Foto RUC del Cliente';
+        this.openModal(
+          title,
+          `<div class="space-y-2 text-center">
+             <div class="relative w-full h-52 bg-black rounded-2xl overflow-hidden flex items-center justify-center">
+               <video id="vozkoraCameraVideo" autoplay playsinline class="w-full h-full object-cover"></video>
+             </div>
+             <p id="cameraStatusMsg" class="text-[11px] text-slate-600">Solicitando permiso de cámara trasera...</p>
+           </div>`,
+          `<button onclick="V.stopCameraStream(); V.closeModal();" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.captureFromCamera('${purpose}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">📸 Capturar Ahora</button>`
+        );
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+            .then(stream => {
+              this.activeMediaStream = stream;
+              const video = $('vozkoraCameraVideo');
+              if (video) video.srcObject = stream;
+              if ($('cameraStatusMsg')) $('cameraStatusMsg').textContent = '✓ Cámara activa. Enfoca el código o certificado RUC y toca Capturar.';
+            })
+            .catch(() => {
+              if ($('cameraStatusMsg')) $('cameraStatusMsg').textContent = '⚠️ No se detectó cámara física o permiso denegado; puedes usar captura simulada.';
+            });
+        }
+      },
+
+      stopCameraStream() {
+        if (this.activeMediaStream) {
+          this.activeMediaStream.getTracks().forEach(t => t.stop());
+          this.activeMediaStream = null;
+        }
+      },
+
+      captureFromCamera(purpose) {
+        this.stopCameraStream();
+        this.closeModal();
+        if (purpose === 'pos') {
+          this.scanBarcodePOS();
+        } else {
+          this.simulateRucPhoto();
+        }
+      },
+
+      // --- ADJUNTAR PDF DE RUC EN CLIENTES Y SUBIR A SUPABASE STORAGE ---
+      openAttachRucPdfModal() {
+        this.openModal(
+          '📄 Adjuntar RUC en PDF (Supabase Storage)',
+          `<div class="space-y-2.5">
+             <p class="text-[11px] text-slate-600">Selecciona o crea el cliente y adjunta el <strong>PDF del RUC</strong> enviado por WhatsApp. Quedará guardado en el repositorio de Vozkora.</p>
+             <div>
+               <label class="font-bold text-[11px]">Razón social / Nombre Cliente *</label>
+               <input id="pdfClientName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Comercializadora Pacífico S.A.">
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">RUC (13 dígitos) *</label>
+                 <input id="pdfClientRuc" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0992345678001">
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">WhatsApp Cliente</label>
+                 <input id="pdfClientPhone" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0991234567">
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Archivo PDF del RUC *</label>
+               <input id="pdfRucFileInput" type="file" accept="application/pdf,.pdf" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 text-[11px] bg-[#f5f8f8]" />
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button id="btnUploadRucPdf" onclick="V.submitAttachRucPdf()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Subir PDF y Guardar</button>`
+        );
+      },
+
+      async submitAttachRucPdf() {
+        const name = ($('pdfClientName')?.value || '').trim();
+        const ruc = ($('pdfClientRuc')?.value || '').trim();
+        const phone = ($('pdfClientPhone')?.value || '').trim() || 'No registrado';
+        const fileInput = $('pdfRucFileInput');
+        const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+
+        if (!name || !ruc || !file) {
+          return toast('Completa nombre, RUC y selecciona el archivo PDF.');
+        }
+
+        const btn = $('btnUploadRucPdf');
+        if (btn) { btn.textContent = 'Subiendo PDF...'; btn.disabled = true; }
+
+        let pdfUrl = '';
+        try {
+          if (typeof subirPdfRucSupabase === 'function') {
+            const up = await subirPdfRucSupabase(file, ruc);
+            pdfUrl = up.url;
+          }
+        } catch (e) {
+          // Respaldo DataURL local si el bucket aún no tiene políticas públicas
+          pdfUrl = URL.createObjectURL(file);
+        }
+
+        const isOff = appData.offline;
+        appData.clients.unshift({ name, id: ruc, phone, debt: 0, rucPdfUrl: pdfUrl, pendingSync: isOff });
+
+        let repoId = null;
+        if (typeof registrarEnRepositorio === 'function') {
+          const inserted = await registrarEnRepositorio('repo_clientes', {
+            cliente_ruc_ci: ruc,
+            cliente_nombre: name,
+            cliente_telefono: phone,
+            ruc_pdf_url: pdfUrl
+          });
+          if (inserted && inserted.id) repoId = inserted.id;
+        }
+
+        if (isOff) {
+          enqueueOfflineOp('Cliente + PDF RUC', ruc, `${name} (${file.name})`, async () => {
+            const cl = appData.clients.find(c => c.id === ruc);
+            if (cl) cl.pendingSync = false;
+          }, 'repo_clientes', repoId);
+        }
+
+        this.closeModal();
+        renderPhone('clients');
+        toast(`✓ Cliente ${name} y PDF RUC guardados en repositorio.`);
       },
 
       openDemoControlModal() {
@@ -3164,27 +3573,32 @@
         appData.discountMode = 'none';
         appData.discountPct = 0;
 
-        if (appData.offline) {
-          enqueueOfflineOp('Facturación SRI', invId, `${clientName} · ${appMoney(fin.grandTotal)} (${method})`, () => {
-            const found = appData.invoices.find(x => x.id === invId);
-            if (found) found.status = 'Autorizada SRI';
-          });
-        }
-
-        if (typeof registrarEnRepositorio === 'function') {
-          registrarEnRepositorio('repo_facturas', {
-            numero_factura: invId,
-            cliente_ruc_ci: '1790012345001',
-            cliente_nombre: clientName,
-            subtotal: Number(fin.netSubtotal.toFixed(2)),
-            iva_porcentaje: appData.selectedIvaRate,
-            iva_monto: Number(fin.ivaAmt.toFixed(2)),
-            total: Number(fin.grandTotal.toFixed(2)),
-            forma_pago: method,
-            items: appData.invoices[appData.invoices.length - 1],
-            estado_sri: appData.offline ? 'PENDIENTE_OFFLINE' : 'AUTORIZADA_SRI'
-          });
-        }
+        const invSnapshot = appData.invoices[appData.invoices.length - 1];
+        const isOffNow = appData.offline;
+        (async () => {
+          let insertedId = null;
+          if (typeof registrarEnRepositorio === 'function') {
+            const inserted = await registrarEnRepositorio('repo_facturas', {
+              numero_factura: invId,
+              cliente_ruc_ci: '1790012345001',
+              cliente_nombre: clientName,
+              subtotal: Number(fin.netSubtotal.toFixed(2)),
+              iva_porcentaje: appData.selectedIvaRate,
+              iva_monto: Number(fin.ivaAmt.toFixed(2)),
+              total: Number(fin.grandTotal.toFixed(2)),
+              forma_pago: method,
+              items: invSnapshot,
+              estado_sri: isOffNow ? 'PENDIENTE_OFFLINE' : 'AUTORIZADA_SRI'
+            });
+            if (inserted && inserted.id) insertedId = inserted.id;
+          }
+          if (isOffNow) {
+            enqueueOfflineOp('Facturación SRI', invId, `${clientName} · ${appMoney(fin.grandTotal)} (${method})`, () => {
+              const found = appData.invoices.find(x => x.id === invId);
+              if (found) found.status = 'Autorizada SRI';
+            }, 'repo_facturas', insertedId);
+          }
+        })();
         this.openModal(
           appData.offline ? '💾 Guardada en Cola Offline' : '⚡ Factura SRI Emitida',
           `<p>Se creó la factura <strong>${invId}</strong> para <strong>${esc(clientName)}</strong>.</p>
@@ -3473,6 +3887,33 @@
         toast(isOff ? `💾 Proforma ${qId} guardada en cola Offline (PDF disponible).` : `✓ Proforma ${qId} (${appMoney(qFin.grandTotal)}) creada en Contífico y lista en PDF.`);
       },
 
+      downloadProformaFile(idx) {
+        const q = appData.quotes[idx];
+        if (!q) return;
+        const lines = [
+          'VOZKORA CONTASOFT + IA - PROFORMA OFICIAL',
+          '=========================================',
+          `Documento: ${q.id}`,
+          `Fecha: ${nowFormatted()}`,
+          `Cliente: ${q.client}`,
+          '-----------------------------------------',
+          ...q.items.map(it => `${it.qty} x ${it.name} = $${(it.price * it.qty).toFixed(2)}`),
+          '-----------------------------------------',
+          `Subtotal: $${Number(q.subtotal || 0).toFixed(2)}`,
+          `IVA (${q.ivaRate ?? 15}%): $${Number(q.ivaAmt || 0).toFixed(2)}`,
+          `TOTAL PROFORMA: $${Number(q.total || 0).toFixed(2)} USD`
+        ].join('\n');
+        const blob = new Blob([lines], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${q.id}_${(q.client || 'Cliente').replace(/\s+/g, '_')}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
+        toast(`📥 Archivo ${q.id}.pdf descargado en tu dispositivo.`);
+      },
+
       previewProformaPdf(idx) {
         const q = appData.quotes[idx];
         if (!q) return;
@@ -3511,7 +3952,7 @@
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 cursor-pointer">Cerrar</button>
-           <button onclick="V.closeModal(); toast('📥 Archivo ${q.id}.pdf descargado y listo para enviar por WhatsApp.');" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">📥 Descargar PDF</button>`
+           <button onclick="V.downloadProformaFile(${idx}); V.closeModal();" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">📥 Descargar PDF</button>`
         );
       },
 
@@ -3779,6 +4220,9 @@
           const synced = appData.offlineQueueItems.length;
           appData.offlineQueueItems.forEach(item => {
             if (typeof item.onSync === 'function') item.onSync();
+            if (item.repoTable && item.repoRowId && typeof actualizarRegistroRepositorio === 'function') {
+              actualizarRegistroRepositorio(item.repoTable, item.repoRowId, { estado_sri: 'AUTORIZADA_SRI' });
+            }
           });
           appData.offlineQueueItems = [];
           appData.offlineQueue = 0;
@@ -4096,17 +4540,23 @@
         }
       },
 
-      applySession(user) {
+      async applySession(user) {
         $('auth-overlay').classList.add('hidden');
 
-        // Aplicar plan y packs IA configurados para ese usuario/empresa
+        // Aplicar plan y packs IA configurados para ese usuario/empresa (sin resetear a Piloto)
         if (user.plan_activo && PLANS.some(p => p.id === user.plan_activo)) {
           selectPlan(user.plan_activo);
+          configState.desiredUsers = Number(user.max_usuarios) || getCurrentPlan().includedUsers;
         }
         if (Array.isArray(user.packs_ia)) {
           const allPacks = ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'];
           allPacks.forEach(pk => { configState.activeSVAs[pk] = user.packs_ia.includes(pk); });
           configState.selectedSvaOrder = user.packs_ia.slice();
+        }
+
+        const isAnual = String(user.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+        if ($('phone-periodicity-badge')) {
+          $('phone-periodicity-badge').textContent = isAnual ? '👑 ANUAL · VIP' : '📅 MENSUAL';
         }
 
         // Actualizar encabezado móvil con Empresa, RUC y Entorno real
@@ -4115,14 +4565,102 @@
         if ($('phone-company-subtitle')) $('phone-company-subtitle').textContent = `${envLabel} · RUC ${user.empresa_ruc}`;
         if ($('phone-company-title')) $('phone-company-title').textContent = user.empresa_nombre;
 
+        // Evaluar Regla 1 (Franja roja días 1-5) y Regla 2 (Bloqueo total +5 días)
+        const subEval = typeof evaluarEstadoSuscripcion === 'function' ? evaluarEstadoSuscripcion(user) : { estado: 'AL_DIA' };
+        const warnBanner = $('phone-renewal-warning-banner');
+        const lockScreen = $('phone-suspension-lock');
+        if (warnBanner) warnBanner.classList.add('hidden');
+        if (lockScreen) lockScreen.classList.add('hidden');
+
+        if (user.rol !== 'SUPERADMIN') {
+          if (subEval.estado === 'PENDIENTE_RENOVACION' && warnBanner) {
+            warnBanner.classList.remove('hidden');
+          } else if (subEval.estado === 'BLOQUEADO_CORTE' && lockScreen) {
+            lockScreen.classList.remove('hidden');
+          }
+        }
+
+        // Hidratar datos reales de Supabase para esta empresa (persistencia al recargar App)
+        if (user.empresa_ruc && typeof consultarRepositorio === 'function') {
+          try {
+            const [dbClients, dbInvoices, dbQuotes, dbNC, dbOrders] = await Promise.all([
+              consultarRepositorio('repo_clientes', user.empresa_ruc).catch(() => []),
+              consultarRepositorio('repo_facturas', user.empresa_ruc).catch(() => []),
+              consultarRepositorio('repo_proformas', user.empresa_ruc).catch(() => []),
+              consultarRepositorio('repo_notas_credito', user.empresa_ruc).catch(() => []),
+              consultarRepositorio('repo_ordenes_trabajo', user.empresa_ruc).catch(() => [])
+            ]);
+
+            if (Array.isArray(dbClients) && dbClients.length > 0) {
+              appData.clients = dbClients.map(c => ({
+                name: c.cliente_nombre,
+                id: c.cliente_ruc_ci,
+                phone: c.cliente_telefono || 'N/A',
+                debt: 0,
+                rucPdfUrl: c.ruc_pdf_url || ''
+              }));
+            }
+            if (Array.isArray(dbInvoices) && dbInvoices.length > 0) {
+              appData.invoices = dbInvoices.map(f => ({
+                id: f.numero_factura,
+                client: f.cliente_nombre,
+                subtotal: Number(f.subtotal || 0),
+                ivaRate: Number(f.iva_porcentaje || 15),
+                ivaAmt: Number(f.iva_monto || 0),
+                total: Number(f.total || 0),
+                method: f.forma_pago || 'Efectivo',
+                commission: Number(((Number(f.subtotal || 0)) * 0.03).toFixed(2)),
+                status: f.estado_sri === 'PENDIENTE_OFFLINE' ? 'Pendiente Offline' : 'Autorizada SRI'
+              }));
+            }
+            if (Array.isArray(dbQuotes) && dbQuotes.length > 0) {
+              appData.quotes = dbQuotes.map(q => ({
+                id: q.numero_proforma,
+                client: q.cliente_nombre,
+                contificoSynced: true,
+                items: Array.isArray(q.items) ? q.items : [],
+                subtotal: Number(q.subtotal || 0),
+                discountTotal: 0,
+                ivaRate: 15,
+                ivaAmt: Number(q.iva_monto || 0),
+                total: Number(q.total || 0),
+                discountModeLabel: 'Sincronizada',
+                converted: false
+              }));
+            }
+            if (Array.isArray(dbNC) && dbNC.length > 0) {
+              appData.creditNotes = dbNC.map(n => ({
+                id: n.numero_nc,
+                invoiceRef: n.factura_referencia,
+                client: n.cliente_nombre,
+                reason: n.motivo,
+                amount: Number(n.monto || 0),
+                date: (n.creado_en || '').slice(0, 10)
+              }));
+            }
+            if (Array.isArray(dbOrders) && dbOrders.length > 0) {
+              appData.orders = dbOrders.map(o => ({
+                id: o.codigo_orden,
+                client: o.cliente_nombre,
+                desc: o.descripcion,
+                status: o.estado || 'Abierta',
+                createdAt: o.creado_en ? new Date(o.creado_en).getTime() : Date.now(),
+                createdDateStr: (o.creado_en || '').slice(0, 16).replace('T', ' '),
+                lastObservation: Array.isArray(o.historial_cambios) && o.historial_cambios.length ? o.historial_cambios[o.historial_cambios.length - 1].obs : 'Registrada',
+                history: Array.isArray(o.historial_cambios) ? o.historial_cambios : []
+              }));
+            }
+          } catch (e) {}
+        }
+
         renderAll();
 
-        // Si entra con admin@vozkora.com (SUPERADMIN), abre directo Vozkora Control CRM
+        // Blindaje estricto: SOLO SUPERADMIN abre CRM
         if (user.rol === 'SUPERADMIN') {
           CRM.open();
         } else {
           $('crm-overlay').classList.add('hidden');
-          toast(`✓ Bienvenido ${user.email} (${user.empresa_nombre})`);
+          toast(`✓ Bienvenido ${user.email} (${user.empresa_nombre} · ${isAnual ? 'Plan Anual VIP' : 'Plan Mensual'})`);
         }
       },
 
@@ -4156,6 +4694,11 @@
       repoSearch: '',
 
       open() {
+        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        if (!ses || ses.rol !== 'SUPERADMIN') {
+          $('crm-overlay').classList.add('hidden');
+          return toast('⛔ Acceso denegado: Solo Súper-Administrador puede ingresar a Vozkora Control CRM.');
+        }
         $('crm-overlay').classList.remove('hidden');
         this.setTab(this.currentTab);
       },
@@ -4167,7 +4710,7 @@
 
       setTab(tab) {
         this.currentTab = tab;
-        ['companies', 'users', 'tickets', 'repo'].forEach(t => {
+        ['companies', 'users', 'billing', 'tickets', 'repo'].forEach(t => {
           const btn = $('crm-tab-' + t);
           if (btn) {
             btn.className = (t === tab)
@@ -4177,6 +4720,7 @@
         });
         if (tab === 'companies') this.loadCompanies();
         else if (tab === 'users') this.loadUsers();
+        else if (tab === 'billing') this.loadBillingTab();
         else if (tab === 'tickets') this.loadTickets();
         else if (tab === 'repo') this.loadRepo(this.repoTable);
       },
@@ -4266,9 +4810,21 @@
                       RUC: <strong>${esc(emp.ruc)}</strong> · Tel: ${esc(emp.telefono || 'N/A')} · Contacto: ${esc(emp.email_contacto || 'N/A')}
                     </div>
 
+                    <div class="text-[10.5px] text-slate-600 flex flex-wrap items-center gap-2">
+                      <span class="px-2 py-0.5 rounded font-extrabold ${String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL' ? 'bg-amber-100 text-amber-900' : 'bg-cyan-50 text-cyan-900'}">
+                        ${String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL' ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
+                      </span>
+                      <span>Próximo corte: <strong class="font-mono">${esc(emp.fecha_proximo_corte || '01 del mes')}</strong></span>
+                      <span>· Control corte: <strong>${emp.control_corte === false ? 'Exento' : 'Activo'}</strong>${emp.exento_hasta ? ` (Exento hasta ${esc(emp.exento_hasta)})` : ''}</span>
+                    </div>
+
                     <div class="flex flex-wrap items-center gap-2 pt-1">
                       <select onchange="CRM.changeCompanyPlan('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
                         ${PLANS.map(pl => `<option value="${pl.id}" ${emp.plan_activo === pl.id ? 'selected' : ''}>Plan: ${pl.name} (${pl.includedUsers} usu.)</option>`).join('')}
+                      </select>
+                      <select onchange="CRM.changeCompanyPeriodicity('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
+                        <option value="MENSUAL" ${(emp.periodicidad || 'MENSUAL') === 'MENSUAL' ? 'selected' : ''}>Periodicidad: MENSUAL</option>
+                        <option value="ANUAL" ${emp.periodicidad === 'ANUAL' ? 'selected' : ''}>Periodicidad: ANUAL (VIP)</option>
                       </select>
                       <div class="inline-flex items-center gap-1 bg-white border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px]">
                         <span class="font-bold text-slate-600">Cupo máx:</span>
@@ -4283,7 +4839,7 @@
                         🔑 API Contífico
                       </button>
                       <button onclick="CRM.userFilterEmpresa='${esc(emp.ruc)}'; CRM.setTab('users');" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
-                        👥 Ver Usuarios (${usedCount})
+                        👥 Usuarios (${usedCount})
                       </button>
                       <button onclick="CRM.toggleCompanyActive('${emp.id}', ${!emp.activa})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${emp.activa ? 'bg-rose-100 text-rose-800' : 'bg-emerald-600 text-white'} cursor-pointer">
                         ${emp.activa ? 'Suspender' : 'Reactivar'}
@@ -4424,6 +4980,160 @@
         } catch (e) {
           toast('Error: ' + e.message);
         }
+      },
+
+      async changeCompanyPeriodicity(id, periodicidad) {
+        const fecha_proximo_corte = calcularProximoCorte(periodicidad);
+        await crmActualizarEmpresa(id, { periodicidad, fecha_proximo_corte });
+        toast(`✓ Periodicidad cambiada a ${periodicidad}. Próximo corte: ${fecha_proximo_corte}`);
+        this.loadCompanies();
+      },
+
+      // -------------------------------------------------------------------
+      // PESTAÑA COBRANZAS Y CORTES AUTOMÁTICOS (DÍA 01 / GRACIA 1-5 / BLOQUEO +5)
+      // -------------------------------------------------------------------
+      billingFilter: 'ALL',
+      async loadBillingTab() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Calculando estado de cartera y fechas de corte...</div>';
+        try {
+          this.cachedCompanies = await crmListarEmpresas();
+          this.renderBillingView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderBillingView() {
+        const body = $('crm-body');
+        const payUrl = typeof obtenerUrlPasarela === 'function' ? obtenerUrlPasarela() : '';
+        const enriched = this.cachedCompanies.map(emp => ({
+          emp,
+          subStatus: evaluarEstadoSuscripcion(emp)
+        }));
+
+        const alDiaCount = enriched.filter(x => x.subStatus.estado === 'AL_DIA' || x.subStatus.estado.startsWith('EXENTO')).length;
+        const moraGraciaCount = enriched.filter(x => x.subStatus.estado === 'PENDIENTE_RENOVACION').length;
+        const bloqueadosCount = enriched.filter(x => x.subStatus.estado === 'BLOQUEADO_CORTE').length;
+
+        const filtered = enriched.filter(x => {
+          if (this.billingFilter === 'GRACIA') return x.subStatus.estado === 'PENDIENTE_RENOVACION';
+          if (this.billingFilter === 'BLOQUEADOS') return x.subStatus.estado === 'BLOQUEADO_CORTE';
+          if (this.billingFilter === 'AL_DIA') return x.subStatus.estado === 'AL_DIA' || x.subStatus.estado.startsWith('EXENTO');
+          return true;
+        });
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div>
+              <h3 class="text-sm font-extrabold text-[#073e3b]">💳 Cobranzas Automáticas, Fechas de Corte (Día 01) y Pasarela</h3>
+              <p class="text-[11px] text-slate-500">Regla 1: Días 1–5 tras corte = Aviso rojo en App · Regla 2: +5 días tras corte = Bloqueo total con redirección a pasarela.</p>
+            </div>
+
+            <!-- Configuración URL Pasarela de Pago (dLocal Go / Link temporal) -->
+            <div class="p-3 rounded-2xl bg-[#e7f5f1] border border-[#b9d1cd] flex flex-wrap items-center gap-2">
+              <div class="flex-1 min-w-[220px]">
+                <label class="text-[10.5px] font-extrabold text-[#073e3b] block">🔗 URL Pasarela de Pago (Se abre en el navegador del celular del cliente):</label>
+                <input id="crmPaymentGatewayUrl" class="w-full border border-[#b9d1cd] rounded-xl px-2.5 py-1.5 mt-1 font-mono text-[11px] bg-white" value="${esc(payUrl)}" />
+              </div>
+              <button onclick="const u=guardarUrlPasarela($('crmPaymentGatewayUrl').value); toast('✓ URL de Pasarela guardada: '+u);" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer self-end">
+                Guardar Link Pasarela
+              </button>
+            </div>
+
+            <!-- Filtros Semáforo -->
+            <div class="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2.5">
+              <button onclick="CRM.billingFilter='ALL'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
+                Todas (${enriched.length})
+              </button>
+              <button onclick="CRM.billingFilter='AL_DIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'AL_DIA' ? 'bg-[#087e70] text-white' : 'bg-emerald-50 text-emerald-900 border border-emerald-200'}">
+                🟢 Al día / Exentas (${alDiaCount})
+              </button>
+              <button onclick="CRM.billingFilter='GRACIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'GRACIA' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
+                🟡 En días de gracia 1–5 (${moraGraciaCount})
+              </button>
+              <button onclick="CRM.billingFilter='BLOQUEADOS'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'BLOQUEADOS' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-900 border border-rose-200'}">
+                🔴 Bloqueadas +5 días (${bloqueadosCount})
+              </button>
+            </div>
+
+            <div class="space-y-2.5">
+              ${filtered.map(({ emp, subStatus }) => {
+                const pl = PLANS.find(p => p.id === emp.plan_activo) || PLANS[3];
+                const isAnual = String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+                const monto = isAnual ? pl.annualPrice : pl.monthlyPrice;
+                const badgeCls = subStatus.estado === 'BLOQUEADO_CORTE'
+                  ? 'bg-rose-100 text-rose-800'
+                  : (subStatus.estado === 'PENDIENTE_RENOVACION'
+                    ? 'bg-amber-100 text-amber-900'
+                    : 'bg-emerald-100 text-emerald-800');
+                const badgeTxt = subStatus.estado === 'BLOQUEADO_CORTE'
+                  ? `🔴 Bloqueada (${subStatus.diasMora} días mora)`
+                  : (subStatus.estado === 'PENDIENTE_RENOVACION'
+                    ? `🟡 Aviso Rojo (${subStatus.diasMora} días tras corte)`
+                    : (subStatus.estado === 'EXENTO' ? '⚪ Control Corte Desactivado' : (subStatus.estado === 'EXENTO_HASTA' ? `🎁 Exento hasta ${subStatus.exentoHasta}` : '🟢 Al día')));
+
+                return `
+                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <strong class="text-sm text-[#073e3b]">${esc(emp.nombre)}</strong>
+                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isAnual ? 'bg-amber-100 text-amber-900' : 'bg-cyan-50 text-cyan-900'}">
+                          ${isAnual ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
+                        </span>
+                        <span class="ml-1 font-mono text-[11px] font-bold text-[#087e70]">Plan ${esc(pl.name)} ($${monto.toFixed(2)})</span>
+                      </div>
+                      <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${badgeCls}">${badgeTxt}</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] bg-white p-2.5 rounded-xl border border-slate-200">
+                      <div>
+                        <label class="font-bold text-slate-600 block">Fecha Próximo Corte (Día 01):</label>
+                        <input type="date" value="${esc(emp.fecha_proximo_corte || '')}" onchange="CRM.updateBillingField('${emp.id}', { fecha_proximo_corte: this.value })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
+                      </div>
+                      <div>
+                        <label class="font-bold text-slate-600 block">Control de Corte Automático:</label>
+                        <select onchange="CRM.updateBillingField('${emp.id}', { control_corte: this.value === 'true' })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 bg-white font-bold">
+                          <option value="true" ${emp.control_corte !== false ? 'selected' : ''}>✅ Activado (Aplica Reglas 1 y 2)</option>
+                          <option value="false" ${emp.control_corte === false ? 'selected' : ''}>⏸️ Desactivado (Exento)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="font-bold text-slate-600 block">Exento / Meses Gratis Hasta:</label>
+                        <input type="date" value="${esc(emp.exento_hasta || '')}" onchange="CRM.updateBillingField('${emp.id}', { exento_hasta: this.value || null })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 pt-1">
+                      <button onclick="CRM.renewCompanyCycle('${emp.id}', '${esc(emp.periodicidad || 'MENSUAL')}')" class="px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                        ✓ Registrar Pago y Renovar Próximo Ciclo
+                      </button>
+                      <button onclick="const msg=encodeURIComponent('Hola ${esc(emp.nombre)}, te recordamos que tu suscripción Vozkora (${isAnual ? 'Anual' : 'Mensual'}) tiene corte el ${esc(emp.fecha_proximo_corte || 'día 01')}.'); window.open('https://wa.me/${esc((emp.telefono || '').replace(/\D/g,''))}?text='+msg, '_blank');" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-100 text-emerald-900 cursor-pointer">
+                        💬 Recordatorio WhatsApp
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      },
+
+      async updateBillingField(id, patchObj) {
+        await crmActualizarEmpresa(id, patchObj);
+        toast('✓ Configuración de corte actualizada en Supabase.');
+        this.loadBillingTab();
+      },
+
+      async renewCompanyCycle(id, periodicidad) {
+        const nextCorte = calcularProximoCorte(periodicidad, new Date());
+        await crmActualizarEmpresa(id, {
+          fecha_proximo_corte: nextCorte,
+          activa: true
+        });
+        toast(`✓ Pago registrado. Próximo corte programado para el ${nextCorte}.`);
+        this.loadBillingTab();
       },
 
       // -------------------------------------------------------------------
@@ -5095,18 +5805,55 @@
           ...rows.map(r => cols.map(c => `"${String(typeof r[c] === 'object' ? JSON.stringify(r[c]) : (r[c] ?? '')).replace(/"/g, '""')}"`).join(';'))
         ].join('\n');
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
+        a.href = url;
         a.download = `${this.repoTable}_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a);
         a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
         toast(`📥 Excel/CSV descargado (${rows.length} registros).`);
       }
     };
 
-    window.addEventListener('DOMContentLoaded', () => {
+    // Manejo del botón Atrás del teléfono móvil Android (2 toques para salir)
+    (function setupAndroidBackNavigation() {
+      let lastBackPress = 0;
+      try {
+        window.history.pushState({ vozkoraApp: true }, '');
+      } catch (e) {}
+
+      window.addEventListener('popstate', () => {
+        const modal = $('phone-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+          V.closeModal();
+          window.history.pushState({ vozkoraApp: true }, '');
+          return;
+        }
+        if (appData && appData.currentPage && appData.currentPage !== 'home') {
+          const backTarget = appData.lastMainTab && appData.lastMainTab !== appData.currentPage ? appData.lastMainTab : 'home';
+          V.open(backTarget);
+          window.history.pushState({ vozkoraApp: true }, '');
+          return;
+        }
+        const now = Date.now();
+        if (now - lastBackPress < 2000) {
+          // Segundo toque dentro de 2 segundos: permite salir
+          return;
+        }
+        lastBackPress = now;
+        toast('📱 Presiona atrás nuevamente para salir de Vozkora');
+        window.history.pushState({ vozkoraApp: true }, '');
+      });
+    })();
+
+    window.addEventListener('DOMContentLoaded', async () => {
       const existing = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
       if (existing && existing.email) {
-        Auth.applySession(existing);
+        const refreshed = typeof refrescarSesionDesdeSupabase === 'function'
+          ? await refrescarSesionDesdeSupabase(existing)
+          : existing;
+        await Auth.applySession(refreshed);
       }
     });
   </script>
