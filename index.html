@@ -74,6 +74,8 @@
     }
     .wave-bar { animation: pulseBar 1s ease-in-out infinite; }
   </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}</script>
 </head>
 <body class="min-h-screen flex flex-col font-sans antialiased selection:bg-emerald-200 selection:text-teal-950">
   <!-- ===================================================================== -->
@@ -1519,9 +1521,9 @@
       return `
         <div class="p-2.5 rounded-xl bg-[#f5f8f8] border ${fin.hasRuleViolation ? 'border-rose-400 bg-rose-50' : 'border-[#dce6e5]'} space-y-2">
           <div class="flex items-center justify-between text-[11px]">
-            <span class="font-extrabold text-[#073e3b]">🏷️ Descuentos (Regla IA: máx. ${fin.maxAllowed}%)</span>
+            <span class="font-extrabold text-[#073e3b]">🏷️ Descuentos ${marginShieldOn ? `(Escudo Margen IA · máx. ${fin.maxAllowed}%)` : `(Tope: ${fin.maxAllowed}%)`}</span>
             <span class="font-mono font-extrabold ${fin.hasRuleViolation ? 'text-rose-600' : 'text-[#087e70]'}">
-              ${marginShieldOn ? `Margen: ${fin.marginPct.toFixed(1)}%` : `Ahorro: -${appMoney(fin.discountAmount)}`}
+              ${marginShieldOn ? `🛡️ Margen: ${fin.marginPct.toFixed(1)}%` : `Ahorro: -${appMoney(fin.discountAmount)}`}
             </span>
           </div>
 
@@ -1912,16 +1914,18 @@
               </select>
             </div>
 
-            <div class="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between gap-2">
-              <div>
-                <div class="text-[11px] font-extrabold text-[#073e3b]">🏆 Comisión Vendedor (${fin.appliedCommRate.toFixed(1)}%)</div>
-                <div class="text-[10px] text-slate-600">${fin.bonusCommRate > 0 ? `Incluye +${fin.bonusCommRate}% bono por margen ≥ 20%` : `Regla base definida en Entrenador IA`}</div>
+            ${configState.activeSVAs.gerencia ? `
+              <div class="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between gap-2">
+                <div>
+                  <div class="text-[11px] font-extrabold text-[#073e3b]">🏆 Comisión Vendedor (${fin.appliedCommRate.toFixed(1)}%)</div>
+                  <div class="text-[10px] text-slate-600">${fin.bonusCommRate > 0 ? `Incluye +${fin.bonusCommRate}% bono por margen ≥ 20%` : `Regla base definida en Entrenador IA`}</div>
+                </div>
+                <div class="text-right">
+                  <div class="font-mono font-black text-sm text-[#087e70]">${appMoney(fin.commissionAmt)}</div>
+                  <button onclick="V.open('commissions')" class="text-[10px] font-bold text-[#073e3b] underline cursor-pointer">Ver Dashboard</button>
+                </div>
               </div>
-              <div class="text-right">
-                <div class="font-mono font-black text-sm text-[#087e70]">${appMoney(fin.commissionAmt)}</div>
-                <button onclick="V.open('commissions')" class="text-[10px] font-bold text-[#073e3b] underline cursor-pointer">Ver Dashboard</button>
-              </div>
-            </div>
+            ` : ''}
 
             <div class="pt-1 border-t border-slate-100 space-y-0.5 text-xs">
               <div class="flex justify-between text-slate-600">
@@ -2357,8 +2361,15 @@
         `;
       }
 
-      // 8. DASHBOARD DE COMISIONES
+      // 8. DASHBOARD DE COMISIONES (REQUIERE PACK GERENCIA Y CONTROL IA)
       if (p === 'commissions') {
+        if (!configState.activeSVAs.gerencia) {
+          return backBtn + renderLockBanner(
+            'Calculadora de Comisiones y Control Gerencial IA',
+            'Disponible con el Pack Gerencia y Control IA ($5,99/mes). Liquida comisiones por venta, bonos por margen y detecta anomalías.',
+            'sva', 'gerencia', 'Pack Gerencia y Control IA · $5,99/mes', 'commissions'
+          );
+        }
         const baseCommRate = Number(appData.aiTraining.commissionPct) || 0;
         const bonusCommRate = Number(appData.aiTraining.commissionBonusPct) || 0;
         const totalEarned = appData.invoices.reduce((a, inv) => a + (inv.commission || 0), 0);
@@ -2906,7 +2917,7 @@
             </div>
             <div class="flex flex-wrap gap-1.5">
               <button onclick="V.quickAsk('¿Qué productos debo reponer hoy?')" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#f5f8f8] border border-[#dce6e5] cursor-pointer">¿Qué reponer?</button>
-              <button onclick="V.quickAsk('¿Cómo va mi pre-cierre de IVA SRI?')" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#f5f8f8] border border-[#dce6e5] cursor-pointer">Pre-cierre SRI</button>
+              ${configState.activeSVAs.finanzas ? `<button onclick="V.quickAsk('¿Cómo va mi pre-cierre de IVA SRI?')" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#f5f8f8] border border-[#dce6e5] cursor-pointer">Pre-cierre SRI</button>` : ''}
               <button onclick="V.quickAsk('Resumen de cartera vencida')" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#f5f8f8] border border-[#dce6e5] cursor-pointer">Cartera</button>
             </div>
             <input id="askInput" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Escribe tu consulta gerencial...">
@@ -3249,24 +3260,50 @@
       async extractRucInfoFromPdfFile(file) {
         let extractedRuc = '';
         let extractedName = '';
+        let fullText = '';
+
         try {
           const buf = await file.arrayBuffer();
-          const rawText = new TextDecoder('latin1').decode(buf);
-          const rucMatch = rawText.match(/\b(\d{10}001)\b/);
-          if (rucMatch) extractedRuc = rucMatch[1];
-          const cleanAscii = rawText.replace(/[^\x20-\x7EÁÉÍÓÚÑáéíóúñ]/g, ' ');
-          const nameMatch = cleanAscii.match(/([A-ZÁÉÍÓÚÑ]{3,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,}){1,5}\s+(?:S\.A\.S\.|S\.A\.|CIA\.?\s*LTDA\.?))/);
-          if (nameMatch) extractedName = nameMatch[1].trim();
+          if (window.pdfjsLib) {
+            const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+            const maxPages = Math.min(pdf.numPages, 2);
+            for (let p = 1; p <= maxPages; p++) {
+              const page = await pdf.getPage(p);
+              const content = await page.getTextContent();
+              const pageLines = content.items.map(it => (it.str || '').trim()).filter(Boolean);
+              fullText += pageLines.join('\n') + '\n';
+
+              for (let i = 0; i < pageLines.length; i++) {
+                const line = pageLines[i];
+                if (!extractedRuc && /N[uú]mero\s*RUC/i.test(line)) {
+                  const sameLineDigits = line.replace(/\D/g, '');
+                  if (sameLineDigits.length === 13) extractedRuc = sameLineDigits;
+                  else if (pageLines[i + 1]) {
+                    const nextDigits = pageLines[i + 1].replace(/\D/g, '');
+                    if (nextDigits.length === 13) extractedRuc = nextDigits;
+                  }
+                }
+                if (!extractedName && /^Raz[oó]n\s*Social$/i.test(line) && pageLines[i + 1]) {
+                  const candidate = pageLines[i + 1].trim();
+                  if (candidate.length >= 3 && !/Representante|Certificado|N[uú]mero/i.test(candidate)) {
+                    extractedName = candidate;
+                  }
+                }
+              }
+            }
+          }
         } catch (e) {}
 
-        if (!extractedRuc) {
-          const fileNums = (file.name || '').match(/(\d{10,13})/);
-          extractedRuc = fileNums ? fileNums[1].padEnd(13, '0').slice(0, 13) : ('179' + String(Math.floor(1000000 + Math.random() * 8999999)) + '001');
+        // Fallback regex over full decompressed PDF text
+        if (!extractedRuc && fullText) {
+          const mRuc = fullText.match(/\b(\d{10}001)\b/);
+          if (mRuc) extractedRuc = mRuc[1];
         }
-        if (!extractedName) {
-          const baseTitle = (file.name || 'Empresa Cliente').replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').replace(/\d+/g, '').trim();
-          extractedName = baseTitle.length >= 4 ? baseTitle.toUpperCase() : 'DISTRIBUIDORA COMERCIAL ECUADOR S.A.';
+        if (!extractedName && fullText) {
+          const mSoc = fullText.match(/Raz[oó]n\s*Social\s*\n+\s*([^\n]{3,120})/i);
+          if (mSoc) extractedName = mSoc[1].trim();
         }
+
         return { ruc: extractedRuc, name: extractedName };
       },
 
@@ -3274,29 +3311,37 @@
         const file = inputEl && inputEl.files ? inputEl.files[0] : null;
         const box = $('pdfExtractedPreview');
         if (!file || !box) return;
-        const info = await this.extractRucInfoFromPdfFile(file);
-        box.dataset.ruc = info.ruc;
-        box.dataset.name = info.name;
-        box.innerHTML = `<strong>🤖 Datos detectados del PDF:</strong><br>Razón Social: <strong>${esc(info.name)}</strong><br>RUC: <strong class="font-mono">${esc(info.ruc)}</strong>`;
+        box.innerHTML = '<div class="text-[11px] font-bold text-[#087e70]">⏳ Leyendo certificado RUC del SRI...</div>';
         box.classList.remove('hidden');
+
+        const info = await this.extractRucInfoFromPdfFile(file);
+        box.innerHTML = `
+          <div class="space-y-2">
+            <div class="text-[11px] font-extrabold text-[#073e3b]">
+              ${info.ruc && info.name ? '✅ Datos extraídos del Certificado RUC (verifica antes de guardar):' : '⚠️ Verifica o completa los datos del certificado:'}
+            </div>
+            <div>
+              <label class="font-bold text-[10.5px] text-slate-700">Razón Social / Nombre *</label>
+              <input id="pdfDetectedNameInput" class="w-full border border-[#b9d1cd] rounded-lg p-1.5 mt-0.5 bg-white font-bold text-xs" value="${esc(info.name)}" placeholder="Ej. POSEIDON INTELLECTUALP S.A.S." />
+            </div>
+            <div>
+              <label class="font-bold text-[10.5px] text-slate-700">Número RUC (13 dígitos) *</label>
+              <input id="pdfDetectedRucInput" maxlength="13" class="w-full border border-[#b9d1cd] rounded-lg p-1.5 mt-0.5 bg-white font-mono font-bold text-xs" value="${esc(info.ruc)}" placeholder="Ej. 0993401734001" />
+            </div>
+          </div>
+        `;
       },
 
       async submitAttachRucPdf() {
         const phone = ($('pdfClientPhone')?.value || '').trim();
         const fileInput = $('pdfRucFileInput');
         const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+        const name = ($('pdfDetectedNameInput')?.value || '').trim();
+        const ruc = ($('pdfDetectedRucInput')?.value || '').trim();
 
-        if (!file || !phone) {
-          return toast('Adjunta el PDF del RUC y escribe el teléfono WhatsApp del cliente.');
+        if (!file || !phone || !name || !ruc) {
+          return toast('Adjunta el PDF del RUC, verifica Razón Social/RUC y escribe el teléfono WhatsApp.');
         }
-
-        const box = $('pdfExtractedPreview');
-        const extracted = (box && box.dataset.ruc)
-          ? { ruc: box.dataset.ruc, name: box.dataset.name }
-          : await this.extractRucInfoFromPdfFile(file);
-
-        const name = extracted.name;
-        const ruc = extracted.ruc;
 
         const btn = $('btnUploadRucPdf');
         if (btn) { btn.textContent = 'Guardando PDF...'; btn.disabled = true; }
@@ -4761,7 +4806,11 @@
         if (q.includes('reponer') || q.includes('inventario') || q.includes('stock')) {
           appData.aiAnswer = `📦 <strong>Análisis de Inventario:</strong> ${low ? `Te recomiendo reponer hoy <strong>${low}</strong> porque están por debajo del mínimo de seguridad.` : 'Tu inventario actual está abastecido.'}`;
         } else if (q.includes('sri') || q.includes('iva') || q.includes('cierre')) {
-          appData.aiAnswer = `🧾 <strong>Pre-Cierre SRI Estimado:</strong> IVA en ventas acumulado del mes: $1.620,00 · IVA en compras registradas: $980,00 · <strong>Valor estimado a declarar: $640,00</strong>.`;
+          if (!configState.activeSVAs.finanzas) {
+            appData.aiAnswer = `🔒 <strong>Módulo no activo:</strong> El <em>Copiloto de Pre-Cierre IVA SRI</em> pertenece al <strong>Pack Finanzas y Pre-Cierre SRI ($4,99/mes)</strong>. Actívalo en <em>Más → Los 6 Packs IA</em> o mejora tu plan.`;
+          } else {
+            appData.aiAnswer = `🧾 <strong>Pre-Cierre SRI Estimado:</strong> IVA en ventas acumulado del mes: $1.620,00 · IVA en compras registradas: $980,00 · <strong>Valor estimado a declarar: $640,00</strong>.`;
+          }
         } else {
           appData.aiAnswer = `📊 <strong>Resumen Comercial Los Andes:</strong> Tienes <strong>${appMoney(pending)}</strong> por cobrar y <strong>${appData.products.length}</strong> productos activos en catálogo. Puedes dictar nuevas facturas en <em>Ventas → Voz IA</em>.`;
         }
