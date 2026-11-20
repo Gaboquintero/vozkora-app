@@ -514,3 +514,21 @@ async function guardarSeleccionSvaGratisEmpresa(empresaId, packsIa, fijarSelecci
     sva_elegidos_fijos: fijarSeleccion
   });
 }
+
+
+async function sincronizarClientePuenteContifico(clientePayload, esEdicion = false) {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  const endpoint = `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/cliente`;
+  try {
+    const resp = await fetch(endpoint, {
+      method: esEdicion ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(clientePayload)
+    });
+    const data = await resp.json().catch(() => ({}));
+    return { ok: resp.ok, data };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}

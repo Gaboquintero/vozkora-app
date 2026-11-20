@@ -1459,6 +1459,10 @@
     function hasMinPlan(minRank) {
       return getCurrentPlan().rank >= minRank;
     }
+    function hasMultiWarehouse() {
+      // Multi-Bodega + Alertas de Stock aplican desde Plan 4 (Expansión) en adelante
+      return hasMinPlan(4);
+    }
 
     function renderLockBanner(title, desc, unlockType, unlockId, unlockLabel, returnPage) {
       const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
@@ -1723,17 +1727,23 @@
       `;
     }
 
-    // VISTA: INVENTARIO
+    // VISTA: INVENTARIO (MULTI-BODEGA Y ALERTAS STOCK EXCLUSIVO PLAN 4 EXPANSIÓN+)
     function viewInventory() {
+      const multiBodegaOn = hasMultiWarehouse();
       const lowStock = appData.products.filter(p => p.stock <= 15);
       return `
-        <div class="text-base font-extrabold text-[#17343a]">Inventarios y Bodega</div>
+        <div class="flex items-center justify-between">
+          <div class="text-base font-extrabold text-[#17343a]">${multiBodegaOn ? 'Inventarios Multi-Bodega' : 'Inventario Bodega Única'}</div>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${multiBodegaOn ? 'bg-[#e7f5f1] text-[#087e70]' : 'bg-slate-200 text-slate-700'}">
+            ${multiBodegaOn ? '🏢 Multi-Bodega Activa' : '📦 1 Bodega Principal'}
+          </span>
+        </div>
 
         <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2">
           <div class="flex items-center justify-between gap-2">
             <div>
               <b class="text-xs font-extrabold">Catálogo en Bodega (${appData.products.length})</b>
-              <div class="text-[10px] text-[#087e70] font-semibold">✏️ Modo Administración: edita precios, stock y bodega</div>
+              <div class="text-[10px] text-[#087e70] font-semibold">✏️ Edita precios, stock${multiBodegaOn ? ' y bodega asignada' : ''}</div>
             </div>
             <button onclick="V.openNewProductModal()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer shrink-0">
               + Nuevo
@@ -1745,8 +1755,8 @@
                 <div class="min-w-0">
                   <div class="font-bold text-[#17343a] truncate">${esc(p.name)} ${p.pendingSync ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[9.5px]">⏳ Pend.</span>' : ''}</div>
                   <div class="text-[10.5px] text-[#71838a]">
-                    ${p.id} · ${esc(p.warehouse)} · IVA ${p.ivaRate}% ·
-                    <span class="${p.stock <= 15 ? 'text-rose-600 font-bold' : 'font-semibold'}">${p.stock} unid.</span>
+                    ${p.id} · ${multiBodegaOn ? esc(p.warehouse) : 'Bodega Principal'} · IVA ${p.ivaRate}% ·
+                    <span class="${multiBodegaOn && p.stock <= 15 ? 'text-rose-600 font-bold' : 'font-semibold'}">${p.stock} unid.</span>
                   </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
@@ -1760,13 +1770,20 @@
           </div>
         </div>
 
-        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-1">
-          <div class="text-xs font-extrabold text-amber-900">⚠️ Alertas de inventario</div>
-          ${lowStock.length
-            ? lowStock.map(p => `<p class="text-[11px] text-amber-800">• <strong>${esc(p.name)}</strong> (${esc(p.warehouse)}): quedan ${p.stock} unidades.</p>`).join('')
-            : '<p class="text-[11px] text-emerald-800">✓ Todos los productos tienen existencias saludables.</p>'
-          }
-        </div>
+        ${multiBodegaOn ? `
+          <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-1">
+            <div class="text-xs font-extrabold text-amber-900">⚠️ Alertas de inventario (Plan Expansión+)</div>
+            ${lowStock.length
+              ? lowStock.map(p => `<p class="text-[11px] text-amber-800">• <strong>${esc(p.name)}</strong> (${esc(p.warehouse)}): quedan ${p.stock} unidades.</p>`).join('')
+              : '<p class="text-[11px] text-emerald-800">✓ Todos los productos tienen existencias saludables.</p>'
+            }
+          </div>
+        ` : `
+          <div class="p-3 rounded-2xl bg-slate-100 border border-slate-200 text-[11px] text-slate-600 flex items-center justify-between gap-2">
+            <span>🔒 <strong>Multi-Bodega y Alertas de Stock</strong> disponibles desde el <strong>Plan Expansión</strong>.</span>
+            <button onclick="V.open('plans')" class="px-2.5 py-1 rounded-lg bg-[#087e70] text-white font-bold text-[10px] shrink-0 cursor-pointer">Ver Planes</button>
+          </div>
+        `}
       `;
     }
 
@@ -1872,7 +1889,7 @@
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
             <div class="flex items-center justify-between">
               <b>Detalle de venta (${appData.cart.length})</b>
-              <span class="text-[10px] font-bold text-[#087e70]">✓ Auditoría SRI OK</span>
+              <span class="text-[10px] font-bold ${hasMinPlan(2) ? 'text-[#087e70]' : 'text-slate-400'}">${hasMinPlan(2) ? '✓ Auditoría SRI OK' : 'Sin auditoría preventiva (Piloto)'}</span>
             </div>
 
             <div class="space-y-1.5">
@@ -2417,38 +2434,52 @@
         `;
       }
 
-      // 9. CLIENTES + CÁMARA FOTO RUC + ADJUNTAR PDF RUC (SUPABASE STORAGE)
+      // 9. CLIENTES + CÁMARA FOTO RUC / PDF RUC (PLAN 2 IMPULSO+ O PACK VOZ IA) + EDICIÓN VÍA API
       if (p === 'clients') {
+        const ocrRucAllowed = hasMinPlan(2) || configState.activeSVAs.voz;
         return `
           ${backBtn}
           <div class="space-y-1.5">
             <div>
               <div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (API Contífico)</div>
-              <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados en Supabase y listos para API Software Contable</div>
+              <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados en Supabase y enviados vía API Software Contable</div>
             </div>
-            <div class="grid grid-cols-3 gap-1.5">
-              <button onclick="V.openRealCameraModal('ruc')" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
-                📷 Foto RUC
-              </button>
-              <button onclick="V.openAttachRucPdfModal()" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-cyan-50 text-cyan-900 border border-cyan-200 cursor-pointer">
-                📄 PDF RUC
-              </button>
-              <button onclick="V.openNewClientModal()" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#087e70] text-white cursor-pointer">
-                + Nuevo
+            <div class="grid ${ocrRucAllowed ? 'grid-cols-3' : 'grid-cols-1'} gap-1.5">
+              ${ocrRucAllowed ? `
+                <button onclick="V.openRealCameraModal('ruc')" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
+                  📷 Foto RUC
+                </button>
+                <button onclick="V.openAttachRucPdfModal()" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-cyan-50 text-cyan-900 border border-cyan-200 cursor-pointer">
+                  📄 PDF RUC
+                </button>
+              ` : ''}
+              <button onclick="V.openNewClientModal()" class="py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#087e70] text-white cursor-pointer">
+                + Nuevo Cliente
               </button>
             </div>
+            ${!ocrRucAllowed ? `
+              <div class="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[10.5px] text-amber-900 flex items-center justify-between gap-2">
+                <span>🔒 <strong>Foto RUC y lectura PDF RUC</strong> disponibles desde Plan Impulso o Pack Voz IA.</span>
+                <button onclick="V.open('plans')" class="px-2 py-0.5 rounded bg-[#087e70] text-white font-bold text-[10px] shrink-0 cursor-pointer">Subir Plan</button>
+              </div>
+            ` : ''}
           </div>
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 text-xs">
-            ${appData.clients.map(c => `
+            ${appData.clients.map((c, idx) => `
               <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0 gap-2">
                 <div class="min-w-0">
                   <div class="font-bold text-[#17343a] truncate">${esc(c.name)}</div>
                   <div class="text-[11px] font-mono text-[#71838a]">RUC/CI: ${esc(c.id)} · ${esc(c.phone)}</div>
                   ${c.rucPdfUrl ? `<a href="${esc(c.rucPdfUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200 text-[10px] font-bold">📄 Ver / Descargar PDF RUC</a>` : ''}
                 </div>
-                <div class="shrink-0">
-                  ${c.pendingSync ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">⏳ Pend. Sync</span>' : '<span class="text-[#087e70] font-bold">✓ SRI</span>'}
+                <div class="flex items-center gap-1.5 shrink-0">
+                  ${c.pendingSync ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">⏳ Pend.</span>' : '<span class="text-[#087e70] font-bold">✓ SRI</span>'}
+                  ${c.id !== '9999999999999' ? `
+                    <button onclick="V.openEditClientModal(${idx})" class="w-7 h-7 rounded-lg bg-[#e7f5f1] hover:bg-[#d0ebe4] text-[#073e3b] flex items-center justify-center text-xs font-bold cursor-pointer" title="Editar cliente y sincronizar vía API">
+                      ✏️
+                    </button>
+                  ` : ''}
                 </div>
               </div>
             `).join('')}
@@ -2732,8 +2763,15 @@
         `;
       }
 
-      // 14. REPORTES GERENCIALES
+      // 14. REPORTES GERENCIALES (DESDE PLAN 5 DOMINIO+)
       if (p === 'reports') {
+        if (!hasMinPlan(5)) {
+          return backBtn + renderLockBanner(
+            'Dashboard Gerencial y Reportes Avanzados',
+            'Disponible desde el Plan Dominio ($49,99/mes). Visualiza analítica gerencial consolidada y métricas multi-sucursal.',
+            'plan', 'dominio', 'Plan Dominio · $49,99/mes', 'reports'
+          );
+        }
         const salesToday = appData.invoices.reduce((a, x) => a + x.total, 0);
         return `
           ${backBtn}
@@ -3413,18 +3451,45 @@
         const newName = ($('editClientName')?.value || '').trim();
         const newPhone = ($('editClientPhone')?.value || '').trim();
         if (!newName) return toast('El nombre del cliente no puede estar vacío.');
+        const isOff = appData.offline;
         c.name = newName;
         c.phone = newPhone || 'No registrado';
+        c.pendingSync = isOff;
+
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
-        if (ses.empresa_ruc && typeof actualizarClienteEnRepositorio === 'function') {
-          await actualizarClienteEnRepositorio(ses.empresa_ruc, c.id, {
-            cliente_nombre: c.name,
-            cliente_telefono: c.phone
+        const apiPayload = {
+          ruc: c.id,
+          cedula: c.id.length === 10 ? c.id : '',
+          razon_social: c.name,
+          telefonos: c.phone,
+          es_cliente: true
+        };
+
+        if (isOff) {
+          enqueueOfflineOp('Edición Cliente API', c.id, `${c.name} (${c.phone})`, async () => {
+            c.pendingSync = false;
+            if (ses.empresa_ruc && typeof actualizarClienteEnRepositorio === 'function') {
+              await actualizarClienteEnRepositorio(ses.empresa_ruc, c.id, { cliente_nombre: c.name, cliente_telefono: c.phone });
+            }
+            if (typeof sincronizarClientePuenteContifico === 'function') {
+              await sincronizarClientePuenteContifico(apiPayload, true);
+            }
           });
+        } else {
+          if (ses.empresa_ruc && typeof actualizarClienteEnRepositorio === 'function') {
+            await actualizarClienteEnRepositorio(ses.empresa_ruc, c.id, {
+              cliente_nombre: c.name,
+              cliente_telefono: c.phone
+            });
+          }
+          if (typeof sincronizarClientePuenteContifico === 'function') {
+            await sincronizarClientePuenteContifico(apiPayload, true);
+          }
         }
+
         this.closeModal();
         renderPhone('clients');
-        toast(`✓ Datos de ${c.name} actualizados y sincronizados.`);
+        toast(isOff ? `💾 Edición de ${c.name} guardada en cola Offline.` : `✓ Cliente ${c.name} actualizado en Supabase y enviado vía API.`);
       },
 
       // --- VALIDAR CAPTURA DE PAGO EN CARTERA (CÁMARA / IMAGEN / PDF + IA) ---
@@ -4427,6 +4492,14 @@
             cliente_telefono: phone
           });
         }
+        if (!isOff && typeof sincronizarClientePuenteContifico === 'function') {
+          sincronizarClientePuenteContifico({
+            ruc: id,
+            razon_social: name,
+            telefonos: phone,
+            es_cliente: true
+          }, false);
+        }
         this.closeModal();
         renderPhone('clients');
         toast(isOff ? `💾 Cliente ${name} guardado en cola Offline.` : `Cliente ${name} sincronizado.`);
@@ -4466,10 +4539,10 @@
              </div>
            </div>
            <div>
-             <label class="font-bold">Bodega asignada</label>
+             <label class="font-bold">Bodega asignada ${hasMultiWarehouse() ? '' : '(Bodega Única en tu plan)'}</label>
              <select id="mProdWarehouse" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
                <option>Bodega Principal</option>
-               <option>Bodega Norte</option>
+               ${hasMultiWarehouse() ? '<option>Bodega Norte</option>' : ''}
              </select>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
@@ -4521,7 +4594,7 @@
                <label class="font-bold">Bodega</label>
                <select id="eProdWarehouse" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
                  <option ${prod.warehouse === 'Bodega Principal' ? 'selected' : ''}>Bodega Principal</option>
-                 <option ${prod.warehouse === 'Bodega Norte' ? 'selected' : ''}>Bodega Norte</option>
+                 ${hasMultiWarehouse() ? `<option ${prod.warehouse === 'Bodega Norte' ? 'selected' : ''}>Bodega Norte</option>` : ''}
                </select>
              </div>
              <div>
