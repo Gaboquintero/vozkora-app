@@ -150,6 +150,7 @@ async function refrescarSesionDesdeSupabase(sesionActual) {
       control_corte: empresa ? (empresa.control_corte !== false) : true,
       exento_hasta: empresa ? (empresa.exento_hasta || null) : null,
       max_usuarios: empresa ? empresa.max_usuarios : 5,
+      sva_elegidos_fijos: empresa ? !!empresa.sva_elegidos_fijos : false,
       packs_ia: empresa ? empresa.packs_ia : user.packs_ia,
       entorno: empresa ? empresa.entorno : user.entorno,
       contifico_api_key: empresa ? empresa.contifico_api_key : user.contifico_api_key,
@@ -230,10 +231,12 @@ async function loginVozkora(email, clave) {
     control_corte: empresa ? (empresa.control_corte !== false) : true,
     exento_hasta: empresa ? (empresa.exento_hasta || null) : null,
     max_usuarios: empresa ? empresa.max_usuarios : 5,
+      sva_elegidos_fijos: empresa ? !!empresa.sva_elegidos_fijos : false,
     packs_ia: empresa ? empresa.packs_ia : user.packs_ia,
     entorno: empresa ? empresa.entorno : user.entorno,
     contifico_api_key: empresa ? empresa.contifico_api_key : user.contifico_api_key,
-    contifico_pos_token: empresa ? empresa.contifico_pos_token : user.contifico_pos_token
+    contifico_pos_token: empresa ? empresa.contifico_pos_token : user.contifico_pos_token,
+    sva_elegidos_fijos: empresa ? !!empresa.sva_elegidos_fijos : false
   });
 
   localStorage.setItem(VOZKORA_CONFIG.STORAGE_KEYS.SESION, JSON.stringify(sesionCompleta));
@@ -486,4 +489,28 @@ async function obtenerProductosVozkora() {
     const locales = JSON.parse(localStorage.getItem(cacheKey) || '[]');
     return { origen: 'OFFLINE', productos: locales };
   }
+}
+
+
+async function actualizarClienteEnRepositorio(empresaRuc, clienteRucCi, campos) {
+  if (!empresaRuc || !clienteRucCi) return false;
+  try {
+    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/repo_clientes?empresa_ruc=eq.${encodeURIComponent(empresaRuc)}&cliente_ruc_ci=eq.${encodeURIComponent(clienteRucCi)}`;
+    const resp = await fetch(url, {
+      method: 'PATCH',
+      headers: supaHeaders(),
+      body: JSON.stringify(campos)
+    });
+    return resp.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function guardarSeleccionSvaGratisEmpresa(empresaId, packsIa, fijarSeleccion = true) {
+  if (!empresaId) return null;
+  return await crmActualizarEmpresa(empresaId, {
+    packs_ia: packsIa,
+    sva_elegidos_fijos: fijarSeleccion
+  });
 }
