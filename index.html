@@ -1187,14 +1187,18 @@
     }
 
     function activateFromPhone(type, id, returnPage) {
+      const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { rol: 'DEMO', entorno: 'DEMO' };
+      if (ses.rol !== 'DEMO' && ses.entorno !== 'DEMO') {
+        return V.open(type === 'sva' ? 'packs' : 'plans');
+      }
       if (type === 'plan') {
         selectPlan(id);
-        toast(`Plan ${getCurrentPlan().name} activado en el simulador.`);
+        toast(`Plan ${getCurrentPlan().name} activado en Modo Demo.`);
       } else if (type === 'sva') {
         configState.activeSVAs[id] = true;
         if (!configState.selectedSvaOrder.includes(id)) configState.selectedSvaOrder.push(id);
         const pack = SVA_PACKS.find(p => p.id === id);
-        toast(`${pack.name} activado en el simulador.`);
+        toast(`${pack.name} activado en Modo Demo.`);
       }
       if (returnPage) appData.currentPage = returnPage;
       renderAll();
@@ -1455,14 +1459,56 @@
     }
 
     function renderLockBanner(title, desc, unlockType, unlockId, unlockLabel, returnPage) {
+      const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+        rol: 'DEMO', entorno: 'DEMO', periodicidad: 'MENSUAL', plan_activo: 'piloto'
+      };
+      const isDemo = ses.rol === 'DEMO' || ses.entorno === 'DEMO';
+      const isPiloto = getCurrentPlan().id === 'piloto';
+      const isAnualVip = String(ses.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+
+      // En Modo Demo permitido probar; en empresas reales:
+      // - Piloto: SOLO puede mejorar de Plan (no puede comprar módulos sueltos)
+      // - Otros planes: si es módulo SVA -> comprar módulo (prorrateo / VIP) o mejorar plan; si requiere plan superior -> mejorar plan (prorrateo / VIP)
+      let buttonsHtml = '';
+      if (isDemo) {
+        buttonsHtml = `<button onclick="activateFromPhone('${unlockType}', '${unlockId}', '${returnPage}')" class="w-full py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-sm transition cursor-pointer">
+          🧪 Probar en Modo Demo (${unlockLabel})
+        </button>`;
+      } else if (isPiloto) {
+        const targetPlan = unlockType === 'plan' ? unlockId : 'comercio';
+        const targetPlanObj = PLANS.find(p => p.id === targetPlan) || PLANS[2];
+        buttonsHtml = `
+          <div class="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[10.5px] text-amber-900 font-semibold">
+            En <strong>Plan Piloto</strong> no es posible contratar módulos sueltos; debes actualizar a un plan superior.
+          </div>
+          <button onclick="${isAnualVip ? `V.openVipAdvisorWhatsapp('Actualizar de Plan Piloto a Plan ${targetPlanObj.name}')` : `V.openProratedPlanUpgradeCheckout('${targetPlanObj.id}')`}" class="w-full py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-sm transition cursor-pointer">
+            ${isAnualVip ? `👑 Actualizar a Plan ${targetPlanObj.name} con Asesor VIP` : `💳 Mejorar a Plan ${targetPlanObj.name} ($${targetPlanObj.monthlyPrice.toFixed(2)}/mes)`}
+          </button>`;
+      } else if (unlockType === 'sva') {
+        const pack = SVA_PACKS.find(p => p.id === unlockId);
+        buttonsHtml = `
+          <div class="space-y-1.5">
+            <button onclick="${isAnualVip ? `V.openVipAdvisorWhatsapp('Contratar ${pack ? pack.name : unlockLabel}')` : `V.openProratedSvaCheckout('${unlockId}')`}" class="w-full py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-sm transition cursor-pointer">
+              ${isAnualVip ? `👑 Contratar ${pack ? pack.name : 'Módulo'} con Asesor VIP` : `💳 Contratar ${pack ? pack.name : 'Módulo'} (Pagar Prorrateo)`}
+            </button>
+            <button onclick="V.open('plans')" class="w-full py-2 px-3 rounded-xl text-[11px] font-bold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
+              🏢 O mejorar de Plan (incluye Packs IA gratis) →
+            </button>
+          </div>`;
+      } else {
+        const targetPlanObj = PLANS.find(p => p.id === unlockId) || PLANS[2];
+        buttonsHtml = `
+          <button onclick="${isAnualVip ? `V.openVipAdvisorWhatsapp('Upgrade a Plan ${targetPlanObj.name}')` : `V.openProratedPlanUpgradeCheckout('${targetPlanObj.id}')`}" class="w-full py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-sm transition cursor-pointer">
+            ${isAnualVip ? `👑 Subir a Plan ${targetPlanObj.name} con Asesor VIP` : `💳 Subir a Plan ${targetPlanObj.name} (Calcular Prorrateo)`}
+          </button>`;
+      }
+
       return `
         <div class="bg-white border-2 border-dashed border-[#b9d1cd] rounded-2xl p-4 text-center space-y-2.5 my-1">
           <div class="w-10 h-10 mx-auto rounded-full bg-[#e7f5f1] text-[#087e70] flex items-center justify-center text-lg font-bold">🔒</div>
           <div class="text-sm font-extrabold text-[#073e3b]">${title}</div>
           <p class="text-xs text-slate-600 leading-relaxed">${desc}</p>
-          <button onclick="activateFromPhone('${unlockType}', '${unlockId}', '${returnPage}')" class="w-full py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-sm transition cursor-pointer">
-            ⚡ Activar ahora en el simulador (${unlockLabel})
-          </button>
+          ${buttonsHtml}
         </div>
       `;
     }
@@ -2507,40 +2553,76 @@
         `;
       }
 
-      // 12. LOS 6 PACKS IA (BLOQUEADO PARA CAMBIO LIBRE EN PRODUCCIÓN/SANDBOX)
+      // 12. LOS 6 PACKS IA (REGLA PILOTO VS OTROS PLANES + PRORRATEO / VIP + CANAL DIRECTO CRM)
       if (p === 'packs') {
         const plan = getCurrentPlan();
-        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { rol: 'DEMO', entorno: 'DEMO', periodicidad: 'MENSUAL' };
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+          rol: 'DEMO', entorno: 'DEMO', periodicidad: 'MENSUAL', packs_ia: [], sva_elegidos_fijos: false
+        };
         const isDemoMode = ses.rol === 'DEMO' || ses.entorno === 'DEMO';
+        const isPiloto = plan.id === 'piloto';
         const isAnualVip = String(ses.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
-        const activeIds = configState.selectedSvaOrder.filter(id => configState.activeSVAs[id]);
-        const freeIds = plan.includesComboFull ? SVA_PACKS.map(x => x.id) : activeIds.slice(0, plan.includedSVACount);
+        const activeIds = SVA_PACKS.map(x => x.id).filter(id => configState.activeSVAs[id]);
+        const includedQuota = plan.includesComboFull ? 6 : (Number(plan.includedSVACount) || 0);
+        const freeSlotsRemaining = Math.max(0, includedQuota - activeIds.length);
 
         return `
           ${backBtn}
           <div class="flex items-center justify-between">
             <div class="text-base font-extrabold text-[#17343a]">🤖 Los 6 Packs IA</div>
             <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isAnualVip ? 'bg-amber-100 text-amber-900' : 'bg-[#e7f5f1] text-[#073e3b]'}">
-              ${isAnualVip ? '👑 ANUAL · CLIENTE VIP' : '📅 MENSUAL'}
+              ${isAnualVip ? '👑 ANUAL · VIP' : '📅 MENSUAL'} · Plan ${esc(plan.name)}
             </span>
           </div>
+
+          ${!isDemoMode && isPiloto ? `
+            <div class="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs text-amber-950 space-y-2">
+              <div class="font-extrabold">🔒 Plan Piloto: Contrata un Plan para acceder a Packs IA</div>
+              <p class="text-[11px] leading-snug">En el <strong>Plan Piloto</strong> no se pueden contratar módulos adicionales individuales. Mejora tu plan para activar inteligencia artificial.</p>
+              <button onclick="V.open('plans')" class="w-full py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
+                🏢 Ver Planes Disponibles →
+              </button>
+            </div>
+          ` : `
+            <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b] space-y-1">
+              <div><strong>Plan ${esc(plan.name)}:</strong> Incluye <strong>${includedQuota}</strong> Pack(s) IA gratis (${activeIds.length}/${includedQuota} asignados).</div>
+              ${!isDemoMode && includedQuota > 0 && freeSlotsRemaining > 0 && !ses.sva_elegidos_fijos
+                ? `<div class="text-[#087e70] font-bold">🎁 Tienes ${freeSlotsRemaining} cupo(s) gratis disponible(s). Una vez elegido quedará fijo en tu cuenta.</div>`
+                : (!isDemoMode && includedQuota > 0
+                  ? `<div class="text-slate-600">🔒 Tus packs incluidos ya fueron asignados. Para cambiarlos por otros, abre un <strong>Ticket de Soporte</strong>.</div>`
+                  : '')
+              }
+            </div>
+          `}
+
           ${SVA_PACKS.map((pk, idx) => {
-            const isOn = configState.activeSVAs[pk.id];
-            const isFree = isOn && freeIds.includes(pk.id);
+            const isOn = !!configState.activeSVAs[pk.id];
             let btnHtml = '';
             if (isDemoMode) {
               btnHtml = `<button onclick="toggleSVA('${pk.id}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold ${isOn ? 'bg-slate-100 text-slate-700' : 'bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd]'} cursor-pointer">
                 ${isOn ? 'Desactivar (Modo Demo)' : 'Probar pack (Modo Demo)'}
               </button>`;
+            } else if (isPiloto) {
+              btnHtml = `<button onclick="V.open('plans')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-slate-100 hover:bg-[#e7f5f1] text-[#073e3b] cursor-pointer">
+                🏢 Requiere mejorar de Plan Piloto →
+              </button>`;
             } else if (isOn) {
-              btnHtml = `<span class="inline-block px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold text-[10.5px]">✓ Habilitado en tu suscripción</span>`;
+              btnHtml = `
+                <div class="flex items-center justify-between gap-2 pt-0.5">
+                  <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold text-[10.5px]">✓ Activo en tu suscripción</span>
+                  ${!plan.includesComboFull ? `<button onclick="V.openTicketFormByCategory('VENTAS_UPGRADE', '🔄 Solicitar Cambio de Pack IA Incluido')" class="px-2 py-1 rounded-lg bg-slate-100 text-slate-700 text-[10px] font-bold cursor-pointer">Solicitar cambio</button>` : ''}
+                </div>`;
+            } else if (freeSlotsRemaining > 0 && !ses.sva_elegidos_fijos) {
+              btnHtml = `<button onclick="V.claimIncludedFreeSva('${pk.id}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                🎁 Elegir como mi Pack IA Incluido ($0 Gratis)
+              </button>`;
             } else if (isAnualVip) {
-              btnHtml = `<button onclick="V.openVipAdvisorWhatsapp('Activar Pack IA: ${pk.name}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-amber-500 hover:bg-amber-600 text-white cursor-pointer">
-                👑 Solicitar con Asesor VIP WhatsApp
+              btnHtml = `<button onclick="V.openVipAdvisorWhatsapp('Contratar Pack IA adicional: ${pk.name}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-amber-500 hover:bg-amber-600 text-white cursor-pointer">
+                👑 Contratar Adicional con Asesor VIP WhatsApp
               </button>`;
             } else {
-              btnHtml = `<button onclick="V.openProratedSvaCheckout('${pk.id}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
-                💳 Activar Pack (Calcular Prorrateo)
+              btnHtml = `<button onclick="V.openProratedSvaCheckout('${pk.id}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-white cursor-pointer">
+                💳 Contratar Pack Adicional (Pagar Prorrateo)
               </button>`;
             }
 
@@ -2549,7 +2631,7 @@
                 <div class="flex items-center justify-between gap-2">
                   <b>${idx + 1}. ${pk.icon} ${pk.name}</b>
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isOn ? 'bg-[#087e70] text-white' : 'bg-slate-100 text-slate-600'}">
-                    ${isFree ? '$0 GRATIS' : (isOn ? 'ACTIVO' : `$${pk.monthlyPrice.toFixed(2)}/mes`)}
+                    ${isOn ? 'ACTIVO' : (!isPiloto && freeSlotsRemaining > 0 && !ses.sva_elegidos_fijos ? '$0 INCLUIDO' : `$${pk.monthlyPrice.toFixed(2)}/mes`)}
                   </span>
                 </div>
                 <p class="text-[11px] text-[#71838a]">${pk.desc}</p>
@@ -2588,7 +2670,7 @@
             </div>
             <div class="text-sm font-black">Plan ${esc(currPlan.name)} · Cupo: ${ses.max_usuarios || currPlan.includedUsers} usuario(s)</div>
             <div class="text-[11px] text-teal-100">Próxima fecha de corte: <strong class="font-mono text-white">${esc(ses.fecha_proximo_corte || 'Día 01')}</strong></div>
-            ${!isDemoMode ? `
+            ${!isDemoMode && currPlan.id !== 'piloto' ? `
               <div class="pt-1">
                 <button onclick="${isAnualVip ? `V.openVipAdvisorWhatsapp('Contratar usuarios adicionales')` : `V.openExtraUsersCheckout()`}" class="w-full py-1.5 px-3 rounded-xl text-[11px] font-extrabold bg-white/15 hover:bg-white/25 text-[#70d2bd] cursor-pointer">
                   ${isAnualVip ? '👑 Solicitar Usuarios Extra con Asesor VIP' : '➕ Agregar Usuarios Adicionales ($1,00 USD c/u)'}
@@ -3155,7 +3237,7 @@
              </div>
              <div id="pdfExtractedPreview" class="hidden p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b]"></div>
              <div>
-               <label class="font-bold text-[11px]">2. Teléfono WhatsApp (para envíos y cobros) (para envíos y cobros) *</label>
+               <label class="font-bold text-[11px]">2. Teléfono WhatsApp (para envíos y cobros) *</label>
                <input id="pdfClientPhone" type="tel" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="Ej. 0991234567">
              </div>
            </div>`,
@@ -3271,7 +3353,7 @@
                <input class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono bg-slate-100 text-slate-600" value="${esc(c.id)}" readonly>
              </div>
              <div>
-               <label class="font-bold text-[11px]">Teléfono WhatsApp (para envíos y cobros) (para envíos y cobros)</label>
+               <label class="font-bold text-[11px]">Teléfono WhatsApp (para envíos y cobros)</label>
                <input id="editClientPhone" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="${esc(c.phone)}">
              </div>
            </div>`,
@@ -6167,15 +6249,26 @@
         await Auth.applySession(refreshed);
       }
 
-      // Canal de sincronización en vivo App <-> CRM (al volver a primer plano)
-      document.addEventListener('visibilitychange', async () => {
-        if (document.visibilityState === 'visible' && !appData.offline) {
-          const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
-          if (ses && ses.email && ses.rol !== 'SUPERADMIN') {
-            const fresh = await refrescarSesionDesdeSupabase(ses);
+      // Canal de sincronización en vivo App <-> CRM (cada 12s y al volver a primer plano)
+      async function syncLiveAppCrmChannel() {
+        if (appData.offline) return;
+        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        if (!ses || !ses.email) return;
+        if (ses.rol !== 'SUPERADMIN') {
+          const prevPlan = ses.plan_activo;
+          const prevPacks = JSON.stringify(ses.packs_ia || []);
+          const fresh = await refrescarSesionDesdeSupabase(ses);
+          if (fresh && (fresh.plan_activo !== prevPlan || JSON.stringify(fresh.packs_ia || []) !== prevPacks)) {
             await Auth.applySession(fresh);
           }
+        } else if (!$('crm-overlay').classList.contains('hidden')) {
+          if (CRM.currentTab === 'companies') CRM.loadCompanies();
+          else if (CRM.currentTab === 'tickets') CRM.loadTickets();
         }
+      }
+      setInterval(syncLiveAppCrmChannel, 12000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') syncLiveAppCrmChannel();
       });
     });
   </script>
