@@ -340,6 +340,20 @@ async function crmActualizarUsuario(id, campos) {
   return Array.isArray(data) ? data[0] : data;
 }
 
+
+async function crmEliminarUsuario(id) {
+  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?id=eq.${encodeURIComponent(id)}`;
+  const resp = await fetch(url, {
+    method: 'DELETE',
+    headers: supaHeaders()
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.message || 'Error eliminando usuario');
+  }
+  return true;
+}
+
 // -------------------------------------------------------------------------
 // D. SISTEMA DE TICKETS DE SOPORTE / ALTA DE USUARIOS
 // -------------------------------------------------------------------------

@@ -1693,10 +1693,10 @@
             class="w-12 h-12 shrink-0 rounded-full object-cover border border-[#087e70]/25"
           />
           <div class="space-y-1.5">
-            <div class="text-xs font-extrabold text-[#073e3b]">Copiloto Vozkora IA</div>
+            <div class="text-xs font-extrabold text-[#073e3b]">${hasMinPlan(2) || countActiveSVAs() > 0 ? 'Copiloto Vozkora IA' : '🔒 Copiloto Vozkora IA (Plan Impulso+)'}</div>
             <p class="text-[11px] text-[#17343a] leading-snug">Consulta ventas, reposición de inventario, cartera y pre-cierre SRI.</p>
             <button onclick="V.open('ai')" class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
-              Consultar copiloto
+              ${hasMinPlan(2) || countActiveSVAs() > 0 ? 'Consultar copiloto' : 'Ver opciones de acceso'}
             </button>
           </div>
         </div>
@@ -2936,8 +2936,16 @@
         `;
       }
 
-      // 18. COPILOTO IA CONVERSACIONAL
+      // 18. COPILOTO IA CONVERSACIONAL (BLOQUEADO EN PLAN PILOTO SIN PACKS IA)
       if (p === 'ai') {
+        if (!hasMinPlan(2) && countActiveSVAs() === 0) {
+          return backBtn + renderLockBanner(
+            'Copiloto Gerencial Vozkora IA',
+            'No disponible en Plan Piloto. Actualiza a Plan Impulso ($12,99/mes) o superior para consultar análisis en tiempo real de tu empresa.',
+            'plan', 'impulso', 'Plan Impulso · $12,99/mes', 'ai'
+          );
+        }
+        const sesAi = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { empresa_nombre: 'tu empresa' };
         return `
           ${backBtn}
           <div class="flex items-center gap-2.5">
@@ -2951,7 +2959,7 @@
           </div>
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2.5 text-xs">
             <div class="p-2.5 rounded-xl bg-[#e7f5f1] text-[#073e3b]">
-              Analizo en tiempo real el inventario, facturas y cartera de <strong>Comercial Los Andes</strong>. Pregúntame algo:
+              Analizo en tiempo real el inventario, facturas y cartera de <strong>${esc(sesAi.empresa_nombre)}</strong>. Pregúntame algo:
             </div>
             <div class="flex flex-wrap gap-1.5">
               <button onclick="V.quickAsk('¿Qué productos debo reponer hoy?')" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#f5f8f8] border border-[#dce6e5] cursor-pointer">¿Qué reponer?</button>
@@ -5723,17 +5731,25 @@
                       Correo: <strong>${esc(u.email)}</strong> · Clave: <strong>${esc(u.clave)}</strong> · RUC Empresa: ${esc(u.empresa_ruc)}
                     </div>
                     <div class="flex flex-wrap items-center gap-2 pt-1">
+                      <button onclick="CRM.openEditUserModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#087e70] text-white hover:bg-[#073e3b] cursor-pointer">
+                        ✏️ Editar Usuario
+                      </button>
                       <button onclick="CRM.openEditPermsModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
-                        🛡️ Permisos del Usuario
+                        🛡️ Permisos
                       </button>
                       ${hasDeviceLock ? `
                         <button onclick="CRM.releaseUserDevice('${u.id}', '${esc(u.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer">
                           🔓 Liberar Dispositivo
                         </button>
                       ` : ''}
-                      <button onclick="CRM.toggleUserActive('${u.id}', ${!u.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${u.activo ? 'bg-rose-100 text-rose-800' : 'bg-emerald-600 text-white'} cursor-pointer">
-                        ${u.activo ? 'Bloquear Usuario' : 'Activar Usuario'}
+                      <button onclick="CRM.toggleUserActive('${u.id}', ${!u.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${u.activo ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        ${u.activo ? '⏸️ Bloquear Usuario' : '✅ Activar / Reactivar'}
                       </button>
+                      ${u.rol !== 'SUPERADMIN' ? `
+                        <button onclick="CRM.deleteUserConfirm('${u.id}', '${esc(u.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-100 hover:bg-rose-600 text-rose-800 hover:text-white cursor-pointer">
+                          🗑️ Eliminar
+                        </button>
+                      ` : ''}
                     </div>
                   </div>
                 `;
@@ -5751,8 +5767,114 @@
 
       async toggleUserActive(id, activo) {
         await crmActualizarUsuario(id, { activo });
-        toast(activo ? '✓ Usuario activado.' : '⛔ Usuario bloqueado.');
+        toast(activo ? '✅ Usuario activado / reactivado.' : '⏸️ Usuario bloqueado.');
         this.loadUsers();
+      },
+
+      openEditUserModal(idx) {
+        const u = this.cachedUsers[idx];
+        if (!u) return;
+        V.openModal(
+          `✏️ Editar Usuario · ${u.nombre_completo || u.email}`,
+          `<div class="space-y-2">
+             <div>
+               <label class="font-bold text-[11px]">Empresa Asignada</label>
+               <select id="usrEditCompanyId" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 ${this.cachedCompanies.map(emp => `
+                   <option value="${emp.id}" ${(u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) ? 'selected' : ''}>
+                     ${esc(emp.nombre)} (RUC: ${esc(emp.ruc)})
+                   </option>
+                 `).join('')}
+               </select>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Nombre Completo *</label>
+               <input id="usrEditFullName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" value="${esc(u.nombre_completo || '')}" />
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Correo de Acceso *</label>
+                 <input id="usrEditEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" value="${esc(u.email || '')}" />
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Contraseña *</label>
+                 <input id="usrEditPass" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="${esc(u.clave || '')}" />
+               </div>
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Rol</label>
+                 <select id="usrEditRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                   <option value="ADMIN_EMPRESA" ${u.rol === 'ADMIN_EMPRESA' ? 'selected' : ''}>Administrador de Empresa</option>
+                   <option value="OPERADOR" ${u.rol === 'OPERADOR' ? 'selected' : ''}>Operador / Vendedor</option>
+                   <option value="DEMO" ${u.rol === 'DEMO' ? 'selected' : ''}>Demo</option>
+                   ${u.rol === 'SUPERADMIN' ? '<option value="SUPERADMIN" selected>Súper-Administrador</option>' : ''}
+                 </select>
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Estado de Acceso</label>
+                 <select id="usrEditActivo" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                   <option value="true" ${u.activo ? 'selected' : ''}>✅ Activo</option>
+                   <option value="false" ${!u.activo ? 'selected' : ''}>⏸️ Bloqueado</option>
+                 </select>
+               </div>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveEditedUser('${u.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Cambios</button>`
+        );
+      },
+
+      async saveEditedUser(id) {
+        const empId = $('usrEditCompanyId').value;
+        const emp = this.cachedCompanies.find(c => c.id === empId);
+        const nombre_completo = $('usrEditFullName').value.trim();
+        const email = $('usrEditEmail').value.trim().toLowerCase();
+        const clave = $('usrEditPass').value.trim();
+        const rol = $('usrEditRol').value;
+        const activo = $('usrEditActivo').value === 'true';
+
+        if (!nombre_completo || !email || !clave) {
+          return toast('Completa nombre, correo y contraseña.');
+        }
+
+        const patch = {
+          nombre_completo,
+          email,
+          clave,
+          rol,
+          activo
+        };
+        if (emp) {
+          patch.empresa_id = emp.id;
+          patch.empresa_nombre = emp.nombre;
+          patch.empresa_ruc = emp.ruc;
+          patch.entorno = emp.entorno;
+          patch.plan_activo = emp.plan_activo;
+          patch.packs_ia = emp.packs_ia || [];
+        }
+
+        try {
+          await crmActualizarUsuario(id, patch);
+          V.closeModal();
+          toast(`✓ Usuario ${email} actualizado correctamente.`);
+          this.loadUsers();
+        } catch (e) {
+          toast('Error actualizando usuario: ' + e.message);
+        }
+      },
+
+      async deleteUserConfirm(id, email) {
+        if (!confirm(`⚠️ ¿Estás seguro de ELIMINAR permanentemente el usuario ${email}? Esta acción liberará su cupo en la empresa.`)) {
+          return;
+        }
+        try {
+          await crmEliminarUsuario(id);
+          toast(`🗑️ Usuario ${email} eliminado correctamente.`);
+          this.loadUsers();
+        } catch (e) {
+          toast('Error eliminando usuario: ' + e.message);
+        }
       },
 
       openNewUserForm(prefill = {}) {

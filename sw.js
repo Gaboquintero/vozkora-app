@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vozkora-pwa-v6';
+const CACHE_NAME = 'vozkora-pwa-v7';
 const ARCHIVOS_LOCALES = [
   './',
   './index.html',
