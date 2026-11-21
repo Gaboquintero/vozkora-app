@@ -957,7 +957,7 @@
       try {
         const sesBoot = JSON.parse(localStorage.getItem('vozkora_sesion_activa') || 'null');
         const bootRuc = (sesBoot && sesBoot.empresa_ruc) ? sesBoot.empresa_ruc : '123456789001';
-        const rawQueue = localStorage.getItem('vozkora_cola_pendientes_' + bootRuc);
+        const rawQueue = localStorage.getItem('vozkora_cola_pendientes_' + bootRuc) || localStorage.getItem('vozkora_cola_pendientes_GLOBAL');
         if (rawQueue) {
           const parsedQueue = JSON.parse(rawQueue);
           if (Array.isArray(parsedQueue) && parsedQueue.length > 0) {
@@ -1026,14 +1026,28 @@
       if (badge) badge.textContent = `${appData.offlineQueue} pend.`;
     }
 
+    async function ensureRealtimeOfflineCheck() {
+      if (appData.offline) return true;
+      if (typeof verificarConectividadRealVozkora === 'function') {
+        const onlineNow = await verificarConectividadRealVozkora();
+        if (!onlineNow) {
+          await V.setOfflineState(true, true);
+          return true;
+        }
+      }
+      return false;
+    }
+
     function enqueueOfflineOp(moduleName, refCode, detail, onSyncCallback, repoTable = null, repoRowId = null, payload = null) {
-      if (!appData.offline) return false;
+      const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+      const empRuc = (ses && ses.empresa_ruc) ? ses.empresa_ruc : '123456789001';
       appData.offlineQueueItems.unshift({
         id: 'SQL-' + String(appData.offlineQueueItems.length + 1).padStart(3, '0'),
         module: moduleName,
         ref: refCode,
         detail: detail,
         time: nowFormatted().split(' ')[1],
+        empresaRuc: empRuc,
         onSync: onSyncCallback || null,
         repoTable,
         repoRowId,
@@ -1041,7 +1055,7 @@
       });
       syncOfflineBadgeUI();
       if (typeof guardarColaOfflineLocal === 'function') {
-        guardarColaOfflineLocal(appData.offlineQueueItems);
+        guardarColaOfflineLocal(appData.offlineQueueItems, empRuc);
       }
       return true;
     }
@@ -4598,14 +4612,14 @@
         );
       },
 
-      createCreditNote() {
+      async createCreditNote() {
         const invId = $('ncInvoiceRef').value;
         const reason = $('ncReason').value.trim();
         const amount = Number($('ncAmount').value);
         if (!reason || amount <= 0) return toast('Ingresa el motivo y un monto válido.');
+        const isOff = await ensureRealtimeOfflineCheck();
         const inv = appData.invoices.find(x => x.id === invId) || appData.invoices[0];
         const ncId = 'NC-001-002-' + String(5 + appData.creditNotes.length).padStart(5, '0');
-        const isOff = appData.offline;
         appData.creditNotes.unshift({
           id: ncId,
           invoiceRef: inv.id,
@@ -4634,17 +4648,16 @@
         toast(isOff ? `💾 Nota de Crédito ${ncId} guardada en cola Offline.` : `✓ Nota de Crédito ${ncId} emitida y vinculada a ${inv.id}.`);
       },
 
-      registerRetention() {
+      async registerRetention() {
         const invId = $('retInvoiceRef').value;
         const rentaPct = Number($('retRentaPct').value);
         const ivaPct = Number($('retIvaPct').value);
+        const isOff = await ensureRealtimeOfflineCheck();
         const inv = appData.invoices.find(x => x.id === invId) || appData.invoices[0];
         const base = inv.subtotal || inv.total;
         const ivaVal = inv.ivaAmt || (base * 0.15);
         const totalRetained = Number(((base * (rentaPct / 100)) + (ivaVal * (ivaPct / 100))).toFixed(2));
         const retId = 'RET-001-001-' + String(892 + appData.retentions.length).padStart(6, '0');
-
-        const isOff = appData.offline;
         appData.retentions.unshift({
           id: retId,
           invoiceRef: inv.id,
@@ -4665,15 +4678,15 @@
         toast(isOff ? `💾 Retención ${retId} guardada en cola Offline.` : `✓ Retención ${retId} por ${appMoney(totalRetained)} aplicada.`);
       },
 
-      createDispatchGuide() {
+      async createDispatchGuide() {
         const carrier = $('guideCarrier').value.trim();
         const plate = $('guidePlate').value.trim().toUpperCase();
         const route = $('guideRoute').value.trim();
         const items = $('guideItems').value.trim();
         if (!carrier || !plate || !route || !items) return toast('Completa transportista, placa, ruta y mercadería.');
+        const isOff = await ensureRealtimeOfflineCheck();
         const gId = 'GUIA-001-002-' + String(13 + appData.dispatchGuides.length).padStart(5, '0');
         const parts = route.split('→');
-        const isOff = appData.offline;
         appData.dispatchGuides.unshift({
           id: gId,
           carrier,
@@ -4735,13 +4748,14 @@
         toast(isOff ? `💾 Check-in GPS en ${vis.client} guardado en cola Offline.` : `📍 Check-in registrado en ${vis.client} (${vis.actualTime}).`);
       },
 
-      quote() {
+      async quote() {
         if (!appData.quoteCart.length) return toast('Agrega al menos un producto al carrito de la proforma.');
         const qFin = calculateDocumentFinancials(appData.quoteCart, appData.quoteDiscountMode, appData.quoteDiscountPct, appData.quoteIvaRate);
         if (qFin.hasRuleViolation) {
           return toast(`⚠️ Bloqueo IA: El descuento (${qFin.maxAppliedPct}%) supera el máximo permitido (${qFin.maxAllowed}%).`);
         }
 
+        const isOff = await ensureRealtimeOfflineCheck();
         const client = $('quoteClient').value;
         const qId = 'PROF-' + String(appData.quotes.length + 1).padStart(3, '0');
         const modeLabel = appData.quoteDiscountMode === 'global'
@@ -4749,8 +4763,6 @@
           : (appData.quoteDiscountMode === 'item'
             ? `Dto. por ítem (-${appMoney(qFin.discountAmount)})`
             : 'Sin descuento');
-
-        const isOff = appData.offline;
         appData.quotes.unshift({
           id: qId,
           client,
@@ -4932,13 +4944,13 @@
         );
       },
 
-      saveNewClient() {
+      async saveNewClient() {
         const name = $('mClientName').value.trim();
         const id = $('mClientId').value.trim();
         const phone = $('mClientPhone').value.trim() || 'No registrado';
         if (!name || !id) return toast('Completa nombre y RUC/cédula.');
         if (!confirm(`¿Confirmas que los datos del cliente (${name} · RUC/CI: ${id}) son correctos antes de registrarlos?`)) return;
-        const isOff = appData.offline;
+        const isOff = await ensureRealtimeOfflineCheck();
         appData.clients.unshift({ name, id, phone, debt: 0, pendingSync: isOff });
         if (isOff) {
           enqueueOfflineOp('Cliente Nuevo', id, `${name} (${phone})`, () => {
@@ -5115,11 +5127,11 @@
         );
       },
 
-      saveCollection(clientName) {
+      async saveCollection(clientName) {
         const amt = Number($('mCollectAmt').value);
         const method = $('mCollectMethod') ? $('mCollectMethod').value : 'Efectivo en ruta';
         if (amt <= 0) return toast('Monto inválido.');
-        const isOff = appData.offline;
+        const isOff = await ensureRealtimeOfflineCheck();
         appData.payments.push({ name: clientName, amount: amt, pendingSync: isOff });
         const cl = appData.clients.find(c => c.name === clientName);
         if (cl) cl.debt = Math.max(0, cl.debt - amt);
@@ -5278,12 +5290,12 @@
         await this.setOfflineState(!appData.offline, false);
       },
 
-      work() {
+      async work() {
         const client = $('woClient').value.trim();
         const desc = $('woDesc').value.trim();
         const obs = ($('woObs').value || '').trim() || 'Orden abierta desde aplicación móvil.';
         if (!client || !desc) return toast('Completa cliente y descripción del servicio.');
-        const isOff = appData.offline;
+        const isOff = await ensureRealtimeOfflineCheck();
         const id = 'OT-' + String(appData.orders.length + 1).padStart(2, '0');
         const dateStr = nowFormatted();
         appData.orders.unshift({
@@ -7109,9 +7121,11 @@
           ? await verificarConectividadRealVozkora()
           : navigator.onLine;
         if (!onlineAtBoot) {
+          await V.setOfflineState(true, true);
           await Auth.applySession(existing);
           hydrateOfflineQueueFromStorage(existing.empresa_ruc);
-          await V.setOfflineState(true, true);
+          syncOfflineBadgeUI();
+          renderPhone(appData.currentPage);
         } else {
           const refreshed = typeof refrescarSesionDesdeSupabase === 'function'
             ? await refrescarSesionDesdeSupabase(existing)

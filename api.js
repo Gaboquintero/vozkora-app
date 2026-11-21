@@ -664,17 +664,21 @@ function obtenerClaveColaOffline(empresaRuc) {
 function guardarColaOfflineLocal(items, empresaRuc = '') {
   try {
     const key = obtenerClaveColaOffline(empresaRuc);
+    const globalKey = `${VOZKORA_CONFIG.STORAGE_KEYS.COLA_OFFLINE}_GLOBAL`;
     const serializable = (items || []).map(it => ({
       id: it.id,
       module: it.module,
       ref: it.ref,
       detail: it.detail,
       time: it.time,
+      empresaRuc: it.empresaRuc || empresaRuc || ((obtenerSesionVozkora() || {}).empresa_ruc) || '123456789001',
       repoTable: it.repoTable || null,
       repoRowId: it.repoRowId || null,
       payload: it.payload || null
     }));
-    localStorage.setItem(key, JSON.stringify(serializable));
+    const jsonStr = JSON.stringify(serializable);
+    localStorage.setItem(key, jsonStr);
+    localStorage.setItem(globalKey, jsonStr);
     return true;
   } catch (e) {
     return false;
@@ -684,8 +688,15 @@ function guardarColaOfflineLocal(items, empresaRuc = '') {
 function leerColaOfflineLocal(empresaRuc = '') {
   try {
     const key = obtenerClaveColaOffline(empresaRuc);
+    const globalKey = `${VOZKORA_CONFIG.STORAGE_KEYS.COLA_OFFLINE}_GLOBAL`;
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    const rawGlobal = localStorage.getItem(globalKey);
+    const parsedGlobal = rawGlobal ? JSON.parse(rawGlobal) : [];
+    if (!Array.isArray(parsedGlobal)) return [];
+    if (!empresaRuc) return parsedGlobal;
+    return parsedGlobal.filter(x => !x.empresaRuc || x.empresaRuc === empresaRuc);
   } catch (e) {
     return [];
   }
@@ -698,33 +709,31 @@ async function verificarConectividadRealVozkora() {
   const nonce = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 2200);
+    const timer = setTimeout(() => ctrl.abort(), 3000);
     const resp = await fetch(
       `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?select=id&limit=1&_nocache=${nonce}`,
       {
         method: 'GET',
-        headers: supaHeaders({ 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache' }),
+        headers: supaHeaders(),
         cache: 'no-store',
         signal: ctrl.signal
       }
     );
     clearTimeout(timer);
-    if (resp && resp.ok) return true;
-  } catch (e) {
-    // Fallback check against Google 204 endpoint (opaque response succeeds only when real internet exists)
-    try {
-      const ctrl2 = new AbortController();
-      const timer2 = setTimeout(() => ctrl2.abort(), 1800);
-      await fetch(`https://connectivitycheck.gstatic.com/generate_204?_nocache=${nonce}`, {
-        mode: 'no-cors',
-        cache: 'no-store',
-        signal: ctrl2.signal
-      });
-      clearTimeout(timer2);
-      return true;
-    } catch (e2) {
-      return false;
-    }
+    if (resp && (resp.ok || resp.status < 500)) return true;
+  } catch (e) {}
+
+  try {
+    const ctrl2 = new AbortController();
+    const timer2 = setTimeout(() => ctrl2.abort(), 2200);
+    await fetch(`https://connectivitycheck.gstatic.com/generate_204?_nocache=${nonce}`, {
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: ctrl2.signal
+    });
+    clearTimeout(timer2);
+    return true;
+  } catch (e2) {
+    return false;
   }
-  return false;
 }
