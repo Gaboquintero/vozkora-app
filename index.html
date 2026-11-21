@@ -97,11 +97,11 @@
       <div class="p-6 space-y-3.5 text-xs">
         <div>
           <label class="font-bold text-[#073e3b]">Correo electrónico</label>
-          <input id="login-email" type="email" value="demo@vozkora.com" placeholder="usuario@empresa.com" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] focus:outline-none focus:border-[#087e70] font-medium" />
+          <input id="login-email" type="email" autocomplete="off" value="demo@vozkora.com" placeholder="usuario@empresa.com" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] focus:outline-none focus:border-[#087e70] font-medium" />
         </div>
         <div>
           <label class="font-bold text-[#073e3b]">Contraseña</label>
-          <input id="login-pass" type="password" value="DEMOVOZKORA" placeholder="••••••••" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] focus:outline-none focus:border-[#087e70] font-mono" />
+          <input id="login-pass" type="password" autocomplete="new-password" value="DEMOVOZKORA" placeholder="••••••••" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] focus:outline-none focus:border-[#087e70] font-mono" />
         </div>
 
         <div id="login-error" class="hidden p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-[11px]"></div>
@@ -1535,6 +1535,80 @@
     // -----------------------------------------------------------------------
     // 9. LÓGICA Y RENDERIZADO DE LA APP ANDROID (COMERCIAL LOS ANDES)
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // CONTROL ESTRICTO PLAN PILOTO: MÁXIMO 30 DOCUMENTOS O 15 DÍAS
+    // -----------------------------------------------------------------------
+    function getPilotQuotaStatus() {
+      const plan = getCurrentPlan();
+      const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+      if (!plan || plan.id !== 'piloto' || ses.rol === 'SUPERADMIN') {
+        return { isPilot: false, blocked: false, docsUsed: 0, docsMax: 30, docsLeft: 30, daysUsed: 0, daysMax: 15, daysLeft: 15, reason: '' };
+      }
+      const ruc = ses.empresa_ruc || '123456789001';
+      const st = typeof obtenerEstadoPilotoLocal === 'function'
+        ? obtenerEstadoPilotoLocal(ruc)
+        : { fechaInicio: new Date().toISOString().slice(0, 10), docsEmitidos: 0 };
+
+      const startStr = (ses.creado_en && String(ses.creado_en).slice(0, 10)) || st.fechaInicio;
+      const startDate = new Date(startStr + 'T00:00:00');
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayDate = new Date(todayStr + 'T00:00:00');
+      const daysUsed = Math.max(0, Math.floor((todayDate - startDate) / (1000 * 60 * 60 * 24)));
+      const docsUsed = Number(st.docsEmitidos) || 0;
+
+      const docsMax = 30;
+      const daysMax = 15;
+      const docsLeft = Math.max(0, docsMax - docsUsed);
+      const daysLeft = Math.max(0, daysMax - daysUsed);
+
+      let blocked = false;
+      let reason = '';
+      if (docsUsed >= docsMax) {
+        blocked = true;
+        reason = `Has alcanzado el límite máximo de ${docsMax} documentos emitidos del Plan Piloto.`;
+      } else if (daysUsed >= daysMax) {
+        blocked = true;
+        reason = `Han transcurrido los ${daysMax} días de prueba gratuita del Plan Piloto.`;
+      }
+
+      return { isPilot: true, blocked, docsUsed, docsMax, docsLeft, daysUsed, daysMax, daysLeft, reason, ruc, fechaInicio: startStr };
+    }
+
+    function checkAndBlockIfPilotLimitReached() {
+      const q = getPilotQuotaStatus();
+      if (!q.isPilot || !q.blocked) return false;
+      const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+      const isDemo = ses.rol === 'DEMO' || ses.entorno === 'DEMO';
+      V.openModal(
+        '🔒 Límite del Plan Piloto Alcanzado',
+        `<div class="space-y-2.5">
+           <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 font-bold text-xs">
+             ${esc(q.reason)}
+           </div>
+           <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] space-y-1">
+             <div>📄 Documentos emitidos: <strong>${q.docsUsed} / ${q.docsMax}</strong></div>
+             <div>📅 Días transcurridos: <strong>${q.daysUsed} / ${q.daysMax} días</strong></div>
+           </div>
+           <p class="text-[11px] text-slate-600 leading-relaxed">
+             Para seguir emitiendo facturas, notas de crédito y demás documentos electrónicos sin límite, actualiza a <strong>Plan Impulso ($12,99/mes)</strong> o superior.
+           </p>
+         </div>`,
+        `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cerrar</button>
+         <button onclick="V.closeModal(); ${isDemo ? `activateFromPhone('plan', 'impulso', appData.currentPage)` : `V.open('plans')`};" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
+           ${isDemo ? '🧪 Cambiar a Plan Impulso (Demo)' : '🚀 Mejorar Plan Ahora →'}
+         </button>`
+      );
+      return true;
+    }
+
+    function recordPilotDocumentEmission() {
+      const q = getPilotQuotaStatus();
+      if (!q.isPilot) return;
+      if (typeof incrementarDocumentosPilotoLocal === 'function') {
+        incrementarDocumentosPilotoLocal(q.ruc, 1);
+      }
+    }
+
     function getPilotVoiceRemaining() {
       const used = parseInt(localStorage.getItem('vozkora_pilot_voice_used') || '0', 10) || 0;
       return Math.max(0, 5 - used);
@@ -1704,6 +1778,25 @@
           <div class="text-[11px] font-bold uppercase tracking-wider text-[#71838a]">PANEL EMPRESARIAL</div>
           <div class="text-lg font-extrabold text-[#17343a]">¡Hola, administrador! 👋</div>
         </div>
+        ${(() => {
+          const pq = getPilotQuotaStatus();
+          if (!pq.isPilot) return '';
+          return `
+            <div class="p-3 rounded-2xl ${pq.blocked ? 'bg-rose-50 border-rose-300 text-rose-900' : 'bg-amber-50 border-amber-300 text-amber-950'} border text-xs space-y-1.5">
+              <div class="flex items-center justify-between font-extrabold">
+                <span>${pq.blocked ? '🔒 Plan Piloto Finalizado' : '🧪 Cupo Plan Piloto'}</span>
+                <span class="font-mono">${pq.docsUsed}/${pq.docsMax} docs · ${pq.daysUsed}/${pq.daysMax} días</span>
+              </div>
+              <div class="w-full h-2 rounded-full bg-black/10 overflow-hidden">
+                <div class="h-full ${pq.blocked ? 'bg-rose-600' : 'bg-[#087e70]'}" style="width: ${Math.min(100, Math.round((pq.docsUsed / pq.docsMax) * 100))}%"></div>
+              </div>
+              <div class="flex items-center justify-between text-[10.5px]">
+                <span>${pq.blocked ? 'Límite alcanzado. Mejora tu plan para continuar.' : `Te quedan <strong>${pq.docsLeft}</strong> documento(s) o <strong>${pq.daysLeft}</strong> día(s).`}</span>
+                <button onclick="V.open('plans')" class="px-2 py-0.5 rounded bg-[#073e3b] text-[#70d2bd] font-extrabold cursor-pointer">Mejorar</button>
+              </div>
+            </div>
+          `;
+        })()}
 
         <div class="grid grid-cols-2 gap-2.5">
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3">
@@ -4433,6 +4526,7 @@
       },
 
       async invoice() {
+        if (checkAndBlockIfPilotLimitReached()) return;
         if (!appData.cart.length) return toast('Agrega productos al carrito primero.');
         const fin = calculateDocumentFinancials(appData.cart, appData.discountMode, appData.discountPct, appData.selectedIvaRate);
         if (fin.hasRuleViolation) {
@@ -4498,6 +4592,7 @@
           }
         }
 
+        recordPilotDocumentEmission();
         if (isOffNow) {
           enqueueOfflineOp('Facturación SRI', invId, `${clientName} · ${appMoney(fin.grandTotal)} (${method})`, () => {
             const found = appData.invoices.find(x => x.id === invId);
@@ -4614,6 +4709,7 @@
       },
 
       async createCreditNote() {
+        if (checkAndBlockIfPilotLimitReached()) return;
         const invId = $('ncInvoiceRef').value;
         const reason = $('ncReason').value.trim();
         const amount = Number($('ncAmount').value);
@@ -4630,6 +4726,7 @@
           date: nowFormatted(),
           syncStatus: isOff ? 'Pendiente Offline' : 'Autorizada SRI'
         });
+        recordPilotDocumentEmission();
         if (isOff) {
           enqueueOfflineOp('Nota de Crédito', ncId, `${inv.client} · Ref ${inv.id} (-${appMoney(amount)})`, () => {
             const item = appData.creditNotes.find(x => x.id === ncId);
@@ -4650,6 +4747,7 @@
       },
 
       async registerRetention() {
+        if (checkAndBlockIfPilotLimitReached()) return;
         const invId = $('retInvoiceRef').value;
         const rentaPct = Number($('retRentaPct').value);
         const ivaPct = Number($('retIvaPct').value);
@@ -4669,6 +4767,7 @@
           syncStatus: isOff ? 'Pendiente Offline' : 'Sincronizada',
           auth: '191120260717900123450012001001000000892'
         });
+        recordPilotDocumentEmission();
         if (isOff) {
           enqueueOfflineOp('Retención SRI', retId, `${inv.client} · Factura ${inv.id} (${appMoney(totalRetained)})`, () => {
             const item = appData.retentions.find(x => x.id === retId);
@@ -4680,6 +4779,7 @@
       },
 
       async createDispatchGuide() {
+        if (checkAndBlockIfPilotLimitReached()) return;
         const carrier = $('guideCarrier').value.trim();
         const plate = $('guidePlate').value.trim().toUpperCase();
         const route = $('guideRoute').value.trim();
@@ -4697,6 +4797,7 @@
           itemsSummary: items,
           status: isOff ? 'Pendiente Offline' : 'Autorizada SRI'
         });
+        recordPilotDocumentEmission();
         if (isOff) {
           enqueueOfflineOp('Guía de Remisión', gId, `${carrier} (${plate}) · ${items}`, () => {
             const item = appData.dispatchGuides.find(x => x.id === gId);
@@ -4750,6 +4851,7 @@
       },
 
       async quote() {
+        if (checkAndBlockIfPilotLimitReached()) return;
         if (!appData.quoteCart.length) return toast('Agrega al menos un producto al carrito de la proforma.');
         const qFin = calculateDocumentFinancials(appData.quoteCart, appData.quoteDiscountMode, appData.quoteDiscountPct, appData.quoteIvaRate);
         if (qFin.hasRuleViolation) {
@@ -4777,6 +4879,7 @@
           discountModeLabel: modeLabel,
           converted: false
         });
+        recordPilotDocumentEmission();
         if (isOff) {
           enqueueOfflineOp('Proforma (PRO)', qId, `${client} · ${appMoney(qFin.grandTotal)}`, () => {
             const item = appData.quotes.find(x => x.id === qId);
@@ -5561,7 +5664,10 @@
     window.Auth = {
       fillCreds(email, pass) {
         $('login-email').value = email;
-        $('login-pass').value = pass;
+        if ($('login-pass')) {
+          $('login-pass').type = 'password';
+          $('login-pass').value = pass;
+        }
       },
 
       async submitLogin() {
@@ -5625,6 +5731,10 @@
 
       async applySession(user) {
         $('auth-overlay').classList.add('hidden');
+        if ($('login-pass')) {
+          $('login-pass').value = '';
+          $('login-pass').type = 'text';
+        }
 
         // Aplicar plan y packs IA configurados para ese usuario/empresa (sin resetear a Piloto)
         if (user.plan_activo && PLANS.some(p => p.id === user.plan_activo)) {
@@ -5792,6 +5902,13 @@
         }
 
         hydrateOfflineQueueFromStorage(user.empresa_ruc);
+        if (user.empresa_ruc && typeof obtenerEstadoPilotoLocal === 'function' && typeof guardarEstadoPilotoLocal === 'function') {
+          const stLocal = obtenerEstadoPilotoLocal(user.empresa_ruc);
+          const dbTotalDocs = Math.max(0, appData.invoices.length - 2) + Math.max(0, appData.creditNotes.length - 1) + Math.max(0, appData.quotes.length - 1);
+          const maxDocs = Math.max(stLocal.docsEmitidos, dbTotalDocs);
+          const startIso = (user.creado_en && String(user.creado_en).slice(0, 10)) || stLocal.fechaInicio;
+          guardarEstadoPilotoLocal(user.empresa_ruc, startIso, maxDocs);
+        }
         renderAll();
 
         // Blindaje estricto: SOLO SUPERADMIN abre CRM
@@ -5806,6 +5923,10 @@
       logout() {
         cerrarSesionVozkora();
         $('crm-overlay').classList.add('hidden');
+        if ($('login-pass')) {
+          $('login-pass').type = 'password';
+          $('login-pass').value = '';
+        }
         $('auth-overlay').classList.remove('hidden');
         toast('Sesión cerrada.');
       }

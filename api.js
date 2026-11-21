@@ -737,3 +737,43 @@ async function verificarConectividadRealVozkora() {
     return false;
   }
 }
+
+// -------------------------------------------------------------------------
+// J. CONTROL ESTRICTO PLAN PILOTO (MÁXIMO 30 DOCUMENTOS O 15 DÍAS)
+// -------------------------------------------------------------------------
+function obtenerEstadoPilotoLocal(empresaRuc) {
+  const ruc = empresaRuc || ((obtenerSesionVozkora() || {}).empresa_ruc) || '123456789001';
+  const key = 'vozkora_piloto_uso_' + ruc;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        ruc,
+        fechaInicio: parsed.fechaInicio || todayIso,
+        docsEmitidos: Number(parsed.docsEmitidos) || 0
+      };
+    }
+  } catch (e) {}
+  const initObj = { ruc, fechaInicio: todayIso, docsEmitidos: 0 };
+  try { localStorage.setItem(key, JSON.stringify(initObj)); } catch (e) {}
+  return initObj;
+}
+
+function guardarEstadoPilotoLocal(empresaRuc, fechaInicio, docsEmitidos) {
+  const ruc = empresaRuc || ((obtenerSesionVozkora() || {}).empresa_ruc) || '123456789001';
+  const key = 'vozkora_piloto_uso_' + ruc;
+  const obj = {
+    ruc,
+    fechaInicio: fechaInicio || new Date().toISOString().slice(0, 10),
+    docsEmitidos: Math.max(0, Number(docsEmitidos) || 0)
+  };
+  try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {}
+  return obj;
+}
+
+function incrementarDocumentosPilotoLocal(empresaRuc, delta = 1) {
+  const st = obtenerEstadoPilotoLocal(empresaRuc);
+  return guardarEstadoPilotoLocal(st.ruc, st.fechaInicio, st.docsEmitidos + delta);
+}
