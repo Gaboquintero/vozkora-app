@@ -1008,7 +1008,13 @@
       return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
-    function enqueueOfflineOp(moduleName, refCode, detail, onSyncCallback, repoTable = null, repoRowId = null) {
+    function syncOfflineBadgeUI() {
+      appData.offlineQueue = appData.offlineQueueItems.length;
+      const badge = $('phone-offline-queue');
+      if (badge) badge.textContent = `${appData.offlineQueue} pend.`;
+    }
+
+    function enqueueOfflineOp(moduleName, refCode, detail, onSyncCallback, repoTable = null, repoRowId = null, payload = null) {
       if (!appData.offline) return false;
       appData.offlineQueueItems.unshift({
         id: 'SQL-' + String(appData.offlineQueueItems.length + 1).padStart(3, '0'),
@@ -1018,12 +1024,36 @@
         time: nowFormatted().split(' ')[1],
         onSync: onSyncCallback || null,
         repoTable,
-        repoRowId
+        repoRowId,
+        payload
       });
-      appData.offlineQueue = appData.offlineQueueItems.length;
-      const badge = $('phone-offline-queue');
-      if (badge) badge.textContent = `${appData.offlineQueue} pend.`;
+      syncOfflineBadgeUI();
+      if (typeof guardarColaOfflineLocal === 'function') {
+        guardarColaOfflineLocal(appData.offlineQueueItems);
+      }
       return true;
+    }
+
+    function hydrateOfflineQueueFromStorage(empresaRuc = '') {
+      if (typeof leerColaOfflineLocal !== 'function') return;
+      const saved = leerColaOfflineLocal(empresaRuc);
+      if (Array.isArray(saved) && saved.length > 0) {
+        appData.offlineQueueItems = saved;
+        syncOfflineBadgeUI();
+        saved.forEach(op => {
+          if (op.module === 'Facturación SRI' && op.payload && !appData.invoices.some(x => x.id === op.ref)) {
+            appData.invoices.push(Object.assign({}, op.payload, { status: 'Pendiente Offline' }));
+          } else if (op.module === 'Proforma (PRO)' && op.payload && !appData.quotes.some(x => x.id === op.ref)) {
+            appData.quotes.unshift(Object.assign({}, op.payload, { contificoSynced: false }));
+          } else if (op.module === 'Nota de Crédito' && op.payload && !appData.creditNotes.some(x => x.id === op.ref)) {
+            appData.creditNotes.unshift(Object.assign({}, op.payload, { syncStatus: 'Pendiente Offline' }));
+          } else if (op.module === 'Cliente Nuevo' && op.payload && !appData.clients.some(x => x.id === op.ref)) {
+            appData.clients.unshift(Object.assign({}, op.payload, { pendingSync: true }));
+          } else if (op.module === 'Orden de Trabajo' && op.payload && !appData.orders.some(x => x.id === op.ref)) {
+            appData.orders.unshift(Object.assign({}, op.payload, { pendingSync: true }));
+          }
+        });
+      }
     }
 
     // Motor compartido de cálculo de totales y validación de reglas IA para Facturación y Proformas
@@ -4421,7 +4451,7 @@
             enqueueOfflineOp('Facturación SRI', invId, `${clientName} · ${appMoney(fin.grandTotal)} (${method})`, () => {
               const found = appData.invoices.find(x => x.id === invId);
               if (found) found.status = 'Autorizada SRI';
-            }, 'repo_facturas', insertedId);
+            }, 'repo_facturas', insertedId, invSnapshot);
           }
         })();
         this.openModal(
@@ -4702,7 +4732,7 @@
           enqueueOfflineOp('Proforma (PRO)', qId, `${client} · ${appMoney(qFin.grandTotal)}`, () => {
             const item = appData.quotes.find(x => x.id === qId);
             if (item) item.contificoSynced = true;
-          });
+          }, 'repo_proformas', null, appData.quotes[0]);
         }
         appData.quoteCart = [];
         appData.quoteDiscountMode = 'none';
@@ -5083,8 +5113,9 @@
         toast(isOff ? '💾 Comprobante Deuna! #88412 guardado en cola Offline.' : '✓ Comprobante Deuna! #88412 ($320,00) verificado y conciliado.');
       },
 
-      toggleOffline() {
-        appData.offline = !appData.offline;
+      async setOfflineState(targetOffline, isAutomatic = false) {
+        if (appData.offline === targetOffline) return;
+        appData.offline = targetOffline;
         const pill = $('header-sync-pill');
         const dot = $('header-sync-dot');
         const txt = $('header-sync-text');
@@ -5097,26 +5128,75 @@
           txt.textContent = 'Offline';
           statusNet.textContent = 'Sin señal · Offline';
           banner.classList.remove('hidden');
-          toast('Modo sin internet activado (SQLite local).');
+          syncOfflineBadgeUI();
+          toast(isAutomatic
+            ? '📴 Sin conexión a Internet: Sync Offline activado automáticamente (SQLite local).'
+            : 'Modo sin internet activado (SQLite local).');
         } else {
-          const synced = appData.offlineQueueItems.length;
-          appData.offlineQueueItems.forEach(item => {
+          const itemsToSync = appData.offlineQueueItems.slice();
+          const synced = itemsToSync.length;
+          for (const item of itemsToSync) {
             if (typeof item.onSync === 'function') item.onSync();
-            if (item.repoTable && item.repoRowId && typeof actualizarRegistroRepositorio === 'function') {
-              actualizarRegistroRepositorio(item.repoTable, item.repoRowId, { estado_sri: 'AUTORIZADA_SRI' });
+            if (item.module === 'Facturación SRI') {
+              const found = appData.invoices.find(x => x.id === item.ref);
+              if (found) found.status = 'Autorizada SRI';
+              if (item.repoTable && item.repoRowId && typeof actualizarRegistroRepositorio === 'function') {
+                await actualizarRegistroRepositorio(item.repoTable, item.repoRowId, { estado_sri: 'AUTORIZADA_SRI' });
+              } else if (item.payload && typeof registrarEnRepositorio === 'function') {
+                await registrarEnRepositorio('repo_facturas', {
+                  numero_factura: item.payload.id,
+                  cliente_ruc_ci: '1790012345001',
+                  cliente_nombre: item.payload.client,
+                  subtotal: Number(item.payload.subtotal || 0),
+                  iva_porcentaje: item.payload.ivaRate || 15,
+                  iva_monto: Number(item.payload.ivaAmt || 0),
+                  total: Number(item.payload.total || 0),
+                  forma_pago: item.payload.method || 'Efectivo',
+                  items: item.payload,
+                  estado_sri: 'AUTORIZADA_SRI'
+                });
+              }
+            } else if (item.module === 'Proforma (PRO)') {
+              const qFound = appData.quotes.find(x => x.id === item.ref);
+              if (qFound) qFound.contificoSynced = true;
+            } else if (item.module === 'Nota de Crédito') {
+              const ncFound = appData.creditNotes.find(x => x.id === item.ref);
+              if (ncFound) ncFound.syncStatus = 'Autorizada SRI';
+            } else if (item.module === 'Cliente Nuevo') {
+              const clFound = appData.clients.find(x => x.id === item.ref);
+              if (clFound) clFound.pendingSync = false;
+            } else if (item.module === 'Orden de Trabajo') {
+              const ordFound = appData.orders.find(x => x.id === item.ref);
+              if (ordFound) ordFound.pendingSync = false;
             }
-          });
+          }
           appData.offlineQueueItems = [];
-          appData.offlineQueue = 0;
-          $('phone-offline-queue').textContent = '0 pend.';
+          syncOfflineBadgeUI();
+          if (typeof guardarColaOfflineLocal === 'function') {
+            guardarColaOfflineLocal([]);
+          }
           pill.className = 'px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] flex items-center gap-1 cursor-pointer';
           dot.className = 'w-1.5 h-1.5 rounded-full bg-[#087e70]';
           txt.textContent = 'Online';
           statusNet.textContent = '5G · Online';
           banner.classList.add('hidden');
-          toast(synced > 0 ? `✓ Conexión restablecida: ${synced} operación(es) sincronizadas con tu Software Contable.` : 'Conexión Online restablecida.');
+          toast(synced > 0
+            ? `✓ Internet restablecido: ${synced} operación(es) sincronizadas automáticamente.`
+            : (isAutomatic ? '📶 Conexión a Internet restablecida (Online).' : 'Conexión Online restablecida.'));
         }
         renderPhone(appData.currentPage);
+      },
+
+      async toggleOffline() {
+        if (appData.offline) {
+          const onlineReal = typeof verificarConectividadRealVozkora === 'function'
+            ? await verificarConectividadRealVozkora()
+            : navigator.onLine;
+          if (!onlineReal) {
+            return toast('📴 Sigues sin señal de Internet. Tus operaciones siguen seguras en SQLite local.');
+          }
+        }
+        await this.setOfflineState(!appData.offline, false);
       },
 
       work() {
@@ -6928,17 +7008,59 @@
     })();
 
     window.addEventListener('DOMContentLoaded', async () => {
+      // 1. Escuchar pérdida y recuperación automática de Internet del dispositivo
+      window.addEventListener('offline', () => {
+        V.setOfflineState(true, true);
+      });
+      window.addEventListener('online', async () => {
+        const realOk = typeof verificarConectividadRealVozkora === 'function'
+          ? await verificarConectividadRealVozkora()
+          : true;
+        if (realOk) V.setOfflineState(false, true);
+      });
+
+      // 2. Restaurar sesión y cola SQLite local incluso si la App se recarga sin Internet
       const existing = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
       if (existing && existing.email) {
-        const refreshed = typeof refrescarSesionDesdeSupabase === 'function'
-          ? await refrescarSesionDesdeSupabase(existing)
-          : existing;
-        await Auth.applySession(refreshed);
+        hydrateOfflineQueueFromStorage(existing.empresa_ruc);
+        const onlineAtBoot = typeof verificarConectividadRealVozkora === 'function'
+          ? await verificarConectividadRealVozkora()
+          : navigator.onLine;
+        if (!onlineAtBoot) {
+          await Auth.applySession(existing);
+          hydrateOfflineQueueFromStorage(existing.empresa_ruc);
+          await V.setOfflineState(true, true);
+        } else {
+          const refreshed = typeof refrescarSesionDesdeSupabase === 'function'
+            ? await refrescarSesionDesdeSupabase(existing)
+            : existing;
+          await Auth.applySession(refreshed);
+          hydrateOfflineQueueFromStorage(refreshed.empresa_ruc);
+          if (appData.offlineQueueItems.length > 0) {
+            appData.offline = true;
+            await V.setOfflineState(false, true);
+          }
+        }
+      } else if (!navigator.onLine) {
+        await V.setOfflineState(true, true);
       }
 
-      // Canal de sincronización en vivo App <-> CRM (cada 12s y al volver a primer plano)
+      // 3. Vigilante continuo de red y sincronización en vivo App <-> CRM (cada 8s)
       async function syncLiveAppCrmChannel() {
+        const realNet = typeof verificarConectividadRealVozkora === 'function'
+          ? await verificarConectividadRealVozkora()
+          : navigator.onLine;
+
+        if (!realNet && !appData.offline) {
+          await V.setOfflineState(true, true);
+          return;
+        }
+        if (realNet && appData.offline) {
+          await V.setOfflineState(false, true);
+          return;
+        }
         if (appData.offline) return;
+
         const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
         if (!ses || !ses.email) return;
         if (ses.rol !== 'SUPERADMIN') {
@@ -6953,7 +7075,7 @@
           else if (CRM.currentTab === 'tickets') CRM.loadTickets();
         }
       }
-      setInterval(syncLiveAppCrmChannel, 12000);
+      setInterval(syncLiveAppCrmChannel, 8000);
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') syncLiveAppCrmChannel();
       });

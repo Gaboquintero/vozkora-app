@@ -651,3 +651,62 @@ async function actualizarVisitaRutaSupabase(id, campos) {
     return false;
   }
 }
+
+// -------------------------------------------------------------------------
+// I. PERSISTENCIA REAL DE COLA OFFLINE (SQLITE LOCAL / LOCALSTORAGE)
+// -------------------------------------------------------------------------
+function obtenerClaveColaOffline(empresaRuc) {
+  const ses = obtenerSesionVozkora();
+  const ruc = empresaRuc || (ses && ses.empresa_ruc) || '123456789001';
+  return `${VOZKORA_CONFIG.STORAGE_KEYS.COLA_OFFLINE}_${ruc}`;
+}
+
+function guardarColaOfflineLocal(items, empresaRuc = '') {
+  try {
+    const key = obtenerClaveColaOffline(empresaRuc);
+    const serializable = (items || []).map(it => ({
+      id: it.id,
+      module: it.module,
+      ref: it.ref,
+      detail: it.detail,
+      time: it.time,
+      repoTable: it.repoTable || null,
+      repoRowId: it.repoRowId || null,
+      payload: it.payload || null
+    }));
+    localStorage.setItem(key, JSON.stringify(serializable));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function leerColaOfflineLocal(empresaRuc = '') {
+  try {
+    const key = obtenerClaveColaOffline(empresaRuc);
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+async function verificarConectividadRealVozkora() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return false;
+  }
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3500);
+    const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?select=id&limit=1`, {
+      method: 'GET',
+      headers: supaHeaders(),
+      cache: 'no-store',
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    return resp.ok || resp.status < 500;
+  } catch (e) {
+    return false;
+  }
+}

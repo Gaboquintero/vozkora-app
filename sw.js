@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vozkora-pwa-v13';
+const CACHE_NAME = 'vozkora-pwa-v15';
 const ARCHIVOS_LOCALES = [
   './',
   './index.html',
@@ -25,12 +25,15 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
   if (event.request.url.includes('onrender.com') || event.request.url.includes('supabase.co')) return;
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        const copia = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copia));
+        if (res && (res.status === 200 || res.type === 'opaque')) {
+          const copia = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copia));
+        }
         return res;
       })
       .catch(() => caches.match(event.request))
