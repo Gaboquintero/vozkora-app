@@ -882,12 +882,12 @@
           { id: 'MOV-990', bank: 'Banco Pichincha C.A.', date: 'Ayer 16:40', ref: 'DEP-44109', concept: 'Pago Factura Comercial Andina', type: 'Crédito (+)', amount: 762.80, reconciled: true },
           { id: 'MOV-989', bank: 'Banco Pichincha C.A.', date: 'Ayer 11:20', ref: 'TRF-33018', concept: 'Abono cliente por identificar', type: 'Crédito (+)', amount: 185.00, reconciled: false }
         ],
-        routeFilterDay: 'TODOS',
+        routeFilterDate: '',
         routeVisits: [
-          { id: 'VIS-01', dayOfWeek: 'LUNES', client: 'Distribuidora Sol', scheduledTime: '08:30 AM', actualTime: '08:36 AM', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00018', orderValue: 483.00, notes: 'Pedido semanal entregado y cobro parcial acordado.', photos: [] },
-          { id: 'VIS-02', dayOfWeek: 'LUNES', client: 'Comercial Andina', scheduledTime: '10:15 AM', actualTime: '10:22 AM', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00019', orderValue: 762.80, notes: 'Pagó vía Deuna! en sitio.', photos: [] },
-          { id: 'VIS-03', dayOfWeek: 'MARTES', client: 'Minimarket El Vecino', scheduledTime: '12:00 PM', actualTime: '12:10 PM', status: 'Visitado sin venta', passed: true, orderId: '—', orderValue: 0.00, notes: 'Local con inventario lleno; recompra programada viernes.', photos: [] },
-          { id: 'VIS-04', dayOfWeek: 'VIERNES', client: 'Abastos La Carolina', scheduledTime: '03:00 PM', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Cliente dormido (22 días sin pedir).', photos: [] }
+          { id: 'VIS-01', visitDate: new Date().toISOString().slice(0, 10), client: 'Distribuidora Sol', scheduledTime: '08:30', actualTime: '08:36', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00018', orderValue: 483.00, notes: 'Pedido semanal entregado y cobro parcial acordado.', photos: [] },
+          { id: 'VIS-02', visitDate: new Date().toISOString().slice(0, 10), client: 'Comercial Andina', scheduledTime: '10:15', actualTime: '10:22', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00019', orderValue: 762.80, notes: 'Pagó vía Deuna! en sitio.', photos: [] },
+          { id: 'VIS-03', visitDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10), client: 'Minimarket El Vecino', scheduledTime: '12:00', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Recompra programada en calendario.', photos: [] },
+          { id: 'VIS-04', visitDate: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10), client: 'Abastos La Carolina', scheduledTime: '15:00', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Cliente dormido (22 días sin pedir).', photos: [] }
         ],
         // Carrito de Facturación + Modos de Descuento ('none' | 'global' | 'item')
         cart: [],
@@ -1131,6 +1131,7 @@
     }
 
     function selectPlan(planId) {
+      const savedRoutesBackup = Array.isArray(appData.routeVisits) ? appData.routeVisits : null;
       configState.selectedPlanId = planId;
       const plan = getCurrentPlan();
 
@@ -1158,6 +1159,7 @@
         configState.selectedSvaOrder = [];
         configState.activeSVAs = { voz: false, cobranza: false, ventas: false, gerencia: false, operaciones: false, finanzas: false };
       }
+      if (savedRoutesBackup) appData.routeVisits = savedRoutesBackup;
       renderAll();
     }
 
@@ -2588,13 +2590,13 @@
 
         const sesRuta = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { rol: 'DEMO', permisos: {} };
         const canProgramRoute = sesRuta.rol === 'DEMO' || sesRuta.rol === 'SUPERADMIN' || !!(sesRuta.permisos && sesRuta.permisos.programador_ruta);
-        const activeDay = appData.routeFilterDay || 'TODOS';
-        const daysList = ['TODOS', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
-        const dayLabels = { TODOS: 'Todos', LUNES: 'Lun', MARTES: 'Mar', MIERCOLES: 'Mié', JUEVES: 'Jue', VIERNES: 'Vie', SABADO: 'Sáb' };
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        const activeDate = appData.routeFilterDate || '';
 
         const filteredVisits = appData.routeVisits
           .map((v, realIdx) => ({ v, realIdx }))
-          .filter(({ v }) => activeDay === 'TODOS' || String(v.dayOfWeek || 'LUNES').toUpperCase() === activeDay);
+          .filter(({ v }) => !activeDate || (v.visitDate || todayIso) === activeDate);
 
         const passedCount = filteredVisits.filter(({ v }) => v.passed).length;
         const routeTotalSales = filteredVisits.reduce((a, { v }) => a + Number(v.orderValue || 0), 0);
@@ -2616,25 +2618,33 @@
               <span class="px-2 py-0.5 rounded bg-white/15 text-[10px] font-mono">${passedCount}/${filteredVisits.length} visitados</span>
             </div>
             <div class="flex justify-between text-[11px] text-teal-100">
-              <span>Ventas acumuladas en filtro actual:</span>
+              <span>Ventas acumuladas en fecha filtrada:</span>
               <strong class="font-mono text-white">${appMoney(routeTotalSales)}</strong>
             </div>
           </div>
 
-          <!-- Filtro general por día de ruta (habilitado para todos los usuarios del módulo) -->
-          <div class="bg-white border border-[#e3ebea] rounded-2xl p-2.5 space-y-1.5">
-            <div class="text-[10.5px] font-extrabold text-[#073e3b]">📅 Filtrar Ruta por Día:</div>
-            <div class="flex gap-1 overflow-x-auto pb-0.5">
-              ${daysList.map(d => `
-                <button onclick="V.setRouteDayFilter('${d}')" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold cursor-pointer shrink-0 ${activeDay === d ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
-                  ${dayLabels[d]}
-                </button>
-              `).join('')}
+          <!-- Filtro general por fecha de calendario (habilitado para todos los usuarios del módulo) -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-2.5 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[10.5px] font-extrabold text-[#073e3b]">📅 Filtrar Ruta por Calendario:</span>
+              ${activeDate ? `<span class="text-[10px] font-mono font-bold text-[#087e70]">${esc(activeDate)}</span>` : '<span class="text-[10px] font-bold text-slate-500">Todas las fechas</span>'}
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button onclick="V.setRouteDateFilter('')" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold cursor-pointer ${!activeDate ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
+                Todas
+              </button>
+              <button onclick="V.setRouteDateFilter('${todayIso}')" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold cursor-pointer ${activeDate === todayIso ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
+                Hoy
+              </button>
+              <button onclick="V.setRouteDateFilter('${tomorrowIso}')" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold cursor-pointer ${activeDate === tomorrowIso ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
+                Mañana
+              </button>
+              <input type="date" value="${esc(activeDate)}" onchange="V.setRouteDateFilter(this.value)" class="ml-auto border border-[#d7e1e0] rounded-lg px-2 py-1 text-[10.5px] font-mono font-bold bg-[#f5f8f8] text-[#073e3b]" />
             </div>
           </div>
 
           <div class="space-y-2 text-xs">
-            ${filteredVisits.length === 0 ? '<div class="bg-white border border-[#e3ebea] rounded-2xl p-4 text-center text-slate-500">No hay visitas programadas para este día.</div>' : ''}
+            ${filteredVisits.length === 0 ? '<div class="bg-white border border-[#e3ebea] rounded-2xl p-4 text-center text-slate-500">No hay visitas programadas en calendario para esta fecha.</div>' : ''}
             ${filteredVisits.map(({ v, realIdx }, idx) => {
               const photos = Array.isArray(v.photos) ? v.photos : [];
               return `
@@ -2642,7 +2652,7 @@
                   <div class="flex items-center justify-between gap-2">
                     <div>
                       <strong class="text-[#073e3b]">${idx + 1}. ${esc(v.client)}</strong>
-                      <span class="ml-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[9.5px] font-bold">${esc(v.dayOfWeek || 'LUNES')}</span>
+                      <span class="ml-1 px-1.5 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] font-mono text-[9.5px] font-bold">📅 ${esc(v.visitDate || todayIso)}</span>
                     </div>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${v.passed ? (v.orderValue > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800') : 'bg-slate-100 text-slate-600'}">
                       ${v.passed ? '✓ Sí pasó' : '⏳ No ha pasado'}
@@ -3422,27 +3432,61 @@
         }
       },
 
-      // --- RUTAS GPS: FILTRO POR DÍA, PROGRAMADOR DE RUTA Y HASTA 3 FOTOS POR VISITA ---
-      setRouteDayFilter(dayCode) {
-        appData.routeFilterDay = dayCode;
+      // --- RUTAS GPS: FILTRO CALENDARIO, PROGRAMADOR DE RUTA Y HASTA 3 FOTOS PERSISTENTES ---
+      async persistRouteVisitState(vis) {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { empresa_ruc: '123456789001' };
+        if (typeof guardarRutasLocalStorage === 'function') {
+          guardarRutasLocalStorage(ses.empresa_ruc, appData.routeVisits);
+        }
+        try {
+          if (vis.dbId && typeof actualizarVisitaRutaSupabase === 'function') {
+            await actualizarVisitaRutaSupabase(vis.dbId, {
+              fecha_visita: vis.visitDate || new Date().toISOString().slice(0, 10),
+              hora_programada: vis.scheduledTime,
+              hora_real: vis.actualTime,
+              visitado: !!vis.passed,
+              pedido_ref: vis.orderId || '—',
+              valor_venta: Number(vis.orderValue || 0),
+              notas: vis.notes || '',
+              fotos: Array.isArray(vis.photos) ? vis.photos : []
+            });
+          } else if (typeof crearVisitaRutaSupabase === 'function') {
+            const inserted = await crearVisitaRutaSupabase({
+              fecha_visita: vis.visitDate || new Date().toISOString().slice(0, 10),
+              dia_semana: vis.visitDate || new Date().toISOString().slice(0, 10),
+              cliente_nombre: vis.client,
+              hora_programada: vis.scheduledTime,
+              hora_real: vis.actualTime,
+              visitado: !!vis.passed,
+              pedido_ref: vis.orderId || '—',
+              valor_venta: Number(vis.orderValue || 0),
+              notas: vis.notes || '',
+              fotos: Array.isArray(vis.photos) ? vis.photos : []
+            });
+            if (inserted && inserted.id) {
+              vis.dbId = inserted.id;
+              if (typeof guardarRutasLocalStorage === 'function') {
+                guardarRutasLocalStorage(ses.empresa_ruc, appData.routeVisits);
+              }
+            }
+          }
+        } catch (e) {}
+      },
+
+      setRouteDateFilter(dateStr) {
+        appData.routeFilterDate = dateStr || '';
         renderPhone('routes');
       },
 
       openScheduleRouteModal() {
+        const todayIso = new Date().toISOString().slice(0, 10);
         this.openModal(
-          '📅 Programar Visita en Ruta GPS',
+          '📅 Programar Visita en Calendario de Ruta',
           `<div class="space-y-2.5">
-             <p class="text-[11px] text-slate-600">Asigna una nueva parada al itinerario del vendedor:</p>
+             <p class="text-[11px] text-slate-600">Agenda una parada en fecha exacta de calendario para el vendedor:</p>
              <div>
-               <label class="font-bold text-[11px]">Día de la Ruta *</label>
-               <select id="schedRouteDay" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
-                 <option value="LUNES">Lunes</option>
-                 <option value="MARTES">Martes</option>
-                 <option value="MIERCOLES">Miércoles</option>
-                 <option value="JUEVES">Jueves</option>
-                 <option value="VIERNES">Viernes</option>
-                 <option value="SABADO">Sábado</option>
-               </select>
+               <label class="font-bold text-[11px]">Fecha de Visita (Calendario) *</label>
+               <input id="schedRouteDate" type="date" value="${todayIso}" min="${todayIso}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-mono font-bold" />
              </div>
              <div>
                <label class="font-bold text-[11px]">Cliente a Visitar *</label>
@@ -3460,21 +3504,21 @@
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.submitScheduledRouteVisit()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar en Ruta</button>`
+           <button onclick="V.submitScheduledRouteVisit()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar en Calendario</button>`
         );
       },
 
       async submitScheduledRouteVisit() {
-        const dayOfWeek = $('schedRouteDay').value;
+        const visitDate = $('schedRouteDate').value || new Date().toISOString().slice(0, 10);
         const client = $('schedRouteClient').value;
         const rawTime = $('schedRouteTime').value || '09:00';
-        const note = ($('schedRouteNote').value || '').trim() || 'Visita programada desde módulo Rutas GPS.';
-        if (!client) return toast('Selecciona un cliente.');
+        const note = ($('schedRouteNote').value || '').trim() || 'Visita programada en calendario GPS.';
+        if (!client || !visitDate) return toast('Selecciona fecha y cliente.');
 
         const visId = 'VIS-' + String(appData.routeVisits.length + 1).padStart(2, '0');
         const newVisit = {
           id: visId,
-          dayOfWeek,
+          visitDate,
           client,
           scheduledTime: rawTime,
           actualTime: 'Pendiente',
@@ -3486,23 +3530,13 @@
           photos: []
         };
 
-        if (typeof crearVisitaRutaSupabase === 'function') {
-          const inserted = await crearVisitaRutaSupabase({
-            dia_semana: dayOfWeek,
-            cliente_nombre: client,
-            hora_programada: rawTime,
-            notas: note,
-            visitado: false,
-            fotos: []
-          });
-          if (inserted && inserted.id) newVisit.dbId = inserted.id;
-        }
-
         appData.routeVisits.push(newVisit);
-        appData.routeFilterDay = dayOfWeek;
+        await this.persistRouteVisitState(newVisit);
+
+        appData.routeFilterDate = visitDate;
         this.closeModal();
         renderPhone('routes');
-        toast(`✓ Visita a ${client} (${dayOfWeek} · ${rawTime}) programada.`);
+        toast(`✓ Visita a ${client} agendada para el ${visitDate} a las ${rawTime}.`);
       },
 
       openRoutePhotoCamera(idx) {
@@ -3531,7 +3565,7 @@
           ctx.fillText('VOZKORA GPS · EVIDENCIA DE VISITA', 24, 60);
           ctx.fillStyle = '#ffffff'; ctx.font = '16px sans-serif';
           ctx.fillText(`Punto: ${vis.client}`, 24, 110);
-          ctx.fillText(`Hora: ${nowFormatted()}`, 24, 145);
+          ctx.fillText(`Fecha/Hora: ${nowFormatted()}`, 24, 145);
           finalPhotoUrl = c.toDataURL('image/jpeg', 0.8);
         }
 
@@ -3548,12 +3582,10 @@
           takenAt: nowFormatted()
         });
 
-        if (vis.dbId && typeof actualizarVisitaRutaSupabase === 'function') {
-          await actualizarVisitaRutaSupabase(vis.dbId, { fotos: vis.photos });
-        }
+        await this.persistRouteVisitState(vis);
 
         renderPhone('routes');
-        toast(`📸 Foto ${vis.photos.length}/3 guardada para ${vis.client}.`);
+        toast(`📸 Foto ${vis.photos.length}/3 guardada y respaldada para ${vis.client}.`);
       },
 
       openRoutePhotosGallery(idx) {
@@ -3584,9 +3616,7 @@
         const vis = appData.routeVisits[visIdx];
         if (!vis || !Array.isArray(vis.photos)) return;
         vis.photos.splice(photoIdx, 1);
-        if (vis.dbId && typeof actualizarVisitaRutaSupabase === 'function') {
-          await actualizarVisitaRutaSupabase(vis.dbId, { fotos: vis.photos });
-        }
+        await this.persistRouteVisitState(vis);
         this.openRoutePhotosGallery(visIdx);
         renderPhone('routes');
         toast('Foto eliminada.');
@@ -4589,7 +4619,7 @@
         toast(isOff ? `💾 Cruce bancario ${mov.ref} guardado en cola Offline.` : `✓ Movimiento ${mov.ref} (${appMoney(mov.amount)}) conciliado.`);
       },
 
-      checkInRouteVisit(idx) {
+      async checkInRouteVisit(idx) {
         const vis = appData.routeVisits[idx];
         if (!vis) return;
         const isOff = appData.offline;
@@ -4605,6 +4635,7 @@
             vis.pendingSync = false;
           });
         }
+        await this.persistRouteVisitState(vis);
         renderPhone('routes');
         toast(isOff ? `💾 Check-in GPS en ${vis.client} guardado en cola Offline.` : `📍 Check-in registrado en ${vis.client} (${vis.actualTime}).`);
       },
@@ -5476,23 +5507,37 @@
                 history: Array.isArray(o.historial_cambios) ? o.historial_cambios : []
               }));
             }
+            const localVisitas = typeof leerRutasLocalStorage === 'function' ? leerRutasLocalStorage(user.empresa_ruc) : null;
+            if (Array.isArray(localVisitas) && localVisitas.length > 0) {
+              appData.routeVisits = localVisitas;
+            }
             if (typeof listarVisitasRutaSupabase === 'function') {
               const dbVisitas = await listarVisitasRutaSupabase(user.empresa_ruc);
               if (Array.isArray(dbVisitas) && dbVisitas.length > 0) {
-                appData.routeVisits = dbVisitas.map((v, idx) => ({
-                  id: 'VIS-' + String(idx + 1).padStart(2, '0'),
-                  dbId: v.id,
-                  dayOfWeek: v.dia_semana || 'LUNES',
-                  client: v.cliente_nombre,
-                  scheduledTime: v.hora_programada || '09:00',
-                  actualTime: v.hora_real || 'Pendiente',
-                  status: v.visitado ? 'Visitado con pedido' : 'Pendiente de visita',
-                  passed: !!v.visitado,
-                  orderId: v.pedido_ref || '—',
-                  orderValue: Number(v.valor_venta || 0),
-                  notes: v.notas || '',
-                  photos: Array.isArray(v.fotos) ? v.fotos : []
-                }));
+                appData.routeVisits = dbVisitas.map((v, idx) => {
+                  const localMatch = Array.isArray(localVisitas)
+                    ? localVisitas.find(lv => lv.dbId === v.id || (lv.client === v.cliente_nombre && lv.visitDate === (v.fecha_visita || v.dia_semana)))
+                    : null;
+                  const dbPhotos = Array.isArray(v.fotos) ? v.fotos : [];
+                  const mergedPhotos = dbPhotos.length >= (localMatch?.photos?.length || 0) ? dbPhotos : (localMatch?.photos || []);
+                  return {
+                    id: 'VIS-' + String(idx + 1).padStart(2, '0'),
+                    dbId: v.id,
+                    visitDate: v.fecha_visita || (v.dia_semana && v.dia_semana.includes('-') ? v.dia_semana : new Date().toISOString().slice(0, 10)),
+                    client: v.cliente_nombre,
+                    scheduledTime: v.hora_programada || '09:00',
+                    actualTime: v.hora_real || 'Pendiente',
+                    status: v.visitado ? 'Visitado con pedido' : 'Pendiente de visita',
+                    passed: !!v.visitado,
+                    orderId: v.pedido_ref || '—',
+                    orderValue: Number(v.valor_venta || 0),
+                    notes: v.notas || '',
+                    photos: mergedPhotos
+                  };
+                });
+                if (typeof guardarRutasLocalStorage === 'function') {
+                  guardarRutasLocalStorage(user.empresa_ruc, appData.routeVisits);
+                }
               }
             }
           } catch (e) {}

@@ -582,12 +582,29 @@ async function subirEvidenciaFotoSupabase(fileOrBlob, carpeta = 'rutas', prefijo
 async function listarVisitasRutaSupabase(empresaRuc) {
   if (!empresaRuc) return [];
   try {
-    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/repo_rutas_visitas?empresa_ruc=eq.${encodeURIComponent(empresaRuc)}&select=*&order=creado_en.asc`;
+    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/repo_rutas_visitas?empresa_ruc=eq.${encodeURIComponent(empresaRuc)}&select=*&order=fecha_visita.asc,hora_programada.asc`;
     const resp = await fetch(url, { headers: supaHeaders() });
     if (!resp.ok) return [];
     return await resp.json();
   } catch (e) {
     return [];
+  }
+}
+
+function guardarRutasLocalStorage(empresaRuc, visitas) {
+  if (!empresaRuc) return;
+  try {
+    localStorage.setItem('vozkora_rutas_' + empresaRuc, JSON.stringify(visitas || []));
+  } catch (e) {}
+}
+
+function leerRutasLocalStorage(empresaRuc) {
+  if (!empresaRuc) return null;
+  try {
+    const raw = localStorage.getItem('vozkora_rutas_' + empresaRuc);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
   }
 }
 
