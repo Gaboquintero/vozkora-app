@@ -695,18 +695,36 @@ async function verificarConectividadRealVozkora() {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return false;
   }
+  const nonce = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 3500);
-    const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?select=id&limit=1`, {
-      method: 'GET',
-      headers: supaHeaders(),
-      cache: 'no-store',
-      signal: ctrl.signal
-    });
+    const timer = setTimeout(() => ctrl.abort(), 2200);
+    const resp = await fetch(
+      `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?select=id&limit=1&_nocache=${nonce}`,
+      {
+        method: 'GET',
+        headers: supaHeaders({ 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache' }),
+        cache: 'no-store',
+        signal: ctrl.signal
+      }
+    );
     clearTimeout(timer);
-    return resp.ok || resp.status < 500;
+    if (resp && resp.ok) return true;
   } catch (e) {
-    return false;
+    // Fallback check against Google 204 endpoint (opaque response succeeds only when real internet exists)
+    try {
+      const ctrl2 = new AbortController();
+      const timer2 = setTimeout(() => ctrl2.abort(), 1800);
+      await fetch(`https://connectivitycheck.gstatic.com/generate_204?_nocache=${nonce}`, {
+        mode: 'no-cors',
+        cache: 'no-store',
+        signal: ctrl2.signal
+      });
+      clearTimeout(timer2);
+      return true;
+    } catch (e2) {
+      return false;
+    }
   }
+  return false;
 }

@@ -4397,7 +4397,7 @@
         }
       },
 
-      invoice() {
+      async invoice() {
         if (!appData.cart.length) return toast('Agrega productos al carrito primero.');
         const fin = calculateDocumentFinancials(appData.cart, appData.discountMode, appData.discountPct, appData.selectedIvaRate);
         if (fin.hasRuleViolation) {
@@ -4407,13 +4407,23 @@
         const clientName = $('saleClient').value;
         const method = $('payMethod').value;
 
+        // Comprobar señal real en este preciso instante antes de facturar
+        let isOffNow = appData.offline;
+        if (!isOffNow && typeof verificarConectividadRealVozkora === 'function') {
+          const onlineNow = await verificarConectividadRealVozkora();
+          if (!onlineNow) {
+            await this.setOfflineState(true, true);
+            isOffNow = true;
+          }
+        }
+
         appData.cart.forEach(item => {
           const p = appData.products.find(x => x.id === item.id);
           if (p) p.stock = Math.max(0, p.stock - item.qty);
         });
 
         const invId = 'FAC-001-002-' + String(20 + appData.invoices.length).padStart(5, '0');
-        appData.invoices.push({
+        const invObj = {
           id: invId,
           client: clientName,
           subtotal: fin.netSubtotal,
@@ -4422,40 +4432,46 @@
           total: fin.grandTotal,
           method,
           commission: Number(fin.commissionAmt.toFixed(2)),
-          status: appData.offline ? 'Pendiente Offline' : 'Autorizada SRI'
-        });
+          status: isOffNow ? 'Pendiente Offline' : 'Autorizada SRI'
+        };
+        appData.invoices.push(invObj);
         appData.cart = [];
         appData.discountMode = 'none';
         appData.discountPct = 0;
 
-        const invSnapshot = appData.invoices[appData.invoices.length - 1];
-        const isOffNow = appData.offline;
-        (async () => {
-          let insertedId = null;
-          if (typeof registrarEnRepositorio === 'function') {
-            const inserted = await registrarEnRepositorio('repo_facturas', {
-              numero_factura: invId,
-              cliente_ruc_ci: '1790012345001',
-              cliente_nombre: clientName,
-              subtotal: Number(fin.netSubtotal.toFixed(2)),
-              iva_porcentaje: appData.selectedIvaRate,
-              iva_monto: Number(fin.ivaAmt.toFixed(2)),
-              total: Number(fin.grandTotal.toFixed(2)),
-              forma_pago: method,
-              items: invSnapshot,
-              estado_sri: isOffNow ? 'PENDIENTE_OFFLINE' : 'AUTORIZADA_SRI'
-            });
-            if (inserted && inserted.id) insertedId = inserted.id;
+        let insertedId = null;
+        if (!isOffNow && typeof registrarEnRepositorio === 'function') {
+          const inserted = await registrarEnRepositorio('repo_facturas', {
+            numero_factura: invId,
+            cliente_ruc_ci: '1790012345001',
+            cliente_nombre: clientName,
+            subtotal: Number(fin.netSubtotal.toFixed(2)),
+            iva_porcentaje: appData.selectedIvaRate,
+            iva_monto: Number(fin.ivaAmt.toFixed(2)),
+            total: Number(fin.grandTotal.toFixed(2)),
+            forma_pago: method,
+            items: invObj,
+            estado_sri: 'AUTORIZADA_SRI'
+          });
+          if (inserted && inserted.id) {
+            insertedId = inserted.id;
+          } else {
+            // Si falló el envío a Supabase por caída repentina de datos, activar Offline y guardar localmente
+            await this.setOfflineState(true, true);
+            isOffNow = true;
+            invObj.status = 'Pendiente Offline';
           }
-          if (isOffNow) {
-            enqueueOfflineOp('Facturación SRI', invId, `${clientName} · ${appMoney(fin.grandTotal)} (${method})`, () => {
-              const found = appData.invoices.find(x => x.id === invId);
-              if (found) found.status = 'Autorizada SRI';
-            }, 'repo_facturas', insertedId, invSnapshot);
-          }
-        })();
+        }
+
+        if (isOffNow) {
+          enqueueOfflineOp('Facturación SRI', invId, `${clientName} · ${appMoney(fin.grandTotal)} (${method})`, () => {
+            const found = appData.invoices.find(x => x.id === invId);
+            if (found) found.status = 'Autorizada SRI';
+          }, 'repo_facturas', insertedId, invObj);
+        }
+
         this.openModal(
-          appData.offline ? '💾 Guardada en Cola Offline' : '⚡ Factura SRI Emitida',
+          isOffNow ? '💾 Guardada en Cola Offline' : '⚡ Factura SRI Emitida',
           `<p>Se creó la factura <strong>${invId}</strong> para <strong>${esc(clientName)}</strong>.</p>
            <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1 text-[11px]">
              <div class="flex justify-between"><span>Subtotal neto:</span><strong>${appMoney(fin.netSubtotal)}</strong></div>
@@ -7075,7 +7091,7 @@
           else if (CRM.currentTab === 'tickets') CRM.loadTickets();
         }
       }
-      setInterval(syncLiveAppCrmChannel, 8000);
+      setInterval(syncLiveAppCrmChannel, 3000);
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') syncLiveAppCrmChannel();
       });

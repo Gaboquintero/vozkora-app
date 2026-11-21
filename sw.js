@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vozkora-pwa-v15';
+const CACHE_NAME = 'vozkora-pwa-v16';
 const ARCHIVOS_LOCALES = [
   './',
   './index.html',
@@ -26,7 +26,16 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  if (event.request.url.includes('onrender.com') || event.request.url.includes('supabase.co')) return;
+  const reqUrl = event.request.url;
+  if (
+    reqUrl.includes('onrender.com') ||
+    reqUrl.includes('supabase.co') ||
+    reqUrl.includes('gstatic.com/generate_204') ||
+    reqUrl.includes('?ping=') ||
+    reqUrl.includes('_nocache=')
+  ) {
+    return;
+  }
   event.respondWith(
     fetch(event.request)
       .then((res) => {
