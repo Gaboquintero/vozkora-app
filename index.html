@@ -884,10 +884,10 @@
         ],
         routeFilterDate: '',
         routeVisits: [
-          { id: 'VIS-01', visitDate: new Date().toISOString().slice(0, 10), client: 'Distribuidora Sol', scheduledTime: '08:30', actualTime: '08:36', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00018', orderValue: 483.00, notes: 'Pedido semanal entregado y cobro parcial acordado.', photos: [] },
-          { id: 'VIS-02', visitDate: new Date().toISOString().slice(0, 10), client: 'Comercial Andina', scheduledTime: '10:15', actualTime: '10:22', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00019', orderValue: 762.80, notes: 'Pagó vía Deuna! en sitio.', photos: [] },
-          { id: 'VIS-03', visitDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10), client: 'Minimarket El Vecino', scheduledTime: '12:00', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Recompra programada en calendario.', photos: [] },
-          { id: 'VIS-04', visitDate: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10), client: 'Abastos La Carolina', scheduledTime: '15:00', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Cliente dormido (22 días sin pedir).', photos: [] }
+          { id: 'VIS-01', visitDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)), client: 'Distribuidora Sol', scheduledTime: '08:30', actualTime: '08:36', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00018', orderValue: 483.00, notes: 'Pedido semanal entregado y cobro parcial acordado.', photos: [] },
+          { id: 'VIS-02', visitDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)), client: 'Comercial Andina', scheduledTime: '10:15', actualTime: '10:22', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00019', orderValue: 762.80, notes: 'Pagó vía Deuna! en sitio.', photos: [] },
+          { id: 'VIS-03', visitDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(1) : new Date(Date.now() + 86400000).toISOString().slice(0, 10)), client: 'Minimarket El Vecino', scheduledTime: '12:00', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Recompra programada en calendario.', photos: [] },
+          { id: 'VIS-04', visitDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(2) : new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)), client: 'Abastos La Carolina', scheduledTime: '15:00', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Cliente dormido (22 días sin pedir).', photos: [] }
         ],
         // Carrito de Facturación + Modos de Descuento ('none' | 'global' | 'item')
         cart: [],
@@ -2590,8 +2590,8 @@
 
         const sesRuta = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { rol: 'DEMO', permisos: {} };
         const canProgramRoute = sesRuta.rol === 'DEMO' || sesRuta.rol === 'SUPERADMIN' || !!(sesRuta.permisos && sesRuta.permisos.programador_ruta);
-        const todayIso = new Date().toISOString().slice(0, 10);
-        const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        const todayIso = typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10);
+        const tomorrowIso = typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(1) : new Date(Date.now() + 86400000).toISOString().slice(0, 10);
         const activeDate = appData.routeFilterDate || '';
 
         const filteredVisits = appData.routeVisits
@@ -3393,24 +3393,43 @@
         }
       },
 
+      async compressImageDataUrl(rawDataUrl, maxWidth = 640, quality = 0.65) {
+        if (!rawDataUrl || !rawDataUrl.startsWith('data:image')) return rawDataUrl;
+        return await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const c = document.createElement('canvas');
+            const scale = Math.min(1, maxWidth / (img.width || maxWidth));
+            c.width = Math.round((img.width || maxWidth) * scale);
+            c.height = Math.round((img.height || 480) * scale);
+            const ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            resolve(c.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = () => resolve(rawDataUrl);
+          img.src = rawDataUrl;
+        });
+      },
+
       async captureVideoFrameDataUrl() {
         const video = $('vozkoraCameraVideo');
         const canvas = $('vozkoraCameraCanvas');
         if (video && canvas && video.videoWidth > 0) {
-          canvas.width = Math.min(960, video.videoWidth);
+          canvas.width = Math.min(640, video.videoWidth);
           canvas.height = Math.round((video.videoHeight / video.videoWidth) * canvas.width);
           const ctx = canvas.getContext('2d');
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          return canvas.toDataURL('image/jpeg', 0.78);
+          return canvas.toDataURL('image/jpeg', 0.65);
         }
         const fileEl = $('cameraFallbackFileInput');
         if (fileEl && fileEl.files && fileEl.files[0]) {
-          return await new Promise((resolve) => {
+          const raw = await new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
             reader.onerror = () => resolve('');
             reader.readAsDataURL(fileEl.files[0]);
           });
+          return await this.compressImageDataUrl(raw, 640, 0.65);
         }
         return '';
       },
@@ -3555,6 +3574,8 @@
         if (!Array.isArray(vis.photos)) vis.photos = [];
         if (vis.photos.length >= 3) return toast('Máximo 3 fotos por visita.');
 
+        toast('⏳ Guardando foto en nube y memoria...');
+
         let finalPhotoUrl = dataUrl;
         if (!finalPhotoUrl) {
           const c = document.createElement('canvas');
@@ -3566,14 +3587,20 @@
           ctx.fillStyle = '#ffffff'; ctx.font = '16px sans-serif';
           ctx.fillText(`Punto: ${vis.client}`, 24, 110);
           ctx.fillText(`Fecha/Hora: ${nowFormatted()}`, 24, 145);
-          finalPhotoUrl = c.toDataURL('image/jpeg', 0.8);
+          finalPhotoUrl = c.toDataURL('image/jpeg', 0.72);
+        } else {
+          finalPhotoUrl = await this.compressImageDataUrl(finalPhotoUrl, 640, 0.65);
         }
 
+        let uploadedToStorage = false;
         try {
           if (typeof subirEvidenciaFotoSupabase === 'function' && finalPhotoUrl.startsWith('data:')) {
             const resBlob = await (await fetch(finalPhotoUrl)).blob();
             const up = await subirEvidenciaFotoSupabase(resBlob, 'rutas', vis.id);
-            if (up && up.url) finalPhotoUrl = up.url;
+            if (up && up.url) {
+              finalPhotoUrl = up.url;
+              uploadedToStorage = true;
+            }
           }
         } catch (e) {}
 
@@ -3585,7 +3612,9 @@
         await this.persistRouteVisitState(vis);
 
         renderPhone('routes');
-        toast(`📸 Foto ${vis.photos.length}/3 guardada y respaldada para ${vis.client}.`);
+        toast(uploadedToStorage
+          ? `✅ Foto ${vis.photos.length}/3 guardada en la nube (${vis.client}).`
+          : `✅ Foto ${vis.photos.length}/3 guardada en memoria persistente (${vis.client}).`);
       },
 
       openRoutePhotosGallery(idx) {
@@ -5437,6 +5466,14 @@
           }
         }
 
+        // Cargar respaldo local inmediato de Rutas GPS antes de consultar red
+        if (user.empresa_ruc && typeof leerRutasLocalStorage === 'function') {
+          const cachedRutas = leerRutasLocalStorage(user.empresa_ruc);
+          if (Array.isArray(cachedRutas) && cachedRutas.length > 0) {
+            appData.routeVisits = cachedRutas;
+          }
+        }
+
         // Hidratar datos reales de Supabase para esta empresa (persistencia al recargar App)
         if (user.empresa_ruc && typeof consultarRepositorio === 'function') {
           try {
@@ -5514,27 +5551,41 @@
             if (typeof listarVisitasRutaSupabase === 'function') {
               const dbVisitas = await listarVisitasRutaSupabase(user.empresa_ruc);
               if (Array.isArray(dbVisitas) && dbVisitas.length > 0) {
-                appData.routeVisits = dbVisitas.map((v, idx) => {
-                  const localMatch = Array.isArray(localVisitas)
-                    ? localVisitas.find(lv => lv.dbId === v.id || (lv.client === v.cliente_nombre && lv.visitDate === (v.fecha_visita || v.dia_semana)))
-                    : null;
+                const baseList = Array.isArray(localVisitas) && localVisitas.length > 0 ? localVisitas.slice() : appData.routeVisits.slice();
+                dbVisitas.forEach((v) => {
+                  const vDate = v.fecha_visita || (v.dia_semana && v.dia_semana.includes('-') ? v.dia_semana : (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)));
                   const dbPhotos = Array.isArray(v.fotos) ? v.fotos : [];
-                  const mergedPhotos = dbPhotos.length >= (localMatch?.photos?.length || 0) ? dbPhotos : (localMatch?.photos || []);
-                  return {
-                    id: 'VIS-' + String(idx + 1).padStart(2, '0'),
-                    dbId: v.id,
-                    visitDate: v.fecha_visita || (v.dia_semana && v.dia_semana.includes('-') ? v.dia_semana : new Date().toISOString().slice(0, 10)),
-                    client: v.cliente_nombre,
-                    scheduledTime: v.hora_programada || '09:00',
-                    actualTime: v.hora_real || 'Pendiente',
-                    status: v.visitado ? 'Visitado con pedido' : 'Pendiente de visita',
-                    passed: !!v.visitado,
-                    orderId: v.pedido_ref || '—',
-                    orderValue: Number(v.valor_venta || 0),
-                    notes: v.notas || '',
-                    photos: mergedPhotos
-                  };
+                  const existingIdx = baseList.findIndex(lv => lv.dbId === v.id || (lv.client === v.cliente_nombre && lv.scheduledTime === v.hora_programada));
+                  if (existingIdx >= 0) {
+                    const prev = baseList[existingIdx];
+                    const prevPhotos = Array.isArray(prev.photos) ? prev.photos : [];
+                    baseList[existingIdx] = Object.assign({}, prev, {
+                      dbId: v.id,
+                      visitDate: vDate,
+                      actualTime: v.hora_real || prev.actualTime,
+                      passed: !!v.visitado || !!prev.passed,
+                      status: (v.visitado || prev.passed) ? 'Visitado con pedido' : 'Pendiente de visita',
+                      notes: v.notas || prev.notes,
+                      photos: dbPhotos.length >= prevPhotos.length ? dbPhotos : prevPhotos
+                    });
+                  } else {
+                    baseList.push({
+                      id: 'VIS-' + String(baseList.length + 1).padStart(2, '0'),
+                      dbId: v.id,
+                      visitDate: vDate,
+                      client: v.cliente_nombre,
+                      scheduledTime: v.hora_programada || '09:00',
+                      actualTime: v.hora_real || 'Pendiente',
+                      status: v.visitado ? 'Visitado con pedido' : 'Pendiente de visita',
+                      passed: !!v.visitado,
+                      orderId: v.pedido_ref || '—',
+                      orderValue: Number(v.valor_venta || 0),
+                      notes: v.notas || '',
+                      photos: dbPhotos
+                    });
+                  }
                 });
+                appData.routeVisits = baseList;
                 if (typeof guardarRutasLocalStorage === 'function') {
                   guardarRutasLocalStorage(user.empresa_ruc, appData.routeVisits);
                 }

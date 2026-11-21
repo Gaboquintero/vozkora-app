@@ -591,17 +591,28 @@ async function listarVisitasRutaSupabase(empresaRuc) {
   }
 }
 
+function obtenerFechaLocalISO(offsetDays = 0) {
+  const d = new Date(Date.now() + offsetDays * 86400000);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function guardarRutasLocalStorage(empresaRuc, visitas) {
-  if (!empresaRuc) return;
+  const key = 'vozkora_rutas_' + (empresaRuc || '123456789001');
   try {
-    localStorage.setItem('vozkora_rutas_' + empresaRuc, JSON.stringify(visitas || []));
-  } catch (e) {}
+    localStorage.setItem(key, JSON.stringify(visitas || []));
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function leerRutasLocalStorage(empresaRuc) {
-  if (!empresaRuc) return null;
+  const key = 'vozkora_rutas_' + (empresaRuc || '123456789001');
   try {
-    const raw = localStorage.getItem('vozkora_rutas_' + empresaRuc);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
   } catch (e) {
     return null;
@@ -611,9 +622,9 @@ function leerRutasLocalStorage(empresaRuc) {
 async function crearVisitaRutaSupabase(payload) {
   const ses = obtenerSesionVozkora();
   const body = Object.assign({
-    empresa_ruc: ses ? ses.empresa_ruc : '123456789001',
-    empresa_nombre: ses ? ses.empresa_nombre : 'ACME',
-    creado_por_email: ses ? ses.email : 'demo@vozkora.com'
+    empresa_ruc: (ses && ses.empresa_ruc) ? ses.empresa_ruc : '123456789001',
+    empresa_nombre: (ses && ses.empresa_nombre) ? ses.empresa_nombre : 'ACME',
+    creado_por_email: (ses && ses.email) ? ses.email : 'demo@vozkora.com'
   }, payload);
   const url = `${VOZKORA_CONFIG.SUPABASE_URL}/repo_rutas_visitas`;
   const resp = await fetch(url, {
