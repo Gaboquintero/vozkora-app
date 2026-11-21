@@ -882,11 +882,12 @@
           { id: 'MOV-990', bank: 'Banco Pichincha C.A.', date: 'Ayer 16:40', ref: 'DEP-44109', concept: 'Pago Factura Comercial Andina', type: 'Crédito (+)', amount: 762.80, reconciled: true },
           { id: 'MOV-989', bank: 'Banco Pichincha C.A.', date: 'Ayer 11:20', ref: 'TRF-33018', concept: 'Abono cliente por identificar', type: 'Crédito (+)', amount: 185.00, reconciled: false }
         ],
+        routeFilterDay: 'TODOS',
         routeVisits: [
-          { id: 'VIS-01', client: 'Distribuidora Sol', scheduledTime: '08:30 AM', actualTime: '08:36 AM', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00018', orderValue: 483.00, notes: 'Pedido semanal entregado y cobro parcial acordado.' },
-          { id: 'VIS-02', client: 'Comercial Andina', scheduledTime: '10:15 AM', actualTime: '10:22 AM', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00019', orderValue: 762.80, notes: 'Pagó vía Deuna! en sitio.' },
-          { id: 'VIS-03', client: 'Minimarket El Vecino', scheduledTime: '12:00 PM', actualTime: '12:10 PM', status: 'Visitado sin venta', passed: true, orderId: '—', orderValue: 0.00, notes: 'Local con inventario lleno; recompra programada viernes.' },
-          { id: 'VIS-04', client: 'Abastos La Carolina', scheduledTime: '03:00 PM', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Cliente dormido (22 días sin pedir).' }
+          { id: 'VIS-01', dayOfWeek: 'LUNES', client: 'Distribuidora Sol', scheduledTime: '08:30 AM', actualTime: '08:36 AM', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00018', orderValue: 483.00, notes: 'Pedido semanal entregado y cobro parcial acordado.', photos: [] },
+          { id: 'VIS-02', dayOfWeek: 'LUNES', client: 'Comercial Andina', scheduledTime: '10:15 AM', actualTime: '10:22 AM', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00019', orderValue: 762.80, notes: 'Pagó vía Deuna! en sitio.', photos: [] },
+          { id: 'VIS-03', dayOfWeek: 'MARTES', client: 'Minimarket El Vecino', scheduledTime: '12:00 PM', actualTime: '12:10 PM', status: 'Visitado sin venta', passed: true, orderId: '—', orderValue: 0.00, notes: 'Local con inventario lleno; recompra programada viernes.', photos: [] },
+          { id: 'VIS-04', dayOfWeek: 'VIERNES', client: 'Abastos La Carolina', scheduledTime: '03:00 PM', actualTime: 'Pendiente', status: 'Pendiente de visita', passed: false, orderId: '—', orderValue: 0.00, notes: 'Cliente dormido (22 días sin pedir).', photos: [] }
         ],
         // Carrito de Facturación + Modos de Descuento ('none' | 'global' | 'item')
         cart: [],
@@ -1802,12 +1803,11 @@
               : '<p class="text-[11px] text-emerald-800">✓ Todos los productos tienen existencias saludables.</p>'
             }
           </div>
-        ` : `
-          <div class="p-3 rounded-2xl bg-slate-100 border border-slate-200 text-[11px] text-slate-600 flex items-center justify-between gap-2">
-            <span>🔒 <strong>Multi-Bodega y Alertas de Stock</strong> disponibles desde el <strong>Plan Expansión</strong>.</span>
-            <button onclick="V.open('plans')" class="px-2.5 py-1 rounded-lg bg-[#087e70] text-white font-bold text-[10px] shrink-0 cursor-pointer">Ver Planes</button>
-          </div>
-        `}
+        ` : renderLockBanner(
+          'Control Multi-Bodega y Alertas de Stock',
+          'Disponible desde el Plan Expansión ($24,99/mes). Administra varias bodegas simultáneas y recibe alertas automáticas de inventario bajo.',
+          'plan', 'expansion', 'Plan Expansión · $24,99/mes', 'inventory'
+        )}
       `;
     }
 
@@ -2541,13 +2541,16 @@
 
           ${cobranzaIAOn ? `
             <div class="bg-[#073e3b] text-white rounded-2xl p-3 space-y-2 text-xs">
-              <div class="flex items-center justify-between">
-                <span class="font-extrabold text-[#70d2bd]">🏦 Conciliador Deuna! / Bancos EC</span>
-                <button onclick="V.simulateDeunaScan()" class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold bg-[#70d2bd] text-[#073e3b] cursor-pointer">
-                  Validar Captura
+              <div class="font-extrabold text-[#70d2bd]">🏦 Conciliador Deuna! / Bancos EC</div>
+              <p class="text-[11px] text-teal-100">Toma foto o adjunta la captura/PDF de Banco Pichincha, Guayaquil, Produbanco o Deuna! para cruzar el abono automáticamente:</p>
+              <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+                <button onclick="V.openRealCameraModal('voucher')" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#70d2bd] hover:bg-white text-[#073e3b] cursor-pointer">
+                  📷 Foto Voucher
+                </button>
+                <button onclick="V.openVoucherValidationModal()" class="py-2 px-2 rounded-xl text-[10.5px] font-extrabold bg-white/15 hover:bg-white/25 text-white border border-white/25 cursor-pointer">
+                  📄 Adjuntar Imagen/PDF
                 </button>
               </div>
-              <p class="text-[11px] text-teal-100">Valida comprobantes de Banco Pichincha, Guayaquil, Produbanco o Deuna! y cruza el abono automáticamente.</p>
             </div>
           ` : renderLockBanner(
             'Conciliador Deuna!/Bancos + Cobranza Predictiva',
@@ -2557,14 +2560,14 @@
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-1 text-xs">
             <b>Cuentas por cobrar</b>
-            ${appData.clients.slice(0, 2).map(c => `
-              <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
-                <div>
-                  <div class="font-bold">${esc(c.name)}</div>
-                  <div class="text-[10.5px] text-[#71838a]">Saldo ref: ${appMoney(c.debt)}</div>
+            ${appData.clients.filter(c => c.id !== '9999999999999').map(c => `
+              <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0 gap-2">
+                <div class="min-w-0">
+                  <div class="font-bold truncate">${esc(c.name)}</div>
+                  <div class="text-[10.5px] text-[#71838a]">Saldo ref: ${appMoney(c.debt)} · ${esc(c.phone)}</div>
                 </div>
-                <div class="flex gap-1.5">
-                  ${cobranzaIAOn ? `<button onclick="toast('💬 Recordatorio WhatsApp enviado a ${esc(c.name)} con tono ${esc(appData.aiTraining.tone)}.')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-[#e7f5f1] text-[#087e70] cursor-pointer">WhatsApp IA</button>` : ''}
+                <div class="flex gap-1.5 shrink-0">
+                  ${cobranzaIAOn ? `<button onclick="V.openAiWhatsappCollectionModal('${esc(c.name)}', '${esc(c.phone)}', ${Number(c.debt || 0)})" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-[#e7f5f1] text-[#087e70] cursor-pointer">WhatsApp IA</button>` : ''}
                   <button onclick="V.openCollectModal('${esc(c.name)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] text-white cursor-pointer">Cobrar</button>
                 </div>
               </div>
@@ -2583,46 +2586,99 @@
           );
         }
 
-        const passedCount = appData.routeVisits.filter(v => v.passed).length;
-        const routeTotalSales = appData.routeVisits.reduce((a, v) => a + v.orderValue, 0);
+        const sesRuta = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { rol: 'DEMO', permisos: {} };
+        const canProgramRoute = sesRuta.rol === 'DEMO' || sesRuta.rol === 'SUPERADMIN' || !!(sesRuta.permisos && sesRuta.permisos.programador_ruta);
+        const activeDay = appData.routeFilterDay || 'TODOS';
+        const daysList = ['TODOS', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
+        const dayLabels = { TODOS: 'Todos', LUNES: 'Lun', MARTES: 'Mar', MIERCOLES: 'Mié', JUEVES: 'Jue', VIERNES: 'Vie', SABADO: 'Sáb' };
+
+        const filteredVisits = appData.routeVisits
+          .map((v, realIdx) => ({ v, realIdx }))
+          .filter(({ v }) => activeDay === 'TODOS' || String(v.dayOfWeek || 'LUNES').toUpperCase() === activeDay);
+
+        const passedCount = filteredVisits.filter(({ v }) => v.passed).length;
+        const routeTotalSales = filteredVisits.reduce((a, { v }) => a + Number(v.orderValue || 0), 0);
 
         return `
           ${backBtn}
-          <div class="text-base font-extrabold text-[#17343a]">🗺️ Ventas en Ruta GPS (Detalle Completo)</div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-base font-extrabold text-[#17343a]">🗺️ Ventas en Ruta GPS</div>
+            ${canProgramRoute ? `
+              <button onclick="V.openScheduleRouteModal()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#087e70] text-white shadow cursor-pointer shrink-0">
+                + Programar Visita
+              </button>
+            ` : ''}
+          </div>
+
           <div class="bg-[#073e3b] text-white rounded-2xl p-3 space-y-1.5 text-xs">
             <div class="flex justify-between items-center">
-              <span class="font-extrabold text-[#70d2bd]">Ruta Norte Quito · Vendedor: Juan Pérez</span>
-              <span class="px-2 py-0.5 rounded bg-white/15 text-[10px] font-mono">${passedCount}/${appData.routeVisits.length} visitados</span>
+              <span class="font-extrabold text-[#70d2bd]">Ruta Comercial · ${esc(sesRuta.nombre_completo || sesRuta.email || 'Vendedor')}</span>
+              <span class="px-2 py-0.5 rounded bg-white/15 text-[10px] font-mono">${passedCount}/${filteredVisits.length} visitados</span>
             </div>
             <div class="flex justify-between text-[11px] text-teal-100">
-              <span>Ventas acumuladas en ruta hoy:</span>
+              <span>Ventas acumuladas en filtro actual:</span>
               <strong class="font-mono text-white">${appMoney(routeTotalSales)}</strong>
             </div>
           </div>
 
+          <!-- Filtro general por día de ruta (habilitado para todos los usuarios del módulo) -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-2.5 space-y-1.5">
+            <div class="text-[10.5px] font-extrabold text-[#073e3b]">📅 Filtrar Ruta por Día:</div>
+            <div class="flex gap-1 overflow-x-auto pb-0.5">
+              ${daysList.map(d => `
+                <button onclick="V.setRouteDayFilter('${d}')" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold cursor-pointer shrink-0 ${activeDay === d ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
+                  ${dayLabels[d]}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
           <div class="space-y-2 text-xs">
-            ${appData.routeVisits.map((v, idx) => `
-              <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-1.5">
-                <div class="flex items-center justify-between gap-2">
-                  <strong class="text-[#073e3b]">${idx + 1}. ${esc(v.client)}</strong>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${v.passed ? (v.orderValue > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800') : 'bg-slate-100 text-slate-600'}">
-                    ${v.passed ? '✓ Sí pasó' : '⏳ No ha pasado'}
-                  </span>
+            ${filteredVisits.length === 0 ? '<div class="bg-white border border-[#e3ebea] rounded-2xl p-4 text-center text-slate-500">No hay visitas programadas para este día.</div>' : ''}
+            ${filteredVisits.map(({ v, realIdx }, idx) => {
+              const photos = Array.isArray(v.photos) ? v.photos : [];
+              return `
+                <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <strong class="text-[#073e3b]">${idx + 1}. ${esc(v.client)}</strong>
+                      <span class="ml-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[9.5px] font-bold">${esc(v.dayOfWeek || 'LUNES')}</span>
+                    </div>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${v.passed ? (v.orderValue > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800') : 'bg-slate-100 text-slate-600'}">
+                      ${v.passed ? '✓ Sí pasó' : '⏳ No ha pasado'}
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-1 text-[10.5px] text-slate-600 bg-[#f5f8f8] p-2 rounded-xl">
+                    <div>🕒 Prog: <strong>${esc(v.scheduledTime)}</strong></div>
+                    <div>📍 Real: <strong>${esc(v.actualTime)}</strong></div>
+                    <div>🧾 Pedido: <strong>${esc(v.orderId)}</strong></div>
+                    <div>💵 Valor: <strong class="font-mono text-[#087e70]">${appMoney(v.orderValue)}</strong></div>
+                  </div>
+                  <div class="text-[10.5px] text-slate-600 italic">${esc(v.notes)} ${v.pendingSync ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[9.5px]">⏳ Pend. Sync</span>' : ''}</div>
+
+                  <!-- Botones de Check-in y Evidencia Fotográfica (hasta 3 fotos por visita) -->
+                  <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+                    ${!v.passed ? `
+                      <button onclick="V.checkInRouteVisit(${realIdx})" class="col-span-2 py-2 rounded-xl text-[11px] font-extrabold bg-[#087e70] text-white cursor-pointer">
+                        📍 Registrar Check-in de Visita Ahora
+                      </button>
+                    ` : ''}
+                    ${photos.length < 3 ? `
+                      <button onclick="V.openRoutePhotoCamera(${realIdx})" class="py-1.5 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#e7f5f1] hover:bg-[#d5ede6] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
+                        📷 Foto Visita (${photos.length}/3)
+                      </button>
+                    ` : `
+                      <span class="py-1.5 px-2 rounded-xl text-[10px] font-bold bg-emerald-50 text-emerald-800 text-center border border-emerald-200">
+                        ✓ Máx. 3/3 fotos
+                      </span>
+                    `}
+                    <button onclick="V.openRoutePhotosGallery(${realIdx})" class="py-1.5 px-2 rounded-xl text-[10.5px] font-extrabold ${photos.length > 0 ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-slate-100 text-slate-500'} cursor-pointer">
+                      🖼️ Ver Fotos (${photos.length})
+                    </button>
+                  </div>
                 </div>
-                <div class="grid grid-cols-2 gap-1 text-[10.5px] text-slate-600 bg-[#f5f8f8] p-2 rounded-xl">
-                  <div>🕒 Prog: <strong>${esc(v.scheduledTime)}</strong></div>
-                  <div>📍 Real: <strong>${esc(v.actualTime)}</strong></div>
-                  <div>🧾 Pedido: <strong>${esc(v.orderId)}</strong></div>
-                  <div>💵 Valor: <strong class="font-mono text-[#087e70]">${appMoney(v.orderValue)}</strong></div>
-                </div>
-                <div class="text-[10.5px] text-slate-600 italic">${esc(v.notes)} ${v.pendingSync ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[9.5px]">⏳ Pend. Sync</span>' : ''}</div>
-                ${!v.passed ? `
-                  <button onclick="V.checkInRouteVisit(${idx})" class="w-full py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] text-white cursor-pointer">
-                    📍 Registrar Check-in de Visita Ahora
-                  </button>
-                ` : ''}
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `;
       }
@@ -3227,13 +3283,28 @@
       // --- CÁMARA TRASERA REAL DEL CELULAR + DETECTOR DE CÓDIGOS DE BARRAS POS ---
       activeMediaStream: null,
       barcodeTimer: null,
-      openRealCameraModal(purpose = 'ruc') {
-        const title = purpose === 'pos' ? '📷 Escáner Código de Barras POS' : '📷 Capturar Foto RUC del Cliente';
+      activeRoutePhotoIdx: null,
+      openRealCameraModal(purpose = 'ruc', extraIdx = null) {
+        this.activeRoutePhotoIdx = extraIdx;
+        const titleMap = {
+          pos: '📷 Escáner Código de Barras POS',
+          ruc: '📷 Capturar Foto RUC del Cliente',
+          voucher: '📷 Fotografiar Comprobante Deuna! / Transferencia',
+          route: '📷 Foto Evidencia de Visita en Punto'
+        };
+        const btnLabelMap = {
+          pos: '✓ Agregar Producto',
+          ruc: '📸 Capturar RUC',
+          voucher: '📸 Usar Foto Voucher',
+          route: '📸 Guardar Foto Visita'
+        };
+        const title = titleMap[purpose] || '📷 Cámara Vozkora';
         this.openModal(
           title,
           `<div class="space-y-2 text-center">
              <div class="relative w-full h-52 bg-black rounded-2xl overflow-hidden flex items-center justify-center">
                <video id="vozkoraCameraVideo" autoplay playsinline class="w-full h-full object-cover"></video>
+               <canvas id="vozkoraCameraCanvas" class="hidden"></canvas>
                ${purpose === 'pos' ? '<div class="absolute inset-x-6 top-1/2 -translate-y-1/2 h-0.5 bg-emerald-400 shadow-[0_0_8px_#34d399]"></div>' : ''}
              </div>
              <p id="cameraStatusMsg" class="text-[11px] text-slate-600">Iniciando cámara trasera...</p>
@@ -3242,9 +3313,15 @@
                  <input id="manualBarcodeInput" class="w-full border border-[#d7e1e0] rounded-xl p-2 text-xs font-mono text-center" placeholder="O escribe / pistolea código (ej. P001, P002)" />
                </div>
              ` : ''}
+             ${(purpose === 'voucher' || purpose === 'route') ? `
+               <div class="pt-1">
+                 <label class="block text-[10.5px] font-bold text-[#087e70] mb-1">O selecciona una foto de tu galería:</label>
+                 <input id="cameraFallbackFileInput" type="file" accept="image/*" capture="environment" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 text-[11px] bg-[#f5f8f8]" />
+               </div>
+             ` : ''}
            </div>`,
           `<button onclick="V.stopCameraStream(); V.closeModal();" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.captureFromCamera('${purpose}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">${purpose === 'pos' ? '✓ Agregar Producto' : '📸 Capturar RUC'}</button>`
+           <button onclick="V.captureFromCamera('${purpose}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">${btnLabelMap[purpose] || '📸 Capturar'}</button>`
         );
 
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -3256,7 +3333,7 @@
               if ($('cameraStatusMsg')) {
                 $('cameraStatusMsg').textContent = purpose === 'pos'
                   ? '✓ Apunta al código de barras del producto (lectura automática activa)...'
-                  : '✓ Cámara activa. Enfoca el certificado RUC y toca Capturar.';
+                  : '✓ Cámara activa. Enfoca bien y toca el botón verde para capturar.';
               }
               if (purpose === 'pos' && 'BarcodeDetector' in window && video) {
                 try {
@@ -3306,16 +3383,213 @@
         }
       },
 
-      captureFromCamera(purpose) {
+      async captureVideoFrameDataUrl() {
+        const video = $('vozkoraCameraVideo');
+        const canvas = $('vozkoraCameraCanvas');
+        if (video && canvas && video.videoWidth > 0) {
+          canvas.width = Math.min(960, video.videoWidth);
+          canvas.height = Math.round((video.videoHeight / video.videoWidth) * canvas.width);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL('image/jpeg', 0.78);
+        }
+        const fileEl = $('cameraFallbackFileInput');
+        if (fileEl && fileEl.files && fileEl.files[0]) {
+          return await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(fileEl.files[0]);
+          });
+        }
+        return '';
+      },
+
+      async captureFromCamera(purpose) {
         const manualCode = ($('manualBarcodeInput')?.value || '').trim();
+        const dataUrl = (purpose === 'voucher' || purpose === 'route') ? await this.captureVideoFrameDataUrl() : '';
         this.stopCameraStream();
         this.closeModal();
         if (purpose === 'pos') {
           if (manualCode) this.addProductByBarcode(manualCode);
           else this.scanBarcodePOS();
+        } else if (purpose === 'voucher') {
+          this.openVoucherValidationModal(dataUrl);
+        } else if (purpose === 'route') {
+          await this.saveCapturedRoutePhoto(this.activeRoutePhotoIdx, dataUrl);
         } else {
           this.simulateRucPhoto();
         }
+      },
+
+      // --- RUTAS GPS: FILTRO POR DÍA, PROGRAMADOR DE RUTA Y HASTA 3 FOTOS POR VISITA ---
+      setRouteDayFilter(dayCode) {
+        appData.routeFilterDay = dayCode;
+        renderPhone('routes');
+      },
+
+      openScheduleRouteModal() {
+        this.openModal(
+          '📅 Programar Visita en Ruta GPS',
+          `<div class="space-y-2.5">
+             <p class="text-[11px] text-slate-600">Asigna una nueva parada al itinerario del vendedor:</p>
+             <div>
+               <label class="font-bold text-[11px]">Día de la Ruta *</label>
+               <select id="schedRouteDay" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 <option value="LUNES">Lunes</option>
+                 <option value="MARTES">Martes</option>
+                 <option value="MIERCOLES">Miércoles</option>
+                 <option value="JUEVES">Jueves</option>
+                 <option value="VIERNES">Viernes</option>
+                 <option value="SABADO">Sábado</option>
+               </select>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Cliente a Visitar *</label>
+               <select id="schedRouteClient" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                 ${appData.clients.filter(c => c.id !== '9999999999999').map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(c.id)})</option>`).join('')}
+               </select>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Hora Programada de Visita *</label>
+               <input id="schedRouteTime" type="time" value="10:30" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold" />
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Objetivo / Nota de Visita</label>
+               <input id="schedRouteNote" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Toma de pedido semanal y cobro" />
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.submitScheduledRouteVisit()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar en Ruta</button>`
+        );
+      },
+
+      async submitScheduledRouteVisit() {
+        const dayOfWeek = $('schedRouteDay').value;
+        const client = $('schedRouteClient').value;
+        const rawTime = $('schedRouteTime').value || '09:00';
+        const note = ($('schedRouteNote').value || '').trim() || 'Visita programada desde módulo Rutas GPS.';
+        if (!client) return toast('Selecciona un cliente.');
+
+        const visId = 'VIS-' + String(appData.routeVisits.length + 1).padStart(2, '0');
+        const newVisit = {
+          id: visId,
+          dayOfWeek,
+          client,
+          scheduledTime: rawTime,
+          actualTime: 'Pendiente',
+          status: 'Pendiente de visita',
+          passed: false,
+          orderId: '—',
+          orderValue: 0.00,
+          notes: note,
+          photos: []
+        };
+
+        if (typeof crearVisitaRutaSupabase === 'function') {
+          const inserted = await crearVisitaRutaSupabase({
+            dia_semana: dayOfWeek,
+            cliente_nombre: client,
+            hora_programada: rawTime,
+            notas: note,
+            visitado: false,
+            fotos: []
+          });
+          if (inserted && inserted.id) newVisit.dbId = inserted.id;
+        }
+
+        appData.routeVisits.push(newVisit);
+        appData.routeFilterDay = dayOfWeek;
+        this.closeModal();
+        renderPhone('routes');
+        toast(`✓ Visita a ${client} (${dayOfWeek} · ${rawTime}) programada.`);
+      },
+
+      openRoutePhotoCamera(idx) {
+        const vis = appData.routeVisits[idx];
+        if (!vis) return;
+        const photos = Array.isArray(vis.photos) ? vis.photos : [];
+        if (photos.length >= 3) {
+          return toast('⚠️ Ya alcanzaste el máximo de 3 fotos para esta visita.');
+        }
+        this.openRealCameraModal('route', idx);
+      },
+
+      async saveCapturedRoutePhoto(idx, dataUrl) {
+        const vis = appData.routeVisits[idx];
+        if (!vis) return;
+        if (!Array.isArray(vis.photos)) vis.photos = [];
+        if (vis.photos.length >= 3) return toast('Máximo 3 fotos por visita.');
+
+        let finalPhotoUrl = dataUrl;
+        if (!finalPhotoUrl) {
+          const c = document.createElement('canvas');
+          c.width = 480; c.height = 300;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#073e3b'; ctx.fillRect(0, 0, 480, 300);
+          ctx.fillStyle = '#70d2bd'; ctx.font = 'bold 20px sans-serif';
+          ctx.fillText('VOZKORA GPS · EVIDENCIA DE VISITA', 24, 60);
+          ctx.fillStyle = '#ffffff'; ctx.font = '16px sans-serif';
+          ctx.fillText(`Punto: ${vis.client}`, 24, 110);
+          ctx.fillText(`Hora: ${nowFormatted()}`, 24, 145);
+          finalPhotoUrl = c.toDataURL('image/jpeg', 0.8);
+        }
+
+        try {
+          if (typeof subirEvidenciaFotoSupabase === 'function' && finalPhotoUrl.startsWith('data:')) {
+            const resBlob = await (await fetch(finalPhotoUrl)).blob();
+            const up = await subirEvidenciaFotoSupabase(resBlob, 'rutas', vis.id);
+            if (up && up.url) finalPhotoUrl = up.url;
+          }
+        } catch (e) {}
+
+        vis.photos.push({
+          url: finalPhotoUrl,
+          takenAt: nowFormatted()
+        });
+
+        if (vis.dbId && typeof actualizarVisitaRutaSupabase === 'function') {
+          await actualizarVisitaRutaSupabase(vis.dbId, { fotos: vis.photos });
+        }
+
+        renderPhone('routes');
+        toast(`📸 Foto ${vis.photos.length}/3 guardada para ${vis.client}.`);
+      },
+
+      openRoutePhotosGallery(idx) {
+        const vis = appData.routeVisits[idx];
+        if (!vis) return;
+        const photos = Array.isArray(vis.photos) ? vis.photos : [];
+        this.openModal(
+          `🖼️ Evidencia Fotográfica · ${vis.client} (${photos.length}/3)`,
+          photos.length === 0
+            ? `<p class="text-[11px] text-slate-600 py-3 text-center">Aún no se han tomado fotos en este punto de visita.</p>`
+            : `<div class="space-y-3">
+                 ${photos.map((ph, i) => `
+                   <div class="rounded-2xl border border-[#dce6e5] overflow-hidden bg-[#f5f8f8]">
+                     <img src="${esc(ph.url)}" alt="Foto visita ${i + 1}" class="w-full max-h-56 object-cover" />
+                     <div class="px-3 py-1.5 flex items-center justify-between text-[10.5px] text-slate-600">
+                       <span><strong>Foto #${i + 1}</strong> · ${esc(ph.takenAt || '')}</span>
+                       <button onclick="V.deleteRoutePhoto(${idx}, ${i})" class="text-rose-600 font-bold cursor-pointer">🗑️ Quitar</button>
+                     </div>
+                   </div>
+                 `).join('')}
+               </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cerrar</button>
+           ${photos.length < 3 ? `<button onclick="V.closeModal(); V.openRoutePhotoCamera(${idx});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">📷 Tomar Otra Foto (${photos.length}/3)</button>` : ''}`
+        );
+      },
+
+      async deleteRoutePhoto(visIdx, photoIdx) {
+        const vis = appData.routeVisits[visIdx];
+        if (!vis || !Array.isArray(vis.photos)) return;
+        vis.photos.splice(photoIdx, 1);
+        if (vis.dbId && typeof actualizarVisitaRutaSupabase === 'function') {
+          await actualizarVisitaRutaSupabase(vis.dbId, { fotos: vis.photos });
+        }
+        this.openRoutePhotosGallery(visIdx);
+        renderPhone('routes');
+        toast('Foto eliminada.');
       },
 
       // --- ADJUNTAR PDF DE RUC EN CLIENTES (VENDEDOR SOLO INGRESA WHATSAPP + PDF) ---
@@ -3537,11 +3811,19 @@
       },
 
       // --- VALIDAR CAPTURA DE PAGO EN CARTERA (CÁMARA / IMAGEN / PDF + IA) ---
-      openVoucherValidationModal() {
+      capturedVoucherDataUrl: '',
+      openVoucherValidationModal(capturedDataUrl = '') {
+        this.capturedVoucherDataUrl = capturedDataUrl || '';
         this.openModal(
           '🏦 Validar Comprobante Deuna! / Transferencia',
           `<div class="space-y-2.5">
-             <p class="text-[11px] text-slate-600">Toma una foto o adjunta la imagen/PDF del comprobante bancario para que la IA detecte el monto y lo abone:</p>
+             <p class="text-[11px] text-slate-600">Verifica el comprobante capturado o adjunta la imagen/PDF bancario para abonar la cartera:</p>
+             ${this.capturedVoucherDataUrl ? `
+               <div class="rounded-xl overflow-hidden border border-[#b9d1cd] bg-[#f5f8f8]">
+                 <img src="${esc(this.capturedVoucherDataUrl)}" alt="Foto Voucher" class="w-full max-h-36 object-cover" />
+                 <div class="px-2.5 py-1 text-[10px] font-bold text-[#087e70]">✓ Foto capturada con cámara</div>
+               </div>
+             ` : ''}
              <div>
                <label class="font-bold text-[11px]">Cliente que realiza el pago</label>
                <select id="voucherClientSelect" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
@@ -3549,8 +3831,8 @@
                </select>
              </div>
              <div>
-               <label class="font-bold text-[11px]">Foto o Archivo del Comprobante (Imagen o PDF) *</label>
-               <input id="voucherFileInput" type="file" accept="image/*,application/pdf,.pdf" capture="environment" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 text-[11px] bg-[#f5f8f8]" />
+               <label class="font-bold text-[11px]">${this.capturedVoucherDataUrl ? 'O reemplazar con archivo (Imagen o PDF)' : 'Adjuntar Imagen o PDF del Comprobante *'}</label>
+               <input id="voucherFileInput" type="file" accept="image/*,application/pdf,.pdf" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 text-[11px] bg-[#f5f8f8]" />
              </div>
              <div class="grid grid-cols-2 gap-2">
                <div>
@@ -3577,8 +3859,9 @@
         const amt = Number($('voucherDetectedAmt').value);
         const bank = $('voucherBankSelect').value;
         const fileInput = $('voucherFileInput');
-        if (!fileInput || !fileInput.files || !fileInput.files.length) {
-          return toast('Adjunta o toma la foto del comprobante primero.');
+        const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+        if (!hasFile && !this.capturedVoucherDataUrl) {
+          return toast('Toma una foto con cámara o adjunta la imagen/PDF del comprobante primero.');
         }
         if (amt <= 0) return toast('Ingresa un monto válido.');
 
@@ -5193,6 +5476,25 @@
                 history: Array.isArray(o.historial_cambios) ? o.historial_cambios : []
               }));
             }
+            if (typeof listarVisitasRutaSupabase === 'function') {
+              const dbVisitas = await listarVisitasRutaSupabase(user.empresa_ruc);
+              if (Array.isArray(dbVisitas) && dbVisitas.length > 0) {
+                appData.routeVisits = dbVisitas.map((v, idx) => ({
+                  id: 'VIS-' + String(idx + 1).padStart(2, '0'),
+                  dbId: v.id,
+                  dayOfWeek: v.dia_semana || 'LUNES',
+                  client: v.cliente_nombre,
+                  scheduledTime: v.hora_programada || '09:00',
+                  actualTime: v.hora_real || 'Pendiente',
+                  status: v.visitado ? 'Visitado con pedido' : 'Pendiente de visita',
+                  passed: !!v.visitado,
+                  orderId: v.pedido_ref || '—',
+                  orderValue: Number(v.valor_venta || 0),
+                  notes: v.notas || '',
+                  photos: Array.isArray(v.fotos) ? v.fotos : []
+                }));
+              }
+            }
           } catch (e) {}
         }
 
@@ -6036,6 +6338,7 @@
           ['inventario_editar', 'Editar Bodega'],
           ['cobranza', 'Cobrar Cartera'],
           ['bancos', 'Ver Bancos'],
+          ['programador_ruta', '🗺️ Programador de Ruta GPS'],
           ['reportes', 'Ver Reportes'],
           ['configuracion', 'Entrenar IA']
         ];
@@ -6060,7 +6363,7 @@
       },
 
       async savePermsAndApi(id) {
-        const keys = ['facturar','proformas','clientes','inventario_ver','inventario_editar','cobranza','bancos','reportes','configuracion'];
+        const keys = ['facturar','proformas','clientes','inventario_ver','inventario_editar','cobranza','bancos','programador_ruta','reportes','configuracion'];
         const permisos = {};
         keys.forEach(k => { permisos[k] = !!$('perm_' + k)?.checked; });
         try {

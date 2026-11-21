@@ -546,3 +546,80 @@ async function sincronizarClientePuenteContifico(clientePayload, esEdicion = fal
     return { ok: false, error: e.message };
   }
 }
+
+
+// -------------------------------------------------------------------------
+// H. SUBIDA DE FOTOS DE VISITA RUTA GPS / COMPROBANTES DEUNA A STORAGE
+// -------------------------------------------------------------------------
+async function subirEvidenciaFotoSupabase(fileOrBlob, carpeta = 'rutas', prefijo = 'EVID') {
+  const ses = obtenerSesionVozkora();
+  const empRuc = ses ? ses.empresa_ruc : '123456789001';
+  const rawName = (fileOrBlob && fileOrBlob.name) ? fileOrBlob.name : `${prefijo}.jpg`;
+  const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const objectPath = `${empRuc}/${carpeta}/${prefijo}_${Date.now()}_${safeName}`;
+  const uploadUrl = `${VOZKORA_CONFIG.SUPABASE_STORAGE_URL}/object/${VOZKORA_CONFIG.STORAGE_BUCKET}/${objectPath}`;
+
+  const resp = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'apikey': VOZKORA_CONFIG.SUPABASE_KEY,
+      'Authorization': 'Bearer ' + VOZKORA_CONFIG.SUPABASE_KEY,
+      'Content-Type': (fileOrBlob && fileOrBlob.type) || 'image/jpeg',
+      'x-upsert': 'true'
+    },
+    body: fileOrBlob
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.message || err.error || ('Error Storage HTTP ' + resp.status));
+  }
+
+  const publicUrl = `${VOZKORA_CONFIG.SUPABASE_STORAGE_URL}/object/public/${VOZKORA_CONFIG.STORAGE_BUCKET}/${objectPath}`;
+  return { ok: true, url: publicUrl, path: objectPath, fileName: rawName };
+}
+
+async function listarVisitasRutaSupabase(empresaRuc) {
+  if (!empresaRuc) return [];
+  try {
+    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/repo_rutas_visitas?empresa_ruc=eq.${encodeURIComponent(empresaRuc)}&select=*&order=creado_en.asc`;
+    const resp = await fetch(url, { headers: supaHeaders() });
+    if (!resp.ok) return [];
+    return await resp.json();
+  } catch (e) {
+    return [];
+  }
+}
+
+async function crearVisitaRutaSupabase(payload) {
+  const ses = obtenerSesionVozkora();
+  const body = Object.assign({
+    empresa_ruc: ses ? ses.empresa_ruc : '123456789001',
+    empresa_nombre: ses ? ses.empresa_nombre : 'ACME',
+    creado_por_email: ses ? ses.email : 'demo@vozkora.com'
+  }, payload);
+  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/repo_rutas_visitas`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: supaHeaders(),
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  return Array.isArray(data) ? data[0] : data;
+}
+
+async function actualizarVisitaRutaSupabase(id, campos) {
+  if (!id) return false;
+  try {
+    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/repo_rutas_visitas?id=eq.${encodeURIComponent(id)}`;
+    const resp = await fetch(url, {
+      method: 'PATCH',
+      headers: supaHeaders(),
+      body: JSON.stringify(campos)
+    });
+    return resp.ok;
+  } catch (e) {
+    return false;
+  }
+}
