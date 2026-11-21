@@ -954,6 +954,18 @@
         },
         aiAnswer: ''
       };
+      try {
+        const sesBoot = JSON.parse(localStorage.getItem('vozkora_sesion_activa') || 'null');
+        const bootRuc = (sesBoot && sesBoot.empresa_ruc) ? sesBoot.empresa_ruc : '123456789001';
+        const rawQueue = localStorage.getItem('vozkora_cola_pendientes_' + bootRuc);
+        if (rawQueue) {
+          const parsedQueue = JSON.parse(rawQueue);
+          if (Array.isArray(parsedQueue) && parsedQueue.length > 0) {
+            appData.offlineQueueItems = parsedQueue;
+            appData.offlineQueue = parsedQueue.length;
+          }
+        }
+      } catch (e) {}
     }
 
     initAppData();
@@ -1040,15 +1052,23 @@
       if (Array.isArray(saved) && saved.length > 0) {
         appData.offlineQueueItems = saved;
         syncOfflineBadgeUI();
-        saved.forEach(op => {
+        saved.slice().reverse().forEach(op => {
           if (op.module === 'Facturación SRI' && op.payload && !appData.invoices.some(x => x.id === op.ref)) {
             appData.invoices.push(Object.assign({}, op.payload, { status: 'Pendiente Offline' }));
           } else if (op.module === 'Proforma (PRO)' && op.payload && !appData.quotes.some(x => x.id === op.ref)) {
             appData.quotes.unshift(Object.assign({}, op.payload, { contificoSynced: false }));
           } else if (op.module === 'Nota de Crédito' && op.payload && !appData.creditNotes.some(x => x.id === op.ref)) {
             appData.creditNotes.unshift(Object.assign({}, op.payload, { syncStatus: 'Pendiente Offline' }));
-          } else if (op.module === 'Cliente Nuevo' && op.payload && !appData.clients.some(x => x.id === op.ref)) {
+          } else if (op.module === 'Retención SRI' && op.payload && !appData.retentions.some(x => x.id === op.ref)) {
+            appData.retentions.unshift(Object.assign({}, op.payload, { syncStatus: 'Pendiente Offline' }));
+          } else if (op.module === 'Guía de Remisión' && op.payload && !appData.dispatchGuides.some(x => x.id === op.ref)) {
+            appData.dispatchGuides.unshift(Object.assign({}, op.payload, { status: 'Pendiente Offline' }));
+          } else if ((op.module === 'Cliente Nuevo' || op.module === 'Cliente Foto RUC' || op.module === 'Cliente + PDF RUC') && op.payload && !appData.clients.some(x => x.id === op.ref)) {
             appData.clients.unshift(Object.assign({}, op.payload, { pendingSync: true }));
+          } else if (op.module === 'Producto Nuevo' && op.payload && !appData.products.some(x => x.id === op.ref)) {
+            appData.products.push(Object.assign({}, op.payload, { pendingSync: true }));
+          } else if (op.module === 'Cobro Cartera' && op.payload) {
+            appData.payments.push(Object.assign({}, op.payload, { pendingSync: true }));
           } else if (op.module === 'Orden de Trabajo' && op.payload && !appData.orders.some(x => x.id === op.ref)) {
             appData.orders.unshift(Object.assign({}, op.payload, { pendingSync: true }));
           }
@@ -4599,7 +4619,7 @@
           enqueueOfflineOp('Nota de Crédito', ncId, `${inv.client} · Ref ${inv.id} (-${appMoney(amount)})`, () => {
             const item = appData.creditNotes.find(x => x.id === ncId);
             if (item) item.syncStatus = 'Autorizada SRI';
-          });
+          }, 'repo_notas_credito', null, appData.creditNotes[0]);
         }
         if (typeof registrarEnRepositorio === 'function') {
           registrarEnRepositorio('repo_notas_credito', {
@@ -4639,7 +4659,7 @@
           enqueueOfflineOp('Retención SRI', retId, `${inv.client} · Factura ${inv.id} (${appMoney(totalRetained)})`, () => {
             const item = appData.retentions.find(x => x.id === retId);
             if (item) item.syncStatus = 'Sincronizada';
-          });
+          }, null, null, appData.retentions[0]);
         }
         renderPhone('retentions');
         toast(isOff ? `💾 Retención ${retId} guardada en cola Offline.` : `✓ Retención ${retId} por ${appMoney(totalRetained)} aplicada.`);
@@ -4667,7 +4687,7 @@
           enqueueOfflineOp('Guía de Remisión', gId, `${carrier} (${plate}) · ${items}`, () => {
             const item = appData.dispatchGuides.find(x => x.id === gId);
             if (item) item.status = 'Autorizada SRI';
-          });
+          }, null, null, appData.dispatchGuides[0]);
         }
         renderPhone('guides');
         toast(isOff ? `💾 Guía ${gId} guardada en cola Offline.` : `✓ Guía de remisión ${gId} autorizada.`);
@@ -4924,7 +4944,7 @@
           enqueueOfflineOp('Cliente Nuevo', id, `${name} (${phone})`, () => {
             const cl = appData.clients.find(c => c.id === id);
             if (cl) cl.pendingSync = false;
-          });
+          }, 'repo_clientes', null, appData.clients[0]);
         }
         if (typeof registrarEnRepositorio === 'function') {
           registrarEnRepositorio('repo_clientes', {
@@ -4955,7 +4975,7 @@
             enqueueOfflineOp('Cliente Foto RUC', autoClient.id, autoClient.name, () => {
               const cl = appData.clients.find(c => c.id === autoClient.id);
               if (cl) cl.pendingSync = false;
-            });
+            }, 'repo_clientes', null, autoClient);
           }
         }
         renderPhone('clients');
@@ -5004,7 +5024,7 @@
           enqueueOfflineOp('Producto Nuevo', id, `${name} · ${appMoney(price)} (${stock} unid. en ${warehouse})`, () => {
             const pr = appData.products.find(x => x.id === id);
             if (pr) pr.pendingSync = false;
-          });
+          }, null, null, appData.products[appData.products.length - 1]);
         }
         this.closeModal();
         renderPhone('inventory');
@@ -5104,7 +5124,7 @@
         const cl = appData.clients.find(c => c.name === clientName);
         if (cl) cl.debt = Math.max(0, cl.debt - amt);
         if (isOff) {
-          enqueueOfflineOp('Cobro Cartera', 'COB-' + String(appData.payments.length).padStart(3, '0'), `${clientName} · ${appMoney(amt)} (${method})`);
+          enqueueOfflineOp('Cobro Cartera', 'COB-' + String(appData.payments.length).padStart(3, '0'), `${clientName} · ${appMoney(amt)} (${method})`, null, 'repo_cobros', null, { name: clientName, amount: amt, method });
         }
         if (typeof registrarEnRepositorio === 'function') {
           registrarEnRepositorio('repo_cobros', {
@@ -5175,15 +5195,58 @@
             } else if (item.module === 'Proforma (PRO)') {
               const qFound = appData.quotes.find(x => x.id === item.ref);
               if (qFound) qFound.contificoSynced = true;
+              if (item.payload && typeof registrarEnRepositorio === 'function') {
+                await registrarEnRepositorio('repo_proformas', {
+                  numero_proforma: item.payload.id,
+                  cliente_nombre: item.payload.client,
+                  subtotal: Number(item.payload.subtotal || 0),
+                  iva_monto: Number(item.payload.ivaAmt || 0),
+                  total: Number(item.payload.total || 0),
+                  items: item.payload.items || []
+                });
+              }
             } else if (item.module === 'Nota de Crédito') {
               const ncFound = appData.creditNotes.find(x => x.id === item.ref);
               if (ncFound) ncFound.syncStatus = 'Autorizada SRI';
-            } else if (item.module === 'Cliente Nuevo') {
+              if (item.payload && typeof registrarEnRepositorio === 'function') {
+                await registrarEnRepositorio('repo_notas_credito', {
+                  numero_nc: item.payload.id,
+                  factura_referencia: item.payload.invoiceRef,
+                  cliente_nombre: item.payload.client,
+                  motivo: item.payload.reason,
+                  monto: Number(item.payload.amount || 0)
+                });
+              }
+            } else if (item.module === 'Cliente Nuevo' || item.module === 'Cliente Foto RUC' || item.module === 'Cliente + PDF RUC') {
               const clFound = appData.clients.find(x => x.id === item.ref);
               if (clFound) clFound.pendingSync = false;
+              if (item.payload && typeof registrarEnRepositorio === 'function') {
+                await registrarEnRepositorio('repo_clientes', {
+                  cliente_ruc_ci: item.payload.id,
+                  cliente_nombre: item.payload.name,
+                  cliente_telefono: item.payload.phone || 'N/A',
+                  ruc_pdf_url: item.payload.rucPdfUrl || ''
+                });
+              }
+            } else if (item.module === 'Cobro Cartera' && item.payload && typeof registrarEnRepositorio === 'function') {
+              await registrarEnRepositorio('repo_cobros', {
+                cliente_nombre: item.payload.name,
+                monto: Number(item.payload.amount || 0),
+                medio_pago: item.payload.method || 'Efectivo en ruta',
+                referencia_comprobante: item.ref
+              });
             } else if (item.module === 'Orden de Trabajo') {
               const ordFound = appData.orders.find(x => x.id === item.ref);
               if (ordFound) ordFound.pendingSync = false;
+              if (item.payload && typeof registrarEnRepositorio === 'function') {
+                await registrarEnRepositorio('repo_ordenes_trabajo', {
+                  codigo_orden: item.payload.id,
+                  cliente_nombre: item.payload.client,
+                  descripcion: item.payload.desc,
+                  estado: item.payload.status || 'Abierta',
+                  historial_cambios: item.payload.history || []
+                });
+              }
             }
           }
           appData.offlineQueueItems = [];
@@ -5238,7 +5301,7 @@
           enqueueOfflineOp('Orden de Trabajo', id, `${client} · ${desc}`, () => {
             const ord = appData.orders.find(x => x.id === id);
             if (ord) ord.pendingSync = false;
-          });
+          }, 'repo_ordenes_trabajo', null, appData.orders[0]);
         }
         if (typeof registrarEnRepositorio === 'function') {
           registrarEnRepositorio('repo_ordenes_trabajo', {
@@ -5489,7 +5552,7 @@
           const cleanE = String(email || '').trim().toLowerCase();
           const cleanP = String(pass || '').trim();
           if (cleanE === 'demo@vozkora.com' && cleanP === 'DEMOVOZKORA') {
-            this.applySession({
+            const demoSes = {
               empresa_nombre: 'ACME',
               empresa_ruc: '123456789001',
               empresa_telefono: '0987654321',
@@ -5498,7 +5561,9 @@
               entorno: 'DEMO',
               plan_activo: 'expansion',
               packs_ia: ['voz', 'ventas']
-            });
+            };
+            localStorage.setItem('vozkora_sesion_activa', JSON.stringify(demoSes));
+            this.applySession(demoSes);
             return;
           }
           if (cleanE === 'admin@vozkora.com' && cleanP === 'ADMINVOZKORA2026') {
@@ -5690,6 +5755,7 @@
           } catch (e) {}
         }
 
+        hydrateOfflineQueueFromStorage(user.empresa_ruc);
         renderAll();
 
         // Blindaje estricto: SOLO SUPERADMIN abre CRM
