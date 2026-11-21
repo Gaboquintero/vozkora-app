@@ -1664,6 +1664,7 @@
     }
 
     function renderPhone(page) {
+      syncOfflineBadgeUI();
       const mainTabs = ['home', 'sales', 'inventory', 'more'];
       if (mainTabs.includes(page)) {
         appData.lastMainTab = page;
@@ -5182,16 +5183,15 @@
             : 'Modo sin internet activado (SQLite local).');
         } else {
           const itemsToSync = appData.offlineQueueItems.slice();
-          const synced = itemsToSync.length;
+          const failedItems = [];
+          let synced = 0;
           for (const item of itemsToSync) {
-            if (typeof item.onSync === 'function') item.onSync();
+            let itemOk = true;
             if (item.module === 'Facturación SRI') {
-              const found = appData.invoices.find(x => x.id === item.ref);
-              if (found) found.status = 'Autorizada SRI';
               if (item.repoTable && item.repoRowId && typeof actualizarRegistroRepositorio === 'function') {
-                await actualizarRegistroRepositorio(item.repoTable, item.repoRowId, { estado_sri: 'AUTORIZADA_SRI' });
+                itemOk = await actualizarRegistroRepositorio(item.repoTable, item.repoRowId, { estado_sri: 'AUTORIZADA_SRI' });
               } else if (item.payload && typeof registrarEnRepositorio === 'function') {
-                await registrarEnRepositorio('repo_facturas', {
+                const res = await registrarEnRepositorio('repo_facturas', {
                   numero_factura: item.payload.id,
                   cliente_ruc_ci: '1790012345001',
                   cliente_nombre: item.payload.client,
@@ -5203,12 +5203,15 @@
                   items: item.payload,
                   estado_sri: 'AUTORIZADA_SRI'
                 });
+                itemOk = !!res;
+              }
+              if (itemOk) {
+                const found = appData.invoices.find(x => x.id === item.ref);
+                if (found) found.status = 'Autorizada SRI';
               }
             } else if (item.module === 'Proforma (PRO)') {
-              const qFound = appData.quotes.find(x => x.id === item.ref);
-              if (qFound) qFound.contificoSynced = true;
               if (item.payload && typeof registrarEnRepositorio === 'function') {
-                await registrarEnRepositorio('repo_proformas', {
+                const res = await registrarEnRepositorio('repo_proformas', {
                   numero_proforma: item.payload.id,
                   cliente_nombre: item.payload.client,
                   subtotal: Number(item.payload.subtotal || 0),
@@ -5216,55 +5219,76 @@
                   total: Number(item.payload.total || 0),
                   items: item.payload.items || []
                 });
+                itemOk = !!res;
+              }
+              if (itemOk) {
+                const qFound = appData.quotes.find(x => x.id === item.ref);
+                if (qFound) qFound.contificoSynced = true;
               }
             } else if (item.module === 'Nota de Crédito') {
-              const ncFound = appData.creditNotes.find(x => x.id === item.ref);
-              if (ncFound) ncFound.syncStatus = 'Autorizada SRI';
               if (item.payload && typeof registrarEnRepositorio === 'function') {
-                await registrarEnRepositorio('repo_notas_credito', {
+                const res = await registrarEnRepositorio('repo_notas_credito', {
                   numero_nc: item.payload.id,
                   factura_referencia: item.payload.invoiceRef,
                   cliente_nombre: item.payload.client,
                   motivo: item.payload.reason,
                   monto: Number(item.payload.amount || 0)
                 });
+                itemOk = !!res;
+              }
+              if (itemOk) {
+                const ncFound = appData.creditNotes.find(x => x.id === item.ref);
+                if (ncFound) ncFound.syncStatus = 'Autorizada SRI';
               }
             } else if (item.module === 'Cliente Nuevo' || item.module === 'Cliente Foto RUC' || item.module === 'Cliente + PDF RUC') {
-              const clFound = appData.clients.find(x => x.id === item.ref);
-              if (clFound) clFound.pendingSync = false;
               if (item.payload && typeof registrarEnRepositorio === 'function') {
-                await registrarEnRepositorio('repo_clientes', {
+                const res = await registrarEnRepositorio('repo_clientes', {
                   cliente_ruc_ci: item.payload.id,
                   cliente_nombre: item.payload.name,
                   cliente_telefono: item.payload.phone || 'N/A',
                   ruc_pdf_url: item.payload.rucPdfUrl || ''
                 });
+                itemOk = !!res;
+              }
+              if (itemOk) {
+                const clFound = appData.clients.find(x => x.id === item.ref);
+                if (clFound) clFound.pendingSync = false;
               }
             } else if (item.module === 'Cobro Cartera' && item.payload && typeof registrarEnRepositorio === 'function') {
-              await registrarEnRepositorio('repo_cobros', {
+              const res = await registrarEnRepositorio('repo_cobros', {
                 cliente_nombre: item.payload.name,
                 monto: Number(item.payload.amount || 0),
                 medio_pago: item.payload.method || 'Efectivo en ruta',
                 referencia_comprobante: item.ref
               });
+              itemOk = !!res;
             } else if (item.module === 'Orden de Trabajo') {
-              const ordFound = appData.orders.find(x => x.id === item.ref);
-              if (ordFound) ordFound.pendingSync = false;
               if (item.payload && typeof registrarEnRepositorio === 'function') {
-                await registrarEnRepositorio('repo_ordenes_trabajo', {
+                const res = await registrarEnRepositorio('repo_ordenes_trabajo', {
                   codigo_orden: item.payload.id,
                   cliente_nombre: item.payload.client,
                   descripcion: item.payload.desc,
                   estado: item.payload.status || 'Abierta',
                   historial_cambios: item.payload.history || []
                 });
+                itemOk = !!res;
+              }
+              if (itemOk) {
+                const ordFound = appData.orders.find(x => x.id === item.ref);
+                if (ordFound) ordFound.pendingSync = false;
               }
             }
+            if (itemOk) {
+              if (typeof item.onSync === 'function') item.onSync();
+              synced++;
+            } else {
+              failedItems.push(item);
+            }
           }
-          appData.offlineQueueItems = [];
+          appData.offlineQueueItems = failedItems;
           syncOfflineBadgeUI();
           if (typeof guardarColaOfflineLocal === 'function') {
-            guardarColaOfflineLocal([]);
+            guardarColaOfflineLocal(failedItems);
           }
           pill.className = 'px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] flex items-center gap-1 cursor-pointer';
           dot.className = 'w-1.5 h-1.5 rounded-full bg-[#087e70]';

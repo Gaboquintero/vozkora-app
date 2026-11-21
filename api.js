@@ -706,12 +706,11 @@ async function verificarConectividadRealVozkora() {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return false;
   }
-  const nonce = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 3000);
+    const timer = setTimeout(() => ctrl.abort(), 5000);
     const resp = await fetch(
-      `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?select=id&limit=1&_nocache=${nonce}`,
+      `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?select=id&limit=1`,
       {
         method: 'GET',
         headers: supaHeaders(),
@@ -725,14 +724,15 @@ async function verificarConectividadRealVozkora() {
 
   try {
     const ctrl2 = new AbortController();
-    const timer2 = setTimeout(() => ctrl2.abort(), 2200);
-    await fetch(`https://connectivitycheck.gstatic.com/generate_204?_nocache=${nonce}`, {
-      mode: 'no-cors',
+    const timer2 = setTimeout(() => ctrl2.abort(), 4500);
+    const resp2 = await fetch(`${VOZKORA_CONFIG.SUPABASE_BASE}/rest/v1/`, {
+      method: 'HEAD',
+      headers: { 'apikey': VOZKORA_CONFIG.SUPABASE_KEY },
       cache: 'no-store',
       signal: ctrl2.signal
     });
     clearTimeout(timer2);
-    return true;
+    return !!resp2;
   } catch (e2) {
     return false;
   }
