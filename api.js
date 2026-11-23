@@ -521,6 +521,9 @@ async function guardarSeleccionSvaGratisEmpresa(empresaId, packsIa, fijarSelecci
 async function sincronizarClientePuenteContifico(clientePayload, esEdicion = false) {
   const ses = obtenerSesionVozkora();
   const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  if (!ses || ses.rol === 'DEMO' || ses.entorno === 'DEMO') {
+    return { ok: true, simulated: true, status: 200, data: { mensaje: 'Modo Demo local' } };
+  }
   const endpoint = `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/cliente`;
   try {
     const resp = await fetch(endpoint, {
@@ -529,6 +532,19 @@ async function sincronizarClientePuenteContifico(clientePayload, esEdicion = fal
       body: JSON.stringify(clientePayload)
     });
     const data = await resp.json().catch(() => ({}));
+    const rawDetail = String(data.error || data.mensaje || data.message || JSON.stringify(data || {}));
+
+    // Detectar si el cliente/persona ya existía previamente en el Proveedor Software Contable
+    if (!esEdicion && !resp.ok && /(ya\s+existe|already\s+exists|duplicad|registrad[oa]\s+previamente|ruc\s+existente|c[eé]dula\s+existente)/i.test(rawDetail)) {
+      return {
+        ok: true,
+        alreadyExists: true,
+        status: resp.status,
+        mensaje: 'Cliente ya creado en el Proveedor Software Contable',
+        data
+      };
+    }
+
     if (!resp.ok || data.ok === false) {
       const detalleTec = data.error || data.mensaje || data.message || '';
       const msg = traducirErrorApiContable(resp.status, detalleTec, 'cliente');
@@ -537,6 +553,53 @@ async function sincronizarClientePuenteContifico(clientePayload, esEdicion = fal
     return { ok: true, status: resp.status, data };
   } catch (e) {
     return { ok: false, status: 0, error: traducirErrorApiContable(0, e.message, 'cliente') };
+  }
+}
+
+// -------------------------------------------------------------------------
+// G1B. EXTRACCIÓN INTELIGENTE DE CERTIFICADO RUC (PDF O FOTO) CON IA EN NUBE
+// -------------------------------------------------------------------------
+async function extraerDatosRucConIA({ textoPdf = '', imagenBase64 = '' }) {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  const endpoint = `${VOZKORA_CONFIG.PUENTE_URL}/api/ia/consultar`;
+  const prompt = [
+    'Eres un extractor contable de certificados RUC del SRI de Ecuador.',
+    'Analiza el texto o imagen adjunta y devuelve EXCLUSIVAMENTE un objeto JSON válido sin markdown ni explicaciones con estas claves exactas:',
+    '{"ruc":"","cedula":"","tipo_persona":"Natural|Juridica","razon_social":"","nombre_comercial":"","direccion":"","contribuyente_especial":false,"estado":"Activo"}',
+    'Reglas:',
+    '- Si el documento dice "Apellidos y nombres" o "PERSONAS NATURALES", tipo_persona debe ser "Natural", razon_social los apellidos y nombres completos, y cedula los primeros 10 dígitos del RUC.',
+    '- Si dice "Razón Social" o "SOCIEDADES", tipo_persona debe ser "Juridica".',
+    '- Extrae la dirección completa del domicilio tributario (provincia, cantón, parroquia, calle, número, referencia).',
+    '- Si un campo no aparece, déjalo como "" (o false en contribuyente_especial).',
+    textoPdf ? ('
+TEXTO EXTRAÍDO DEL PDF RUC:
+' + String(textoPdf).slice(0, 4500)) : ''
+  ].join('
+');
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        empresa_id: empId,
+        prompt,
+        imagen_base64: imagenBase64 || undefined
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    const rawOut = String(data.respuesta || data.texto || data.resultado || (typeof data === 'string' ? data : JSON.stringify(data)));
+    const jsonMatch = rawOut.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed && (parsed.ruc || parsed.razon_social || parsed.direccion)) {
+        return { ok: true, datos: parsed };
+      }
+    }
+    return { ok: false, error: 'La IA no devolvió estructura JSON legible.' };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Sin respuesta del servicio IA' };
   }
 }
 

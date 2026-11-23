@@ -2742,23 +2742,38 @@
           </div>
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 text-xs">
-            ${appData.clients.map((c, idx) => `
-              <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0 gap-2">
-                <div class="min-w-0">
+            ${appData.clients.map((c, idx) => {
+              const rolesList = [];
+              if (c.es_cliente !== false) rolesList.push('Cliente');
+              if (c.es_proveedor) rolesList.push('Proveedor');
+              if (c.es_empleado) rolesList.push('Empleado');
+              if (c.es_accionista) rolesList.push('Accionista');
+              if (c.es_vendedor) rolesList.push('Vendedor');
+              return `
+              <div class="flex items-start justify-between py-2.5 border-b border-slate-100 last:border-0 gap-2">
+                <div class="min-w-0 space-y-0.5">
                   <div class="font-bold text-[#17343a] truncate">${esc(c.name)}</div>
+                  ${c.nombre_comercial ? `<div class="text-[10.5px] text-slate-600 truncate">🏪 ${esc(c.nombre_comercial)}</div>` : ''}
                   <div class="text-[11px] font-mono text-[#71838a]">RUC/CI: ${esc(c.id)} · ${esc(c.phone)}</div>
-                  ${c.rucPdfUrl ? `<a href="${esc(c.rucPdfUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200 text-[10px] font-bold">📄 Ver / Descargar PDF RUC</a>` : ''}
+                  ${c.email || c.direccion ? `<div class="text-[10px] text-slate-500 truncate">${c.email ? '✉️ ' + esc(c.email) : ''} ${c.direccion ? '· 📍 ' + esc(c.direccion) : ''}</div>` : ''}
+                  <div class="flex flex-wrap items-center gap-1 pt-0.5">
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[9.5px] font-bold">${esc(c.tipo_persona || 'Natural')}</span>
+                    <span class="px-1.5 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] text-[9.5px] font-bold">${esc(rolesList.join(' · ') || 'Cliente')}</span>
+                    ${c.contribuyente_especial ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[9.5px] font-bold">Contrib. Especial</span>' : ''}
+                    ${c.rucPdfUrl ? `<a href="${esc(c.rucPdfUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200 text-[9.5px] font-bold">📄 PDF RUC</a>` : ''}
+                  </div>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
                   ${c.pendingSync ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">⏳ Pend.</span>' : '<span class="text-[#087e70] font-bold">✓ SRI</span>'}
                   ${c.id !== '9999999999999' ? `
-                    <button onclick="V.openEditClientModal(${idx})" class="w-7 h-7 rounded-lg bg-[#e7f5f1] hover:bg-[#d0ebe4] text-[#073e3b] flex items-center justify-center text-xs font-bold cursor-pointer" title="Editar cliente y sincronizar vía API">
+                    <button onclick="V.openEditClientModal(${idx})" class="w-7 h-7 rounded-lg bg-[#e7f5f1] hover:bg-[#d0ebe4] text-[#073e3b] flex items-center justify-center text-xs font-bold cursor-pointer" title="Editar persona y sincronizar vía API">
                       ✏️
                     </button>
                   ` : ''}
                 </div>
               </div>
-            `).join('')}
+            `;
+            }).join('')}
           </div>
         `;
       }
@@ -3652,9 +3667,9 @@
                  <input id="manualBarcodeInput" class="w-full border border-[#d7e1e0] rounded-xl p-2 text-xs font-mono text-center" placeholder="O escribe / pistolea código (ej. P001, P002)" />
                </div>
              ` : ''}
-             ${(purpose === 'voucher' || purpose === 'route') ? `
+             ${(purpose === 'voucher' || purpose === 'route' || purpose === 'ruc') ? `
                <div class="pt-1">
-                 <label class="block text-[10.5px] font-bold text-[#087e70] mb-1">O selecciona una foto de tu galería:</label>
+                 <label class="block text-[10.5px] font-bold text-[#087e70] mb-1">O sube una foto / captura del certificado desde tu galería:</label>
                  <input id="cameraFallbackFileInput" type="file" accept="image/*" capture="environment" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 text-[11px] bg-[#f5f8f8]" />
                </div>
              ` : ''}
@@ -3765,7 +3780,7 @@
 
       async captureFromCamera(purpose) {
         const manualCode = ($('manualBarcodeInput')?.value || '').trim();
-        const dataUrl = (purpose === 'voucher' || purpose === 'route') ? await this.captureVideoFrameDataUrl() : '';
+        const dataUrl = (purpose === 'voucher' || purpose === 'route' || purpose === 'ruc') ? await this.captureVideoFrameDataUrl() : '';
         this.stopCameraStream();
         this.closeModal();
         if (purpose === 'pos') {
@@ -3776,7 +3791,7 @@
         } else if (purpose === 'route') {
           await this.saveCapturedRoutePhoto(this.activeRoutePhotoIdx, dataUrl);
         } else {
-          this.simulateRucPhoto();
+          await this.processCapturedRucPhoto(dataUrl);
         }
       },
 
@@ -3980,32 +3995,90 @@
         toast('Foto eliminada.');
       },
 
-      // --- ADJUNTAR PDF DE RUC EN CLIENTES (VENDEDOR SOLO INGRESA WHATSAPP + PDF) ---
-      openAttachRucPdfModal() {
-        this.openModal(
-          '📄 Registrar Cliente con PDF del RUC',
-          `<div class="space-y-2.5">
-             <p class="text-[11px] text-slate-600">Adjunta el <strong>PDF del RUC</strong> enviado por el cliente y digita únicamente su <strong>Teléfono WhatsApp (para envíos y cobros)</strong>. La IA leerá el RUC y la Razón Social automáticamente:</p>
-             <div>
-               <label class="font-bold text-[11px]">1. Archivo PDF del RUC *</label>
-               <input id="pdfRucFileInput" type="file" accept="application/pdf,.pdf" onchange="V.previewExtractedRucFromPdf(this)" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 text-[11px] bg-[#f5f8f8]" />
-             </div>
-             <div id="pdfExtractedPreview" class="hidden p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b]"></div>
-             <div>
-               <label class="font-bold text-[11px]">2. Teléfono WhatsApp (para envíos y cobros) *</label>
-               <input id="pdfClientPhone" type="tel" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="Ej. 0991234567">
-             </div>
-           </div>`,
-          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button id="btnUploadRucPdf" onclick="V.submitAttachRucPdf()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Subir PDF y Crear Cliente</button>`
-        );
+      // --- EXTRACCIÓN HÍBRIDA IA + REGEX LOCAL DE CERTIFICADO RUC (PDF O FOTO) ---
+      parseRucPlainTextLocal(fullText) {
+        const txt = String(fullText || '');
+        const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        let ruc = '';
+        let name = '';
+        let tipoPersona = 'Natural';
+        let direccion = '';
+        let contribEspecial = false;
+
+        // 1. Buscar RUC (13 dígitos terminados en 001)
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (!ruc && /N[uú]mero\s*RUC/i.test(line)) {
+            const same = line.replace(/\D/g, '');
+            if (same.length === 13) ruc = same;
+            else if (lines[i + 1]) {
+              const nxt = lines[i + 1].replace(/\D/g, '');
+              if (nxt.length === 13) ruc = nxt;
+            }
+          }
+        }
+        if (!ruc) {
+          const mRuc = txt.match(/\b(\d{10}001)\b/);
+          if (mRuc) ruc = mRuc[1];
+        }
+
+        // 2. Detectar Persona Natural ("Apellidos y nombres") vs Sociedad ("Razón Social")
+        if (/PERSONAS\s+NATURALES|Apellidos\s+y\s+nombres/i.test(txt)) {
+          tipoPersona = 'Natural';
+        } else if (/SOCIEDADES|Raz[oó]n\s*Social/i.test(txt)) {
+          tipoPersona = 'Juridica';
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (!name && (/^Apellidos\s+y\s+nombres$/i.test(line) || /^Raz[oó]n\s*Social$/i.test(line)) && lines[i + 1]) {
+            const cand = lines[i + 1].trim();
+            if (cand.length >= 3 && !/Representante|Certificado|N[uú]mero|Estado|R[eé]gimen/i.test(cand)) {
+              name = cand;
+            }
+          }
+          if (!direccion && /^Direcci[oó]n$/i.test(line)) {
+            const dirParts = [];
+            for (let k = i + 1; k < Math.min(lines.length, i + 4); k++) {
+              if (/^(Actividades|Establecimientos|Obligaciones|C[oó]digo)/i.test(lines[k])) break;
+              dirParts.push(lines[k]);
+            }
+            direccion = dirParts.join(' ').trim();
+          }
+          if (/Contribuyente\s+especial/i.test(line)) {
+            const nextVal = (line + ' ' + (lines[i + 1] || '')).toUpperCase();
+            if (/\bSI\b|\bSÍ\b/.test(nextVal)) contribEspecial = true;
+          }
+        }
+
+        if (!name) {
+          const mNat = txt.match(/Apellidos\s+y\s+nombres\s*\n+\s*([^\n]{3,120})/i);
+          if (mNat) { name = mNat[1].trim(); tipoPersona = 'Natural'; }
+        }
+        if (!name) {
+          const mSoc = txt.match(/Raz[oó]n\s*Social\s*\n+\s*([^\n]{3,120})/i);
+          if (mSoc) { name = mSoc[1].trim(); tipoPersona = 'Juridica'; }
+        }
+        if (!direccion) {
+          const mDir = txt.match(/Direcci[oó]n\s*\n+\s*([^\n]{5,180})/i);
+          if (mDir) direccion = mDir[1].trim();
+        }
+
+        const cedula = (tipoPersona === 'Natural' && ruc.length === 13) ? ruc.slice(0, 10) : '';
+        return {
+          ruc,
+          cedula,
+          tipo_persona: tipoPersona,
+          razon_social: name,
+          nombre_comercial: '',
+          direccion,
+          contribuyente_especial: contribEspecial,
+          estado: 'Activo'
+        };
       },
 
       async extractRucInfoFromPdfFile(file) {
-        let extractedRuc = '';
-        let extractedName = '';
         let fullText = '';
-
         try {
           const buf = await file.arrayBuffer();
           if (window.pdfjsLib) {
@@ -4016,114 +4089,208 @@
               const content = await page.getTextContent();
               const pageLines = content.items.map(it => (it.str || '').trim()).filter(Boolean);
               fullText += pageLines.join('\n') + '\n';
-
-              for (let i = 0; i < pageLines.length; i++) {
-                const line = pageLines[i];
-                if (!extractedRuc && /N[uú]mero\s*RUC/i.test(line)) {
-                  const sameLineDigits = line.replace(/\D/g, '');
-                  if (sameLineDigits.length === 13) extractedRuc = sameLineDigits;
-                  else if (pageLines[i + 1]) {
-                    const nextDigits = pageLines[i + 1].replace(/\D/g, '');
-                    if (nextDigits.length === 13) extractedRuc = nextDigits;
-                  }
-                }
-                if (!extractedName && /^Raz[oó]n\s*Social$/i.test(line) && pageLines[i + 1]) {
-                  const candidate = pageLines[i + 1].trim();
-                  if (candidate.length >= 3 && !/Representante|Certificado|N[uú]mero/i.test(candidate)) {
-                    extractedName = candidate;
-                  }
-                }
-              }
             }
           }
         } catch (e) {}
 
-        // Fallback regex over full decompressed PDF text
-        if (!extractedRuc && fullText) {
-          const mRuc = fullText.match(/\b(\d{10}001)\b/);
-          if (mRuc) extractedRuc = mRuc[1];
+        const localParsed = this.parseRucPlainTextLocal(fullText);
+        if (fullText && typeof extraerDatosRucConIA === 'function') {
+          try {
+            const aiRes = await extraerDatosRucConIA({ textoPdf: fullText });
+            if (aiRes && aiRes.ok && aiRes.datos) {
+              const d = aiRes.datos;
+              const rucFinal = String(d.ruc || localParsed.ruc || '').replace(/\D/g, '').slice(0, 13);
+              const tipoFinal = d.tipo_persona === 'Juridica' ? 'Juridica' : (d.tipo_persona === 'Natural' ? 'Natural' : localParsed.tipo_persona);
+              return {
+                ruc: rucFinal,
+                cedula: d.cedula || (tipoFinal === 'Natural' && rucFinal.length === 13 ? rucFinal.slice(0, 10) : localParsed.cedula),
+                tipo_persona: tipoFinal,
+                razon_social: (d.razon_social || localParsed.razon_social || '').trim(),
+                nombre_comercial: (d.nombre_comercial || localParsed.nombre_comercial || '').trim(),
+                direccion: (d.direccion || localParsed.direccion || '').trim(),
+                contribuyente_especial: typeof d.contribuyente_especial === 'boolean' ? d.contribuyente_especial : localParsed.contribuyente_especial,
+                estado: d.estado || 'Activo'
+              };
+            }
+          } catch (e) {}
         }
-        if (!extractedName && fullText) {
-          const mSoc = fullText.match(/Raz[oó]n\s*Social\s*\n+\s*([^\n]{3,120})/i);
-          if (mSoc) extractedName = mSoc[1].trim();
-        }
-
-        return { ruc: extractedRuc, name: extractedName };
+        return localParsed;
       },
 
-      async previewExtractedRucFromPdf(inputEl) {
-        const file = inputEl && inputEl.files ? inputEl.files[0] : null;
-        const box = $('pdfExtractedPreview');
-        if (!file || !box) return;
-        box.innerHTML = '<div class="text-[11px] font-bold text-[#087e70]">⏳ Leyendo certificado RUC del SRI...</div>';
-        box.classList.remove('hidden');
+      // --- FICHA COMPLETA UNIFICADA DE PERSONA (NUEVO / PDF RUC / FOTO RUC / EDICIÓN) ---
+      pendingRucPdfFile: null,
+      pendingRucPhotoDataUrl: '',
+      renderPersonaFullFormHtml(datos = {}, opts = {}) {
+        const isEdit = !!opts.isEdit;
+        const sourceBadge = opts.sourceBadge || '';
+        const tipo = datos.tipo_persona || 'Natural';
+        const rucVal = datos.ruc || datos.id || '';
+        const cedulaVal = datos.cedula || (tipo === 'Natural' && rucVal.length === 13 ? rucVal.slice(0, 10) : (rucVal.length === 10 ? rucVal : ''));
+        return `
+          <div class="space-y-2 max-h-[64vh] overflow-y-auto pr-1 text-[11px]">
+            ${sourceBadge ? `<div class="p-2 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-bold">${sourceBadge}</div>` : ''}
 
-        const info = await this.extractRucInfoFromPdfFile(file);
-        box.innerHTML = `
-          <div class="space-y-2">
-            <div class="text-[11px] font-extrabold text-[#073e3b]">
-              ${info.ruc && info.name ? '✅ Datos extraídos del Certificado RUC (verifica antes de guardar):' : '⚠️ Verifica o completa los datos del certificado:'}
+            ${opts.withPdfPicker ? `
+              <div>
+                <label class="font-bold text-[#073e3b]">Archivo PDF del RUC (SRI Ecuador) *</label>
+                <input id="pdfRucFileInput" type="file" accept="application/pdf,.pdf" onchange="V.onPdfRucFileSelected(this)" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 text-[11px] bg-[#f5f8f8]" />
+                <div id="pdfScanStatusLbl" class="text-[10px] text-[#087e70] font-semibold mt-0.5">Selecciona el PDF para extraer RUC, nombre y dirección con IA.</div>
+              </div>
+            ` : ''}
+
+            ${opts.photoPreviewUrl ? `
+              <div class="rounded-xl overflow-hidden border border-[#b9d1cd] bg-[#f5f8f8]">
+                <img src="${esc(opts.photoPreviewUrl)}" alt="Foto RUC" class="w-full max-h-28 object-cover" />
+                <div class="px-2 py-1 text-[10px] font-bold text-[#087e70]">📷 Foto RUC capturada — revisa y completa los campos faltantes</div>
+              </div>
+            ` : ''}
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold">Estado</label>
+                <select id="pFormEstado" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-semibold">
+                  <option value="Activo" ${(datos.estado || 'Activo') === 'Activo' ? 'selected' : ''}>Activo</option>
+                  <option value="Inactivo" ${datos.estado === 'Inactivo' ? 'selected' : ''}>Inactivo</option>
+                </select>
+              </div>
+              <div>
+                <label class="font-bold">Tipo de Persona *</label>
+                <select id="pFormTipo" onchange="V.onPersonaTipoChange(this.value)" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-semibold">
+                  <option value="Natural" ${tipo === 'Natural' ? 'selected' : ''}>Natural</option>
+                  <option value="Juridica" ${tipo === 'Juridica' ? 'selected' : ''}>Jurídica</option>
+                  <option value="SinRucCi" ${tipo === 'SinRucCi' ? 'selected' : ''}>Sin RUC / CI</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label class="font-bold text-[10.5px] text-slate-700">Razón Social / Nombre *</label>
-              <input id="pdfDetectedNameInput" class="w-full border border-[#b9d1cd] rounded-lg p-1.5 mt-0.5 bg-white font-bold text-xs" value="${esc(info.name)}" placeholder="Ej. POSEIDON INTELLECTUALP S.A.S." />
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold">RUC (13 dígitos)</label>
+                <input id="pFormRuc" maxlength="13" oninput="if($('pFormTipo').value==='Natural' && this.value.length>=10 && !$('pFormCedula').value) $('pFormCedula').value=this.value.slice(0,10);" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono font-bold ${isEdit ? 'bg-slate-100 text-slate-600' : ''}" value="${esc(rucVal)}" ${isEdit ? 'readonly' : ''} placeholder="2200342117001" />
+              </div>
+              <div>
+                <label class="font-bold">Cédula (10 dígitos)</label>
+                <input id="pFormCedula" maxlength="10" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" value="${esc(cedulaVal)}" placeholder="2200342117" />
+              </div>
             </div>
+
             <div>
-              <label class="font-bold text-[10.5px] text-slate-700">Número RUC (13 dígitos) *</label>
-              <input id="pdfDetectedRucInput" maxlength="13" class="w-full border border-[#b9d1cd] rounded-lg p-1.5 mt-0.5 bg-white font-mono font-bold text-xs" value="${esc(info.ruc)}" placeholder="Ej. 0993401734001" />
+              <label class="font-bold">Nombre / Razón Social *</label>
+              <input id="pFormRazonSocial" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-bold" value="${esc(datos.razon_social || datos.name || '')}" placeholder="Ej. AGUILAR SANMARTIN JIMMY JAIRO" />
+            </div>
+
+            <div>
+              <label class="font-bold">Nombre Comercial</label>
+              <input id="pFormNombreComercial" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.nombre_comercial || '')}" placeholder="Opcional (ej. Comercial Los Andes)" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold">Teléfonos / WhatsApp *</label>
+                <input id="pFormTelefonos" type="tel" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" value="${esc(datos.telefonos || datos.phone || '')}" placeholder="0991234567" />
+              </div>
+              <div>
+                <label class="font-bold">Email</label>
+                <input id="pFormEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.email || '')}" placeholder="cliente@correo.com" />
+              </div>
+            </div>
+
+            <div>
+              <label class="font-bold">Dirección (Domicilio Tributario)</label>
+              <input id="pFormDireccion" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.direccion || '')}" placeholder="Provincia, Cantón, Calle y Referencia" />
+            </div>
+
+            <label class="inline-flex items-center gap-2 pt-0.5 font-bold text-[#073e3b] cursor-pointer">
+              <input id="pFormContribEspecial" type="checkbox" ${datos.contribuyente_especial ? 'checked' : ''} class="w-4 h-4 accent-[#087e70]" />
+              <span>Contribuyente Especial</span>
+            </label>
+
+            <div class="p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1">
+              <div class="font-extrabold text-[#073e3b] text-[10.5px]">Rol de persona en la empresa:</div>
+              <div class="grid grid-cols-3 gap-1.5 text-[10.5px]">
+                <label class="inline-flex items-center gap-1 font-semibold cursor-pointer"><input id="pRolCliente" type="checkbox" ${datos.es_cliente !== false ? 'checked' : ''} class="accent-[#087e70]" /> Cliente</label>
+                <label class="inline-flex items-center gap-1 font-semibold cursor-pointer"><input id="pRolProveedor" type="checkbox" ${datos.es_proveedor ? 'checked' : ''} class="accent-[#087e70]" /> Proveedor</label>
+                <label class="inline-flex items-center gap-1 font-semibold cursor-pointer"><input id="pRolEmpleado" type="checkbox" ${datos.es_empleado ? 'checked' : ''} class="accent-[#087e70]" /> Empleado</label>
+                <label class="inline-flex items-center gap-1 font-semibold cursor-pointer"><input id="pRolAccionista" type="checkbox" ${datos.es_accionista ? 'checked' : ''} class="accent-[#087e70]" /> Accionista</label>
+                <label class="inline-flex items-center gap-1 font-semibold cursor-pointer"><input id="pRolVendedor" type="checkbox" ${datos.es_vendedor ? 'checked' : ''} class="accent-[#087e70]" /> Vendedor</label>
+              </div>
             </div>
           </div>
         `;
       },
 
-      async submitAttachRucPdf() {
-        const phone = ($('pdfClientPhone')?.value || '').trim();
-        const fileInput = $('pdfRucFileInput');
-        const file = fileInput && fileInput.files ? fileInput.files[0] : null;
-        const name = ($('pdfDetectedNameInput')?.value || '').trim();
-        const ruc = ($('pdfDetectedRucInput')?.value || '').trim();
-
-        if (!file || !phone || !name || !ruc) {
-          return toast('Adjunta el PDF del RUC, verifica Razón Social/RUC y escribe el teléfono WhatsApp.');
+      onPersonaTipoChange(tipo) {
+        const ruc = ($('pFormRuc')?.value || '').trim();
+        if (tipo === 'Natural' && ruc.length === 13 && $('pFormCedula') && !$('pFormCedula').value) {
+          $('pFormCedula').value = ruc.slice(0, 10);
         }
+      },
 
-        const btn = $('btnUploadRucPdf');
-        if (btn) { btn.textContent = 'Guardando PDF...'; btn.disabled = true; }
+      fillPersonaFormFields(info) {
+        if (!info) return;
+        if ($('pFormTipo') && info.tipo_persona) $('pFormTipo').value = info.tipo_persona;
+        if ($('pFormRuc') && info.ruc) $('pFormRuc').value = info.ruc;
+        if ($('pFormCedula') && info.cedula) $('pFormCedula').value = info.cedula;
+        if ($('pFormRazonSocial') && info.razon_social) $('pFormRazonSocial').value = info.razon_social;
+        if ($('pFormNombreComercial') && info.nombre_comercial) $('pFormNombreComercial').value = info.nombre_comercial;
+        if ($('pFormDireccion') && info.direccion) $('pFormDireccion').value = info.direccion;
+        if ($('pFormContribEspecial')) $('pFormContribEspecial').checked = !!info.contribuyente_especial;
+        if ($('pFormEstado') && info.estado) $('pFormEstado').value = info.estado;
+      },
 
-        let pdfUrl = '';
-        try {
-          if (typeof subirPdfRucSupabase === 'function') {
-            const up = await subirPdfRucSupabase(file, ruc);
-            pdfUrl = up.url;
+      openAttachRucPdfModal() {
+        this.pendingRucPdfFile = null;
+        this.pendingRucPhotoDataUrl = '';
+        this.openModal(
+          '📄 Registrar Persona con PDF del RUC',
+          this.renderPersonaFullFormHtml({ estado: 'Activo', tipo_persona: 'Natural', es_cliente: true }, {
+            withPdfPicker: true,
+            sourceBadge: 'Sube el PDF del RUC; la IA extraerá los datos y tú completas correo, teléfono y roles.'
+          }),
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button id="btnSavePersonaFull" onclick="V.submitPersonaFullForm({ mode: 'pdf' })" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
+        );
+      },
+
+      async onPdfRucFileSelected(inputEl) {
+        const file = inputEl && inputEl.files ? inputEl.files[0] : null;
+        if (!file) return;
+        this.pendingRucPdfFile = file;
+        const lbl = $('pdfScanStatusLbl');
+        if (lbl) lbl.textContent = '⏳ Analizando certificado RUC del SRI con IA...';
+        const info = await this.extractRucInfoFromPdfFile(file);
+        this.fillPersonaFormFields(info);
+        if (lbl) {
+          lbl.textContent = (info.ruc || info.razon_social)
+            ? '✅ Datos extraídos automáticamente. Completa teléfono, email y roles antes de guardar.'
+            : '⚠️ No se detectó texto seleccionable en este PDF (puede ser escaneado); completa los campos manualmente.';
+        }
+      },
+
+      async processCapturedRucPhoto(dataUrl) {
+        this.pendingRucPdfFile = null;
+        const compressed = dataUrl ? await this.compressImageDataUrl(dataUrl, 640, 0.65) : '';
+        this.pendingRucPhotoDataUrl = compressed;
+
+        this.openModal(
+          '📷 Ficha de Persona · Foto RUC',
+          this.renderPersonaFullFormHtml({ estado: 'Activo', tipo_persona: 'Natural', es_cliente: true }, {
+            photoPreviewUrl: compressed,
+            sourceBadge: '⏳ Analizando foto del certificado RUC con IA...'
+          }),
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button id="btnSavePersonaFull" onclick="V.submitPersonaFullForm({ mode: 'photo' })" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
+        );
+
+        if (compressed && typeof extraerDatosRucConIA === 'function') {
+          const aiRes = await extraerDatosRucConIA({ imagenBase64: compressed });
+          if (aiRes && aiRes.ok && aiRes.datos) {
+            this.fillPersonaFormFields(aiRes.datos);
+            toast('✅ Datos del RUC extraídos desde la foto. Completa teléfono/email.');
+          } else {
+            toast('⚠️ Revisa y completa los datos del certificado RUC en el formulario.');
           }
-        } catch (e) {
-          pdfUrl = URL.createObjectURL(file);
         }
-
-        const isOff = appData.offline;
-        appData.clients.unshift({ name, id: ruc, phone, debt: 0, rucPdfUrl: pdfUrl, pendingSync: isOff });
-
-        let repoId = null;
-        if (typeof registrarEnRepositorio === 'function') {
-          const inserted = await registrarEnRepositorio('repo_clientes', {
-            cliente_ruc_ci: ruc,
-            cliente_nombre: name,
-            cliente_telefono: phone,
-            ruc_pdf_url: pdfUrl
-          });
-          if (inserted && inserted.id) repoId = inserted.id;
-        }
-
-        if (isOff) {
-          enqueueOfflineOp('Cliente + PDF RUC', ruc, `${name} (${file.name})`, async () => {
-            const cl = appData.clients.find(c => c.id === ruc);
-            if (cl) cl.pendingSync = false;
-          }, 'repo_clientes', repoId);
-        }
-
-        this.closeModal();
-        renderPhone('clients');
-        toast(`✓ Cliente ${name} (${ruc}) creado con su PDF RUC.`);
       },
 
       // --- EDITAR CLIENTE EXISTENTE (SINCRONIZA EN APP Y SUPABASE CRM) ---
@@ -4131,71 +4298,194 @@
         const c = appData.clients[idx];
         if (!c) return;
         this.openModal(
-          `✏️ Editar Cliente · ${c.id}`,
-          `<div class="space-y-2">
-             <div>
-               <label class="font-bold text-[11px]">Razón social o nombre</label>
-               <input id="editClientName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" value="${esc(c.name)}">
-             </div>
-             <div>
-               <label class="font-bold text-[11px]">RUC / Cédula (Identificación tributaria)</label>
-               <input class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono bg-slate-100 text-slate-600" value="${esc(c.id)}" readonly>
-             </div>
-             <div>
-               <label class="font-bold text-[11px]">Teléfono WhatsApp (para envíos y cobros)</label>
-               <input id="editClientPhone" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="${esc(c.phone)}">
-             </div>
-           </div>`,
+          `✏️ Editar Persona · ${c.id}`,
+          this.renderPersonaFullFormHtml({
+            estado: c.estado || 'Activo',
+            tipo_persona: c.tipo_persona || (c.id.length === 13 ? 'Juridica' : 'Natural'),
+            ruc: c.id.length === 13 ? c.id : '',
+            cedula: c.cedula || (c.id.length === 10 ? c.id : (c.id.length === 13 ? c.id.slice(0, 10) : '')),
+            razon_social: c.name,
+            nombre_comercial: c.nombre_comercial || '',
+            telefonos: c.phone === 'N/A' || c.phone === 'No registrado' ? '' : c.phone,
+            email: c.email || '',
+            direccion: c.direccion || '',
+            contribuyente_especial: !!c.contribuyente_especial,
+            es_cliente: c.es_cliente !== false,
+            es_proveedor: !!c.es_proveedor,
+            es_empleado: !!c.es_empleado,
+            es_accionista: !!c.es_accionista,
+            es_vendedor: !!c.es_vendedor
+          }, { isEdit: true }),
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.saveEditedClient(${idx})" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Cambios</button>`
+           <button id="btnSavePersonaFull" onclick="V.submitPersonaFullForm({ mode: 'edit', idx: ${idx} })" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Cambios</button>`
         );
       },
 
-      async saveEditedClient(idx) {
-        const c = appData.clients[idx];
-        if (!c) return;
-        const newName = ($('editClientName')?.value || '').trim();
-        const newPhone = ($('editClientPhone')?.value || '').trim();
-        if (!newName) return toast('El nombre del cliente no puede estar vacío.');
-        const isOff = appData.offline;
-        c.name = newName;
-        c.phone = newPhone || 'No registrado';
-        c.pendingSync = isOff;
+      async submitPersonaFullForm(opts = {}) {
+        const mode = opts.mode || 'new';
+        const estado = $('pFormEstado')?.value || 'Activo';
+        const tipoPersona = $('pFormTipo')?.value || 'Natural';
+        const ruc = ($('pFormRuc')?.value || '').trim();
+        const cedula = ($('pFormCedula')?.value || '').trim();
+        const razonSocial = ($('pFormRazonSocial')?.value || '').trim();
+        const nombreComercial = ($('pFormNombreComercial')?.value || '').trim();
+        const telefonos = ($('pFormTelefonos')?.value || '').trim();
+        const email = ($('pFormEmail')?.value || '').trim();
+        const direccion = ($('pFormDireccion')?.value || '').trim();
+        const contribEspecial = !!$('pFormContribEspecial')?.checked;
+        const esCliente = !!$('pRolCliente')?.checked;
+        const esProveedor = !!$('pRolProveedor')?.checked;
+        const esEmpleado = !!$('pRolEmpleado')?.checked;
+        const esAccionista = !!$('pRolAccionista')?.checked;
+        const esVendedor = !!$('pRolVendedor')?.checked;
 
+        const identPrincipal = ruc || cedula || (tipoPersona === 'SinRucCi' ? ('SIN-ID-' + Date.now().toString().slice(-6)) : '');
+        if (!razonSocial) return toast('Ingresa el Nombre o Razón Social.');
+        if (tipoPersona !== 'SinRucCi' && !identPrincipal) {
+          return toast('Ingresa el RUC (13 dígitos) o Cédula (10 dígitos).');
+        }
+        if (!telefonos) return toast('Ingresa el teléfono WhatsApp del cliente.');
+
+        if (!confirm(`¿Confirmas guardar y sincronizar a ${razonSocial} (${identPrincipal})?`)) return;
+
+        const btn = $('btnSavePersonaFull');
+        if (btn) { btn.textContent = 'Sincronizando...'; btn.disabled = true; }
+
+        let pdfUrl = '';
+        if (mode === 'pdf' && this.pendingRucPdfFile) {
+          try {
+            if (typeof subirPdfRucSupabase === 'function') {
+              const up = await subirPdfRucSupabase(this.pendingRucPdfFile, identPrincipal);
+              pdfUrl = up.url;
+            }
+          } catch (e) {
+            pdfUrl = URL.createObjectURL(this.pendingRucPdfFile);
+          }
+        }
+
+        const isOff = await ensureRealtimeOfflineCheck();
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const tipoApiContifico = tipoPersona === 'Juridica' ? 'J' : (tipoPersona === 'SinRucCi' ? 'S' : 'N');
+
         const apiPayload = {
-          ruc: c.id,
-          cedula: c.id.length === 10 ? c.id : '',
-          razon_social: c.name,
-          telefonos: c.phone,
-          es_cliente: true
+          tipo: tipoApiContifico,
+          ruc: ruc || (identPrincipal.length === 13 ? identPrincipal : ''),
+          cedula: cedula || (identPrincipal.length === 10 ? identPrincipal : ''),
+          razon_social: razonSocial,
+          nombre_comercial: nombreComercial || razonSocial,
+          telefonos,
+          direccion,
+          email,
+          es_contribuyente_especial: contribEspecial,
+          estado,
+          es_cliente: esCliente,
+          es_proveedor: esProveedor,
+          es_empleado: esEmpleado,
+          es_accionista: esAccionista,
+          es_vendedor: esVendedor
         };
 
-        if (isOff) {
-          enqueueOfflineOp('Edición Cliente API', c.id, `${c.name} (${c.phone})`, async () => {
-            c.pendingSync = false;
-            if (ses.empresa_ruc && typeof actualizarClienteEnRepositorio === 'function') {
-              await actualizarClienteEnRepositorio(ses.empresa_ruc, c.id, { cliente_nombre: c.name, cliente_telefono: c.phone });
-            }
-            if (typeof sincronizarClientePuenteContifico === 'function') {
-              await sincronizarClientePuenteContifico(apiPayload, true);
-            }
-          });
+        const repoFields = {
+          cliente_ruc_ci: identPrincipal,
+          cliente_nombre: razonSocial,
+          cliente_telefono: telefonos,
+          estado,
+          tipo_persona: tipoPersona,
+          contribuyente_especial: contribEspecial,
+          cedula: apiPayload.cedula,
+          nombre_comercial: nombreComercial,
+          direccion,
+          email,
+          es_cliente: esCliente,
+          es_proveedor: esProveedor,
+          es_empleado: esEmpleado,
+          es_accionista: esAccionista,
+          es_vendedor: esVendedor
+        };
+        if (pdfUrl) repoFields.ruc_pdf_url = pdfUrl;
+
+        const clientObj = {
+          name: razonSocial,
+          id: identPrincipal,
+          phone: telefonos,
+          debt: (mode === 'edit' && appData.clients[opts.idx]) ? appData.clients[opts.idx].debt : 0,
+          rucPdfUrl: pdfUrl || ((mode === 'edit' && appData.clients[opts.idx]) ? (appData.clients[opts.idx].rucPdfUrl || '') : ''),
+          estado,
+          tipo_persona: tipoPersona,
+          contribuyente_especial: contribEspecial,
+          cedula: apiPayload.cedula,
+          nombre_comercial: nombreComercial,
+          direccion,
+          email,
+          es_cliente: esCliente,
+          es_proveedor: esProveedor,
+          es_empleado: esEmpleado,
+          es_accionista: esAccionista,
+          es_vendedor: esVendedor,
+          pendingSync: isOff
+        };
+
+        if (mode === 'edit' && appData.clients[opts.idx]) {
+          appData.clients[opts.idx] = clientObj;
         } else {
-          if (ses.empresa_ruc && typeof actualizarClienteEnRepositorio === 'function') {
-            await actualizarClienteEnRepositorio(ses.empresa_ruc, c.id, {
-              cliente_nombre: c.name,
-              cliente_telefono: c.phone
-            });
+          const existingIdx = appData.clients.findIndex(x => x.id === identPrincipal);
+          if (existingIdx >= 0) appData.clients[existingIdx] = clientObj;
+          else appData.clients.unshift(clientObj);
+        }
+
+        let repoId = null;
+        if (!isOff && typeof registrarEnRepositorio === 'function') {
+          if (mode === 'edit' && ses.empresa_ruc && typeof actualizarClienteEnRepositorio === 'function') {
+            await actualizarClienteEnRepositorio(ses.empresa_ruc, identPrincipal, repoFields);
+          } else {
+            const ins = await registrarEnRepositorio('repo_clientes', repoFields);
+            if (ins && ins.id) repoId = ins.id;
           }
-          if (typeof sincronizarClientePuenteContifico === 'function') {
-            await sincronizarClientePuenteContifico(apiPayload, true);
+        }
+
+        let apiRejected = null;
+        let alreadyCreatedMsg = false;
+        if (!isOff && typeof sincronizarClientePuenteContifico === 'function') {
+          const apiRes = await sincronizarClientePuenteContifico(apiPayload, mode === 'edit');
+          if (apiRes && apiRes.alreadyExists) {
+            alreadyCreatedMsg = true;
+          } else if (!apiRes.ok) {
+            apiRejected = { status: apiRes.status || 422, error: apiRes.error };
+            clientObj.pendingSync = true;
           }
+        }
+
+        const modLabel = mode === 'edit' ? 'Edición Cliente API' : (mode === 'pdf' ? 'Cliente + PDF RUC' : (mode === 'photo' ? 'Cliente Foto RUC' : 'Cliente Nuevo'));
+
+        if (apiRejected) {
+          enqueueOfflineOp(modLabel, identPrincipal, `${razonSocial} (${telefonos})`, () => {
+            const cl = appData.clients.find(c => c.id === identPrincipal);
+            if (cl) cl.pendingSync = false;
+          }, 'repo_clientes', repoId, clientObj, {
+            apiError: apiRejected.error,
+            apiErrorStatus: apiRejected.status
+          });
+          this.closeModal();
+          renderPhone('clients');
+          return toast(`🔴 Rechazo API (${apiRejected.status}): guardado en Sincronización para corregir/reenviar.`);
+        }
+
+        if (isOff) {
+          enqueueOfflineOp(modLabel, identPrincipal, `${razonSocial} (${telefonos})`, () => {
+            const cl = appData.clients.find(c => c.id === identPrincipal);
+            if (cl) cl.pendingSync = false;
+          }, 'repo_clientes', repoId, clientObj);
         }
 
         this.closeModal();
         renderPhone('clients');
-        toast(isOff ? `💾 Edición de ${c.name} guardada en cola Offline.` : `✓ Cliente ${c.name} actualizado en Supabase y enviado vía API.`);
+        if (isOff) {
+          toast(`💾 ${razonSocial} guardado en cola Offline.`);
+        } else if (alreadyCreatedMsg) {
+          toast(`ℹ️ Cliente ya creado en el Proveedor Software Contable (${razonSocial}).`);
+        } else {
+          toast(`✓ ${razonSocial} registrado en Supabase y sincronizado vía API.`);
+        }
       },
 
       // --- VALIDAR CAPTURA DE PAGO EN CARTERA (CÁMARA / IMAGEN / PDF + IA) ---
@@ -5388,73 +5678,14 @@
       },
 
       openNewClientModal() {
+        this.pendingRucPdfFile = null;
+        this.pendingRucPhotoDataUrl = '';
         this.openModal(
-          '+ Nuevo cliente',
-          `<div>
-             <label class="font-bold">Razón social o nombre</label>
-             <input id="mClientName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. Minimarket El Sol">
-           </div>
-           <div>
-             <label class="font-bold">RUC o Cédula (Ecuador)</label>
-             <input id="mClientId" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. 1792345678001">
-           </div>
-           <div>
-             <label class="font-bold">Teléfono WhatsApp (para envíos y cobros)</label>
-             <input id="mClientPhone" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. 0998765432">
-           </div>`,
+          '+ Nueva Persona / Cliente',
+          this.renderPersonaFullFormHtml({ estado: 'Activo', tipo_persona: 'Natural', es_cliente: true }, {}),
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.saveNewClient()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar</button>`
+           <button id="btnSavePersonaFull" onclick="V.submitPersonaFullForm({ mode: 'new' })" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
         );
-      },
-
-      async saveNewClient() {
-        const name = $('mClientName').value.trim();
-        const id = $('mClientId').value.trim();
-        const phone = $('mClientPhone').value.trim() || 'No registrado';
-        if (!name || !id) return toast('Completa nombre y RUC/cédula.');
-        if (!confirm(`¿Confirmas que los datos del cliente (${name} · RUC/CI: ${id}) son correctos antes de registrarlos?`)) return;
-        const isOff = await ensureRealtimeOfflineCheck();
-        appData.clients.unshift({ name, id, phone, debt: 0, pendingSync: isOff });
-        if (isOff) {
-          enqueueOfflineOp('Cliente Nuevo', id, `${name} (${phone})`, () => {
-            const cl = appData.clients.find(c => c.id === id);
-            if (cl) cl.pendingSync = false;
-          }, 'repo_clientes', null, appData.clients[0]);
-        }
-        if (typeof registrarEnRepositorio === 'function') {
-          registrarEnRepositorio('repo_clientes', {
-            cliente_ruc_ci: id,
-            cliente_nombre: name,
-            cliente_telefono: phone
-          });
-        }
-        if (!isOff && typeof sincronizarClientePuenteContifico === 'function') {
-          sincronizarClientePuenteContifico({
-            ruc: id,
-            razon_social: name,
-            telefonos: phone,
-            es_cliente: true
-          }, false);
-        }
-        this.closeModal();
-        renderPhone('clients');
-        toast(isOff ? `💾 Cliente ${name} guardado en cola Offline.` : `Cliente ${name} sincronizado.`);
-      },
-
-      simulateRucPhoto() {
-        const isOff = appData.offline;
-        const autoClient = { name: 'Ferretería Los Andes Cía. Ltda.', id: '1792847162001', phone: '0994455667', debt: 0, pendingSync: isOff };
-        if (!appData.clients.some(c => c.id === autoClient.id)) {
-          appData.clients.unshift(autoClient);
-          if (isOff) {
-            enqueueOfflineOp('Cliente Foto RUC', autoClient.id, autoClient.name, () => {
-              const cl = appData.clients.find(c => c.id === autoClient.id);
-              if (cl) cl.pendingSync = false;
-            }, 'repo_clientes', null, autoClient);
-          }
-        }
-        renderPhone('clients');
-        toast(isOff ? '💾 RUC leído por cámara y guardado en cola Offline.' : '🪪 RUC leído por cámara y creado sin digitar.');
       },
 
       openNewProductModal() {
@@ -5725,14 +5956,27 @@
             const ncFound = appData.creditNotes.find(x => x.id === item.ref);
             if (ncFound) ncFound.syncStatus = 'Autorizada SRI';
           }
-        } else if (item.module === 'Cliente Nuevo' || item.module === 'Cliente Foto RUC' || item.module === 'Cliente + PDF RUC') {
+        } else if (item.module === 'Cliente Nuevo' || item.module === 'Cliente Foto RUC' || item.module === 'Cliente + PDF RUC' || item.module === 'Edición Cliente API') {
           if (item.payload && typeof sincronizarClientePuenteContifico === 'function') {
+            const p = item.payload;
+            const tipoApi = p.tipo_persona === 'Juridica' ? 'J' : (p.tipo_persona === 'SinRucCi' ? 'S' : 'N');
             const cliRes = await sincronizarClientePuenteContifico({
-              ruc: item.payload.id,
-              razon_social: item.payload.name,
-              telefonos: item.payload.phone || '',
-              es_cliente: true
-            }, false);
+              tipo: tipoApi,
+              ruc: (p.id && p.id.length === 13) ? p.id : '',
+              cedula: p.cedula || ((p.id && p.id.length === 10) ? p.id : ''),
+              razon_social: p.name,
+              nombre_comercial: p.nombre_comercial || p.name,
+              telefonos: p.phone || '',
+              direccion: p.direccion || '',
+              email: p.email || '',
+              es_contribuyente_especial: !!p.contribuyente_especial,
+              estado: p.estado || 'Activo',
+              es_cliente: p.es_cliente !== false,
+              es_proveedor: !!p.es_proveedor,
+              es_empleado: !!p.es_empleado,
+              es_accionista: !!p.es_accionista,
+              es_vendedor: !!p.es_vendedor
+            }, item.module === 'Edición Cliente API');
             if (!cliRes.ok) {
               item.apiError = cliRes.error || 'Error HTTP al crear cliente en Proveedor Software Contable';
               item.apiErrorStatus = cliRes.status || 422;
@@ -5740,11 +5984,24 @@
             }
           }
           if (item.payload && typeof registrarEnRepositorio === 'function') {
+            const p = item.payload;
             const res = await registrarEnRepositorio('repo_clientes', {
-              cliente_ruc_ci: item.payload.id,
-              cliente_nombre: item.payload.name,
-              cliente_telefono: item.payload.phone || 'N/A',
-              ruc_pdf_url: item.payload.rucPdfUrl || ''
+              cliente_ruc_ci: p.id,
+              cliente_nombre: p.name,
+              cliente_telefono: p.phone || 'N/A',
+              ruc_pdf_url: p.rucPdfUrl || '',
+              estado: p.estado || 'Activo',
+              tipo_persona: p.tipo_persona || 'Natural',
+              contribuyente_especial: !!p.contribuyente_especial,
+              cedula: p.cedula || '',
+              nombre_comercial: p.nombre_comercial || '',
+              direccion: p.direccion || '',
+              email: p.email || '',
+              es_cliente: p.es_cliente !== false,
+              es_proveedor: !!p.es_proveedor,
+              es_empleado: !!p.es_empleado,
+              es_accionista: !!p.es_accionista,
+              es_vendedor: !!p.es_vendedor
             });
             itemOk = !!res;
           }
@@ -6358,7 +6615,19 @@
                 id: c.cliente_ruc_ci,
                 phone: c.cliente_telefono || 'N/A',
                 debt: 0,
-                rucPdfUrl: c.ruc_pdf_url || ''
+                rucPdfUrl: c.ruc_pdf_url || '',
+                estado: c.estado || 'Activo',
+                tipo_persona: c.tipo_persona || 'Natural',
+                contribuyente_especial: !!c.contribuyente_especial,
+                cedula: c.cedula || '',
+                nombre_comercial: c.nombre_comercial || '',
+                direccion: c.direccion || '',
+                email: c.email || '',
+                es_cliente: c.es_cliente !== false,
+                es_proveedor: !!c.es_proveedor,
+                es_empleado: !!c.es_empleado,
+                es_accionista: !!c.es_accionista,
+                es_vendedor: !!c.es_vendedor
               }));
             }
             if (Array.isArray(dbInvoices) && dbInvoices.length > 0) {
