@@ -211,21 +211,114 @@ async function cerrarSesionVozkora() {
 
 async function registrarInteresModuloVozkora(moduloNombre) {
   const ses = obtenerSesionVozkora() || {};
+  const empRuc = ses.empresa_ruc || 'N/A';
+  const empNom = ses.empresa_nombre || 'Empresa Vozkora';
+  const userMail = ses.email || 'usuario@empresa.com';
+  const modLabel = moduloNombre || 'Módulo Empresarial';
+
   try {
-    await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/registrar_interes_modulo_vozkora`, {
+    const rpcResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/registrar_interes_modulo_vozkora`, {
       method: 'POST',
       headers: supaHeaders(),
+      keepalive: true,
       body: JSON.stringify({
-        p_empresa_ruc: ses.empresa_ruc || 'N/A',
-        p_empresa_nombre: ses.empresa_nombre || 'Empresa Vozkora',
-        p_email: ses.email || 'usuario@empresa.com',
-        p_modulo_nombre: moduloNombre || 'Módulo Empresarial'
+        p_empresa_ruc: empRuc,
+        p_empresa_nombre: empNom,
+        p_email: userMail,
+        p_modulo_nombre: modLabel
       })
     });
-    return true;
-  } catch (e) {
+    if (rpcResp.ok) return true;
+  } catch (e) {}
+
+  // Respaldo directo a tabla vozkora_tickets si el RPC fallara
+  try {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const fechaStr = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const insResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_tickets`, {
+      method: 'POST',
+      headers: supaHeaders(),
+      keepalive: true,
+      body: JSON.stringify({
+        empresa_ruc: empRuc,
+        empresa_nombre: empNom,
+        solicitado_por: userMail,
+        tipo_solicitud: 'CONSULTA_CANAL_TECNICO',
+        estado: 'PENDIENTE',
+        detalle: {
+          categoria: '📲 Consulta Canal Técnico WhatsApp',
+          modulo_consultado: modLabel,
+          telefono_contacto: ses.empresa_telefono || 'N/A',
+          descripcion: `El cliente tocó "Consultar con Canal Técnico WhatsApp" desde el módulo: ${modLabel}`,
+          historial: [
+            {
+              fecha: fechaStr,
+              de_estado: 'NUEVO',
+              a_estado: '🟡 Abierto',
+              motivo: `Lead generado en vivo al abrir WhatsApp desde ${modLabel}`,
+              autor: userMail
+            }
+          ]
+        }
+      })
+    });
+    return insResp.ok;
+  } catch (e2) {
     return false;
   }
+}
+
+// -------------------------------------------------------------------------
+// L. FUNCIONES CRM PARA COLABORADORES (SOPORTE / VENTAS) Y HOJA DE VIDA 360°
+// -------------------------------------------------------------------------
+async function crmListarColaboradoresInternos() {
+  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?rol=in.(SUPERADMIN,SOPORTE,VENTAS)&select=*&order=creado_en.desc`;
+  const resp = await fetch(url, { headers: supaHeaders() });
+  if (!resp.ok) throw new Error('Error listando equipo interno');
+  return await resp.json();
+}
+
+async function crmAsignarTicketAColaborador(ticketId, colaboradorEmail, colaboradorNombre, detalleActual = {}) {
+  const nuevoDetalle = Object.assign({}, detalleActual, {
+    asignado_a_email: colaboradorEmail || '',
+    asignado_a_nombre: colaboradorNombre || 'Sin asignar'
+  });
+  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_tickets?id=eq.${encodeURIComponent(ticketId)}`;
+  const resp = await fetch(url, {
+    method: 'PATCH',
+    headers: supaHeaders(),
+    body: JSON.stringify({
+      asignado_a: colaboradorEmail || null,
+      detalle: nuevoDetalle
+    })
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.message || 'Error asignando ticket');
+  return Array.isArray(data) ? data[0] : data;
+}
+
+async function crmObtenerHojaVidaCliente360(empresaRuc) {
+  if (!empresaRuc) return { facturas: [], proformas: [], cobros: [], notasCredito: [], ordenes: [], clientes: [] };
+  const safeFetch = async (tabla) => {
+    try {
+      const r = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/${tabla}?empresa_ruc=eq.${encodeURIComponent(empresaRuc)}&select=*&order=creado_en.desc&limit=100`, {
+        headers: supaHeaders()
+      });
+      return r.ok ? await r.json() : [];
+    } catch (e) {
+      return [];
+    }
+  };
+  const [facturas, proformas, cobros, notasCredito, ordenes, clientes] = await Promise.all([
+    safeFetch('repo_facturas'),
+    safeFetch('repo_proformas'),
+    safeFetch('repo_cobros'),
+    safeFetch('repo_notas_credito'),
+    safeFetch('repo_ordenes_trabajo'),
+    safeFetch('repo_clientes')
+  ]);
+  return { facturas, proformas, cobros, notasCredito, ordenes, clientes };
 }
 
 async function solicitarEliminacionCuentaVozkora(motivo = '') {

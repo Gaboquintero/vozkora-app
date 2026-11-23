@@ -2806,7 +2806,7 @@
         m.classList.remove('flex');
       },
 
-      // --- CANAL TÉCNICO WHATSAPP + REGISTRO SILENCIOSO DE LEAD EN SUPABASE (GOOGLE PLAY COMPLIANT) ---
+      // --- CANAL TÉCNICO WHATSAPP + REGISTRO GARANTIZADO DE LEAD EN SUPABASE (GOOGLE PLAY COMPLIANT) ---
       async contactTechnicalChannelWhatsapp(moduloLabel = 'Consulta Técnica') {
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
           empresa_nombre: 'Empresa Vozkora', empresa_ruc: 'N/A', email: 'usuario@empresa.com'
@@ -2815,23 +2815,22 @@
           ? VOZKORA_CONFIG.ASESOR_VIP_WHATSAPP
           : '573239399953';
 
+        toast('⏳ Conectando con Canal Técnico...');
         if (typeof registrarInteresModuloVozkora === 'function') {
-          registrarInteresModuloVozkora(moduloLabel).catch(() => {});
+          try {
+            await registrarInteresModuloVozkora(moduloLabel);
+          } catch (e) {}
         }
 
         const waMsg = encodeURIComponent(
-          `Hola Canal Técnico Vozkora, solicito asistencia e información sobre la habilitación de:
-` +
-          `• *Módulo / Función:* ${moduloLabel}
-` +
-          `• *Empresa:* ${ses.empresa_nombre || 'N/A'}
-` +
-          `• *RUC:* ${ses.empresa_ruc || 'N/A'}
-` +
+          `Hola Canal Técnico Vozkora, solicito asistencia e información sobre la habilitación de:\n` +
+          `• *Módulo / Función:* ${moduloLabel}\n` +
+          `• *Empresa:* ${ses.empresa_nombre || 'N/A'}\n` +
+          `• *RUC:* ${ses.empresa_ruc || 'N/A'}\n` +
           `• *Usuario:* ${ses.email || 'N/A'}`
         );
         window.open(`https://wa.me/${phone}?text=${waMsg}`, '_blank', 'noopener,noreferrer');
-        toast('💬 Conectando con Canal Técnico WhatsApp...');
+        toast('💬 Canal Técnico WhatsApp abierto.');
       },
 
       openPrivacyPolicyModal() {

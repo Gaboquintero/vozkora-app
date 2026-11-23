@@ -66,31 +66,19 @@
     </header>
 
     <nav class="bg-[#073e3b] text-white px-4 py-2 flex gap-2 overflow-x-auto shrink-0 text-xs font-bold">
-      <button id="crm-tab-companies" onclick="CRM.setTab('companies')" class="px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0">🏢 Empresas (Clientes SaaS)</button>
-      <button id="crm-tab-users" onclick="CRM.setTab('users')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">👥 Usuarios y Cupos</button>
+      <button id="crm-tab-tickets" onclick="CRM.setTab('tickets')" class="px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0">🔥 Leads & Tickets</button>
+      <button id="crm-tab-crm360" onclick="CRM.setTab('crm360')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🗂️ Hoja de Vida 360° (Vista Dividida)</button>
+      <button id="crm-tab-companies" onclick="CRM.setTab('companies')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🏢 Empresas SaaS</button>
+      <button id="crm-tab-users" onclick="CRM.setTab('users')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">👥 Usuarios Empresas</button>
+      <button id="crm-tab-staff" onclick="CRM.setTab('staff')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🎧 Equipo Soporte & Ventas</button>
       <button id="crm-tab-billing" onclick="CRM.setTab('billing')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">💳 Cobranzas y Cortes</button>
-      <button id="crm-tab-tickets" onclick="CRM.setTab('tickets')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🔥 Leads WhatsApp & Tickets</button>
       <button id="crm-tab-repo" onclick="CRM.setTab('repo')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">📊 Hojas Auditoría (Excel)</button>
     </nav>
 
-    <main id="crm-body" class="flex-1 p-4 max-w-6xl w-full mx-auto space-y-4 text-xs">
+    <main id="crm-body" class="flex-1 p-4 max-w-7xl w-full mx-auto space-y-4 text-xs">
       Cargando consola maestra...
     </main>
   </div>
-
-  <!-- MODAL GLOBAL CRM -->
-  <div id="phone-modal" class="hidden fixed inset-0 z-[90] bg-slate-950/65 backdrop-blur-[2px] p-4 items-center justify-center">
-    <div class="bg-white w-full max-w-[500px] max-h-[90vh] overflow-y-auto rounded-3xl p-5 border border-[#dce6e5] shadow-2xl space-y-3 text-[#17343a]">
-      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
-        <h4 id="phone-modal-title" class="text-sm font-extrabold text-[#073e3b]">Título</h4>
-        <button onclick="V.closeModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">✕</button>
-      </div>
-      <div id="phone-modal-body" class="text-xs space-y-2.5"></div>
-      <div id="phone-modal-actions" class="flex justify-end gap-2 pt-2 border-t border-slate-100"></div>
-    </div>
-  </div>
-
-  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] hidden bg-[#073e3b] text-white border border-[#70d2bd]/40 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold max-w-[92vw] text-center"></div>
 
   <script src="api.js"></script>
   <script>
@@ -317,7 +305,11 @@
 
 
     window.CRM = {
-      currentTab: 'companies',
+      currentTab: 'tickets',
+      cachedStaff: [],
+      selected360Ruc: '',
+      search360: '',
+      ticketAssigneeFilter: 'ALL',
       cachedCompanies: [],
       companySearch: '',
       companyFilterStatus: 'ALL',
@@ -334,24 +326,33 @@
       repoFilterHasta: '',
       repoSearch: '',
 
-      open() {
-        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
-        if (!ses || ses.rol !== 'SUPERADMIN') {
-          $('crm-overlay').classList.add('hidden');
-          return toast('⛔ Acceso denegado: Solo Súper-Administrador puede ingresar a Vozkora Control CRM.');
-        }
-        $('crm-overlay').classList.remove('hidden');
-        this.setTab(this.currentTab);
+      isInternalRole(rol) {
+        return ['SUPERADMIN', 'SOPORTE', 'VENTAS'].includes(String(rol || '').toUpperCase());
       },
 
-      switchToAppMode() {
-        $('crm-overlay').classList.add('hidden');
-        toast('Vista App Móvil activa. Toca el botón superior derecho para volver al CRM.');
+      open() {
+        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        if (!ses || !this.isInternalRole(ses.rol)) {
+          $('crm-overlay').classList.add('hidden');
+          return toast('⛔ Acceso denegado: Solo personal autorizado (Súper-Admin, Soporte o Ventas) puede ingresar.');
+        }
+        const isSuper = ses.rol === 'SUPERADMIN';
+        // Ocultar pestañas administrativas si es colaborador de Soporte o Ventas (ellos ven Tickets + Hoja de Vida 360°)
+        ['companies', 'users', 'staff', 'billing', 'repo'].forEach(t => {
+          const btn = $('crm-tab-' + t);
+          if (btn) btn.classList.toggle('hidden', !isSuper);
+        });
+        $('crm-overlay').classList.remove('hidden');
+        this.setTab(isSuper ? this.currentTab : 'tickets');
       },
 
       setTab(tab) {
+        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        if (ses && ses.rol !== 'SUPERADMIN' && !['tickets', 'crm360'].includes(tab)) {
+          tab = 'tickets';
+        }
         this.currentTab = tab;
-        ['companies', 'users', 'billing', 'tickets', 'repo'].forEach(t => {
+        ['tickets', 'crm360', 'companies', 'users', 'staff', 'billing', 'repo'].forEach(t => {
           const btn = $('crm-tab-' + t);
           if (btn) {
             btn.className = (t === tab)
@@ -361,8 +362,10 @@
         });
         if (tab === 'companies') this.loadCompanies();
         else if (tab === 'users') this.loadUsers();
+        else if (tab === 'staff') this.loadStaffTab();
         else if (tab === 'billing') this.loadBillingTab();
         else if (tab === 'tickets') this.loadTickets();
+        else if (tab === 'crm360') this.loadCrm360View();
         else if (tab === 'repo') this.loadRepo(this.repoTable);
       },
 
@@ -1214,15 +1217,30 @@
 
       async loadTickets() {
         const body = $('crm-body');
-        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando tickets de solicitud...</div>';
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando bandeja de leads y tickets...</div>';
         try {
           const [tks, emps, usrs] = await Promise.all([crmListarTickets(), crmListarEmpresas(), crmListarUsuarios()]);
           this.cachedTickets = tks;
           this.cachedCompanies = emps;
           this.cachedUsers = usrs;
+          this.cachedStaff = usrs.filter(u => ['SUPERADMIN', 'SOPORTE', 'VENTAS'].includes(String(u.rol || '').toUpperCase()));
           this.renderTicketsView();
         } catch (e) {
           body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      async assignTicketStaff(ticketId, staffEmail) {
+        const tk = this.cachedTickets.find(x => x.id === ticketId);
+        if (!tk) return;
+        const staffObj = this.cachedStaff.find(s => s.email === staffEmail);
+        const staffName = staffObj ? `${staffObj.nombre_completo || staffObj.email} (${staffObj.rol})` : 'Sin asignar';
+        try {
+          await crmAsignarTicketAColaborador(ticketId, staffEmail, staffName, tk.detalle || {});
+          toast(staffEmail ? `✅ Ticket asignado a ${staffName}` : 'Ticket marcado como Sin asignar');
+          await this.loadTickets();
+        } catch (e) {
+          toast('Error asignando ticket: ' + e.message);
         }
       },
 
@@ -1257,9 +1275,22 @@
               <button onclick="CRM.ticketFilterStatus='TODOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.ticketFilterStatus === 'TODOS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
                 Todos (${this.cachedTickets.length})
               </button>
+              <select onchange="CRM.ticketAssigneeFilter=this.value; CRM.renderTicketsView();" class="ml-auto border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-bold text-[#073e3b]">
+                <option value="ALL" ${this.ticketAssigneeFilter === 'ALL' ? 'selected' : ''}>👤 Todos los responsables</option>
+                <option value="MINE" ${this.ticketAssigneeFilter === 'MINE' ? 'selected' : ''}>⭐ Mis tickets asignados</option>
+                <option value="UNASSIGNED" ${this.ticketAssigneeFilter === 'UNASSIGNED' ? 'selected' : ''}>⚪ Sin asignar</option>
+              </select>
             </div>
 
-            ${listToShow.length === 0 ? '<p class="text-slate-500 py-3">No hay tickets en esta sub-ventana.</p>' : ''}
+            ${(() => {
+              const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+              if (this.ticketAssigneeFilter === 'MINE' && sesNow) {
+                listToShow = listToShow.filter(t => (t.asignado_a || (t.detalle && t.detalle.asignado_a_email)) === sesNow.email);
+              } else if (this.ticketAssigneeFilter === 'UNASSIGNED') {
+                listToShow = listToShow.filter(t => !(t.asignado_a || (t.detalle && t.detalle.asignado_a_email)));
+              }
+              return listToShow.length === 0 ? '<p class="text-slate-500 py-3">No hay tickets que coincidan con el filtro seleccionado.</p>' : '';
+            })()}
             <div class="space-y-2.5">
               ${listToShow.map(tk => {
                 const realIdx = this.cachedTickets.findIndex(x => x.id === tk.id);
@@ -1308,6 +1339,23 @@
                         `).join('')}
                       </div>
                     ` : ''}
+
+                    <!-- Asignación a Colaborador Soporte/Ventas + Acceso a Hoja de Vida 360° -->
+                    <div class="p-2 rounded-xl bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <div class="flex items-center gap-1.5">
+                        <span class="font-bold text-[#073e3b]">🎧 Responsable:</span>
+                        <select onchange="CRM.assignTicketStaff('${tk.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-[#f5f8f8] font-bold text-[#073e3b]">
+                          <option value="">-- Sin asignar --</option>
+                          ${(this.cachedStaff || []).map(st => {
+                            const currAssigned = tk.asignado_a || det.asignado_a_email || '';
+                            return `<option value="${esc(st.email)}" ${currAssigned === st.email ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(st.rol)}]</option>`;
+                          }).join('')}
+                        </select>
+                      </div>
+                      <button onclick="CRM.openClient360ByRuc('${esc(tk.empresa_ruc)}')" class="px-2.5 py-1 rounded-lg bg-[#e7f5f1] hover:bg-[#087e70] text-[#073e3b] hover:text-white border border-[#b9d1cd] font-extrabold cursor-pointer">
+                        🗂️ Abrir Hoja de Vida 360° →
+                      </button>
+                    </div>
 
                     <!-- Controles libres de cambio de estado (Ida y Vuelta) + Bitácora -->
                     <div class="flex flex-wrap items-center gap-1.5 pt-1">
@@ -1605,6 +1653,281 @@
         `;
       },
 
+
+      // -------------------------------------------------------------------
+      // PESTAÑA EQUIPO INTERNO (EMPLEADOS DE SOPORTE Y VENTAS)
+      // -------------------------------------------------------------------
+      async loadStaffTab() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando equipo interno de Soporte y Ventas...</div>';
+        try {
+          const allUsers = await crmListarUsuarios();
+          this.cachedUsers = allUsers;
+          this.cachedStaff = allUsers.filter(u => ['SUPERADMIN', 'SOPORTE', 'VENTAS'].includes(String(u.rol || '').toUpperCase()));
+          this.renderStaffView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderStaffView() {
+        const body = $('crm-body');
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🎧 Equipo Interno · Soporte Técnico y Ventas (${this.cachedStaff.length})</h3>
+                <p class="text-[11px] text-slate-500">Crea colaboradores con rol <strong>SOPORTE</strong> o <strong>VENTAS</strong>. Ellos ingresan a <code>crm.html</code> viendo únicamente Tickets y Hoja de Vida 360° de clientes.</p>
+              </div>
+              <button onclick="CRM.openNewStaffModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                + Crear Empleado Soporte / Ventas
+              </button>
+            </div>
+
+            <div class="space-y-2">
+              ${this.cachedStaff.map(st => `
+                <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div class="font-extrabold text-sm text-[#073e3b]">${esc(st.nombre_completo || st.email)}
+                      <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${st.rol === 'SUPERADMIN' ? 'bg-[#073e3b] text-[#70d2bd]' : (st.rol === 'VENTAS' ? 'bg-amber-100 text-amber-900' : 'bg-cyan-100 text-cyan-900')}">${esc(st.rol)}</span>
+                    </div>
+                    <div class="text-[11px] font-mono text-slate-600">Correo: <strong>${esc(st.email)}</strong> · Clave: <strong>${esc(st.clave)}</strong></div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button onclick="CRM.toggleUserActive('${st.id}', ${!st.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${st.activo ? 'bg-amber-100 text-amber-900' : 'bg-emerald-600 text-white'} cursor-pointer">
+                      ${st.activo ? '⏸️ Pausar' : '✅ Activar'}
+                    </button>
+                    ${st.rol !== 'SUPERADMIN' ? `
+                      <button onclick="CRM.deleteUserConfirm('${st.id}', '${esc(st.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-100 text-rose-800 cursor-pointer">
+                        🗑️ Eliminar
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      },
+
+      openNewStaffModal() {
+        V.openModal(
+          '🎧 Crear Colaborador Interno (Soporte / Ventas)',
+          `<div class="space-y-2.5">
+             <div>
+               <label class="font-bold text-[11px]">Nombre Completo del Colaborador *</label>
+               <input id="stfName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Laura Mendoza" />
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Correo Corporativo *</label>
+                 <input id="stfEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="laura@vozkora.com" />
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Contraseña *</label>
+                 <input id="stfPass" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="VOZKORA2026" />
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Rol / Área Asignada *</label>
+               <select id="stfRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 <option value="VENTAS">💼 Asesor Comercial / Ventas (Leads + Hoja de Vida 360°)</option>
+                 <option value="SOPORTE">🛠️ Ingeniero Soporte Técnico (Tickets + Hoja de Vida 360°)</option>
+               </select>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveNewStaff()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Crear Colaborador</button>`
+        );
+      },
+
+      async saveNewStaff() {
+        const nombre_completo = $('stfName').value.trim();
+        const email = $('stfEmail').value.trim().toLowerCase();
+        const clave = $('stfPass').value.trim();
+        const rol = $('stfRol').value;
+        if (!nombre_completo || !email || !clave) return toast('Completa nombre, correo y contraseña.');
+        try {
+          await crmCrearUsuario({
+            empresa_nombre: 'Vozkora Ingeniería Tech S.A.S.',
+            empresa_ruc: '1790000000001',
+            nombre_completo,
+            email,
+            clave,
+            rol,
+            entorno: 'PRODUCCION',
+            plan_activo: 'enterprise',
+            activo: true
+          });
+          V.closeModal();
+          toast(`✅ Colaborador ${nombre_completo} (${rol}) creado.`);
+          this.loadStaffTab();
+        } catch (e) {
+          toast('Error creando colaborador: ' + e.message);
+        }
+      },
+
+      // -------------------------------------------------------------------
+      // VISTA DIVIDIDA EN DOS: HOJA DE VIDA 360° DEL CLIENTE
+      // -------------------------------------------------------------------
+      openClient360ByRuc(ruc) {
+        this.selected360Ruc = ruc || '';
+        this.setTab('crm360');
+      },
+
+      async loadCrm360View() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando directorio y Hoja de Vida 360°...</div>';
+        try {
+          const [emps, usrs, tks] = await Promise.all([crmListarEmpresas(), crmListarUsuarios(), crmListarTickets()]);
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.cachedTickets = tks;
+          if (!this.selected360Ruc && emps.length > 0) {
+            this.selected360Ruc = emps[0].ruc;
+          }
+          await this.renderCrm360SplitView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      async renderCrm360SplitView() {
+        const body = $('crm-body');
+        const q = (this.search360 || '').toLowerCase();
+        const list = this.cachedCompanies.filter(c =>
+          !q || (c.nombre || '').toLowerCase().includes(q) || (c.ruc || '').toLowerCase().includes(q)
+        );
+        const selEmp = this.cachedCompanies.find(c => c.ruc === this.selected360Ruc) || list[0] || null;
+        if (selEmp) this.selected360Ruc = selEmp.ruc;
+
+        let hist360 = { facturas: [], proformas: [], cobros: [], notasCredito: [], ordenes: [], clientes: [] };
+        if (selEmp && typeof crmObtenerHojaVidaCliente360 === 'function') {
+          hist360 = await crmObtenerHojaVidaCliente360(selEmp.ruc);
+        }
+
+        const empUsers = selEmp ? this.cachedUsers.filter(u => u.empresa_ruc === selEmp.ruc || u.empresa_id === selEmp.id) : [];
+        const empTickets = selEmp ? this.cachedTickets.filter(t => t.empresa_ruc === selEmp.ruc) : [];
+        const totalFacturado = (hist360.facturas || []).reduce((a, f) => a + Number(f.total || 0), 0);
+        const totalCobrado = (hist360.cobros || []).reduce((a, c) => a + Number(c.monto || 0), 0);
+
+        body.innerHTML = `
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+            <!-- PANEL IZQUIERDO (4 cols): DIRECTORIO DE CLIENTES EMPRESARIALES -->
+            <div class="lg:col-span-4 bg-white rounded-2xl p-3.5 border border-[#dce6e5] space-y-2.5">
+              <div class="font-extrabold text-sm text-[#073e3b]">🏢 Cartera de Empresas (${list.length})</div>
+              <input type="text" value="${esc(this.search360)}" oninput="CRM.search360=this.value; CRM.renderCrm360SplitView();" placeholder="🔍 Buscar empresa o RUC..." class="w-full px-3 py-2 rounded-xl border border-[#d7e1e0] text-[11px]" />
+              <div class="space-y-1.5 max-h-[70vh] overflow-y-auto pr-1">
+                ${list.map(emp => {
+                  const active = selEmp && emp.ruc === selEmp.ruc;
+                  const tkOpen = this.cachedTickets.filter(t => t.empresa_ruc === emp.ruc && (t.estado === 'PENDIENTE' || t.estado === 'ABIERTO')).length;
+                  return `
+                    <button onclick="CRM.selected360Ruc='${esc(emp.ruc)}'; CRM.renderCrm360SplitView();" class="w-full p-3 rounded-xl text-left transition cursor-pointer border ${active ? 'bg-[#073e3b] text-white border-[#073e3b] shadow' : 'bg-[#f5f8f8] hover:bg-[#e7f5f1] text-[#17343a] border-[#dce6e5]'}">
+                      <div class="flex items-center justify-between gap-1">
+                        <strong class="text-xs truncate">${esc(emp.nombre)}</strong>
+                        ${tkOpen > 0 ? `<span class="px-1.5 py-0.5 rounded-full text-[9.5px] font-black bg-amber-400 text-[#073e3b] shrink-0">${tkOpen} ticket</span>` : ''}
+                      </div>
+                      <div class="text-[10.5px] font-mono opacity-80 mt-0.5">RUC: ${esc(emp.ruc)}</div>
+                      <div class="text-[10px] mt-1 flex items-center justify-between opacity-90">
+                        <span>Plan: <strong>${esc(emp.plan_activo || 'piloto')}</strong></span>
+                        <span>${emp.activa ? '● Activa' : '● Pausada'}</span>
+                      </div>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- PANEL DERECHO (8 cols): HOJA DE VIDA 360° DEL CLIENTE SELECCIONADO -->
+            <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+              ${!selEmp ? '<p class="text-slate-500">Selecciona una empresa a la izquierda para ver su Hoja de Vida 360°.</p>' : `
+                <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0b5651] text-white space-y-1.5">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span class="text-[10px] uppercase font-bold text-[#70d2bd]">Hoja de Vida Integral del Cliente</span>
+                      <h3 class="text-base font-black">${esc(selEmp.nombre)}</h3>
+                    </div>
+                    <div class="flex gap-1.5">
+                      ${selEmp.telefono ? `<button onclick="window.open('https://wa.me/${esc(selEmp.telefono.replace(/\D/g,''))}','_blank')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#70d2bd] text-[#073e3b] cursor-pointer">💬 WhatsApp Cliente</button>` : ''}
+                    </div>
+                  </div>
+                  <div class="text-[11px] text-teal-100 font-mono">
+                    RUC: <strong>${esc(selEmp.ruc)}</strong> · Tel: ${esc(selEmp.telefono || 'N/A')} · Email: ${esc(selEmp.email_contacto || 'N/A')}
+                  </div>
+                  <div class="text-[11px] text-teal-100">
+                    Plan: <strong class="text-white uppercase">${esc(selEmp.plan_activo)}</strong> (${esc(selEmp.periodicidad || 'MENSUAL')}) · Corte: <strong>${esc(selEmp.fecha_proximo_corte || 'Día 01')}</strong> · Módulos IA: <strong>${Array.isArray(selEmp.packs_ia) && selEmp.packs_ia.length ? selEmp.packs_ia.join(', ') : 'Ninguno'}</strong>
+                  </div>
+                </div>
+
+                <!-- KPIs Rápidos de la Empresa -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                    <div class="text-[10px] text-slate-500 font-bold">Tickets / Leads</div>
+                    <div class="text-base font-black text-[#073e3b]">${empTickets.length}</div>
+                  </div>
+                  <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                    <div class="text-[10px] text-slate-500 font-bold">Facturas Emitidas</div>
+                    <div class="text-base font-black font-mono text-[#087e70]">${hist360.facturas.length} ($${totalFacturado.toFixed(2)})</div>
+                  </div>
+                  <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                    <div class="text-[10px] text-slate-500 font-bold">Pagos / Cobros</div>
+                    <div class="text-base font-black font-mono text-[#073e3b]">${hist360.cobros.length} ($${totalCobrado.toFixed(2)})</div>
+                  </div>
+                  <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                    <div class="text-[10px] text-slate-500 font-bold">Usuarios / Clientes</div>
+                    <div class="text-base font-black text-[#073e3b]">${empUsers.length} usu. / ${hist360.clientes.length} cli.</div>
+                  </div>
+                </div>
+
+                <!-- Histórico de Tickets de esta Empresa -->
+                <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+                  <div class="font-extrabold text-[#073e3b]">🎫 Histórico de Tickets y Consultas (${empTickets.length})</div>
+                  ${empTickets.length === 0 ? '<p class="text-[11px] text-slate-500">Sin tickets registrados para esta empresa.</p>' : empTickets.map(t => `
+                    <div class="p-2 rounded-xl bg-white border border-slate-200 text-[11px] flex flex-wrap justify-between gap-1">
+                      <div>
+                        <strong>${esc((t.detalle && t.detalle.categoria) || t.tipo_solicitud)}</strong>: ${esc((t.detalle && t.detalle.descripcion) || '')}
+                        <div class="text-[10px] text-slate-500">Responsable: <strong>${esc((t.detalle && t.detalle.asignado_a_nombre) || t.asignado_a || 'Sin asignar')}</strong></div>
+                      </div>
+                      <span class="font-bold text-[10px] px-2 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] h-fit">${this.ticketLabel(t.estado)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+
+                <!-- Histórico de Compras / Facturas y Pagos -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+                    <div class="font-extrabold text-[#073e3b]">🧾 Últimas Facturas (${hist360.facturas.length})</div>
+                    ${hist360.facturas.length === 0 ? '<p class="text-[11px] text-slate-500">Sin facturas registradas.</p>' : hist360.facturas.slice(0, 8).map(f => `
+                      <div class="p-2 rounded-lg bg-white border border-slate-200 text-[10.5px] flex justify-between">
+                        <span><strong>${esc(f.numero_factura)}</strong> · ${esc(f.cliente_nombre)}</span>
+                        <strong class="font-mono text-[#087e70]">$${Number(f.total || 0).toFixed(2)}</strong>
+                      </div>
+                    `).join('')}
+                  </div>
+
+                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+                    <div class="font-extrabold text-[#073e3b]">💰 Pagos, Proformas y Órdenes</div>
+                    ${hist360.cobros.slice(0, 4).map(cb => `
+                      <div class="p-2 rounded-lg bg-white border border-slate-200 text-[10.5px] flex justify-between">
+                        <span>Cobro: ${esc(cb.cliente_nombre)}</span>
+                        <strong class="font-mono text-[#073e3b]">+$${Number(cb.monto || 0).toFixed(2)}</strong>
+                      </div>
+                    `).join('')}
+                    ${hist360.proformas.slice(0, 4).map(pr => `
+                      <div class="p-2 rounded-lg bg-white border border-slate-200 text-[10.5px] flex justify-between">
+                        <span>Proforma: ${esc(pr.numero_proforma)}</span>
+                        <strong class="font-mono text-slate-700">$${Number(pr.total || 0).toFixed(2)}</strong>
+                      </div>
+                    `).join('')}
+                    ${(hist360.cobros.length === 0 && hist360.proformas.length === 0) ? '<p class="text-[11px] text-slate-500">Sin pagos o proformas registradas.</p>' : ''}
+                  </div>
+                </div>
+              `}
+            </div>
+          </div>
+        `;
+      },
+
       exportRepoCsv() {
         const rows = this.getFilteredRepoRows();
         if (!rows.length) return toast('No hay filas filtradas para exportar.');
@@ -1643,7 +1966,7 @@
             err.classList.remove('hidden');
             return;
           }
-          if (res.user.rol !== 'SUPERADMIN') {
+          if (!CRM.isInternalRole(res.user.rol)) {
             cerrarSesionVozkora();
             err.textContent = '⛔ Acceso denegado: Esta consola es exclusiva para Súper-Administradores de Vozkora.';
             err.classList.remove('hidden');
@@ -1668,7 +1991,7 @@
 
     window.addEventListener('DOMContentLoaded', async () => {
       const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
-      if (ses && ses.rol === 'SUPERADMIN') {
+      if (ses && CRM.isInternalRole(ses.rol)) {
         $('crm-login-screen').classList.add('hidden');
         CRM.open();
       }
