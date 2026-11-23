@@ -2922,15 +2922,18 @@
       barcodeTimer: null,
       activeRoutePhotoIdx: null,
       openRealCameraModal(purpose = 'ruc', extraIdx = null) {
-        if (!localStorage.getItem('vozkora_camera_disclosure_ok')) {
+        if (!sessionStorage.getItem('vozkora_camera_disclosure_session')) {
           this.openModal(
-            '📷 Uso de Cámara del Dispositivo',
+            '📷 Autorización de Uso de Cámara (Google Play)',
             `<div class="space-y-2 text-[11px] text-slate-700 leading-relaxed">
-               <p><strong>Vozkora</strong> solicitará acceso a la cámara de tu dispositivo exclusivamente para escanear códigos de barras de productos, capturar certificados RUC o registrar evidencias fotográficas de visitas comerciales.</p>
-               <p class="text-[10.5px] text-slate-500">Las imágenes capturadas se procesan de forma cifrada en nuestros servidores en la nube para extraer los datos contables solicitados.</p>
+               <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-bold">
+                 Estás autorizando a Vozkora a usar la cámara de tu dispositivo.
+               </div>
+               <p><strong>Finalidad exclusiva:</strong> Escanear códigos de barras de productos, capturar certificados RUC del SRI y registrar evidencias fotográficas de visitas comerciales en ruta.</p>
+               <p class="text-[10.5px] text-slate-500">Las imágenes capturadas se transmiten de forma cifrada (HTTPS) a nuestros servidores en la nube (Supabase / Google Cloud AI) únicamente para digitalizar los datos solicitados.</p>
              </div>`,
-            `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Ahora no</button>
-             <button onclick="localStorage.setItem('vozkora_camera_disclosure_ok','1'); V.closeModal(); V.openRealCameraModal('${purpose}', ${extraIdx === null ? 'null' : extraIdx});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Continuar y Permitir</button>`
+            `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+             <button onclick="sessionStorage.setItem('vozkora_camera_disclosure_session','1'); V.closeModal(); V.openRealCameraModal('${purpose}', ${extraIdx === null ? 'null' : extraIdx});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">✓ Autorizo Usar la Cámara</button>`
           );
           return;
         }
@@ -4588,15 +4591,18 @@
       },
 
       startRealMic() {
-        if (!localStorage.getItem('vozkora_mic_disclosure_ok')) {
+        if (!sessionStorage.getItem('vozkora_mic_disclosure_session')) {
           this.openModal(
-            '🎙️ Uso de Micrófono del Dispositivo',
+            '🎙️ Autorización de Uso de Micrófono (Google Play)',
             `<div class="space-y-2 text-[11px] text-slate-700 leading-relaxed">
-               <p><strong>Vozkora</strong> solicitará acceso al micrófono de tu dispositivo exclusivamente cuando pulses el botón de dictado para transcribir tus pedidos comerciales a texto.</p>
-               <p class="text-[10.5px] text-slate-500">El audio no se almacena ni se utiliza para fines publicitarios.</p>
+               <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-bold">
+                 Estás autorizando a Vozkora a usar el micrófono de tu dispositivo.
+               </div>
+               <p><strong>Finalidad exclusiva:</strong> Transcribir tus dictados de voz a texto para cargar pedidos y facturas comerciales dentro de la aplicación.</p>
+               <p class="text-[10.5px] text-slate-500">El micrófono solo se activa cuando pulsas "Dictar por Voz" y el audio no se almacena ni se comparte con fines publicitarios.</p>
              </div>`,
-            `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Ahora no</button>
-             <button onclick="localStorage.setItem('vozkora_mic_disclosure_ok','1'); V.closeModal(); V.startRealMic();" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Continuar y Permitir</button>`
+            `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+             <button onclick="sessionStorage.setItem('vozkora_mic_disclosure_session','1'); V.closeModal(); V.startRealMic();" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">✓ Autorizo Usar el Micrófono</button>`
           );
           return;
         }

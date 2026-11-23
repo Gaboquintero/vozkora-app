@@ -80,6 +80,20 @@
     </main>
   </div>
 
+  <!-- MODAL GLOBAL CRM -->
+  <div id="phone-modal" class="hidden fixed inset-0 z-[90] bg-slate-950/65 backdrop-blur-[2px] p-4 items-center justify-center">
+    <div class="bg-white w-full max-w-[500px] max-h-[90vh] overflow-y-auto rounded-3xl p-5 border border-[#dce6e5] shadow-2xl space-y-3 text-[#17343a]">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <h4 id="phone-modal-title" class="text-sm font-extrabold text-[#073e3b]">Título</h4>
+        <button onclick="V.closeModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">✕</button>
+      </div>
+      <div id="phone-modal-body" class="text-xs space-y-2.5"></div>
+      <div id="phone-modal-actions" class="flex justify-end gap-2 pt-2 border-t border-slate-100"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] hidden bg-[#073e3b] text-white border border-[#70d2bd]/40 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold max-w-[92vw] text-center"></div>
+
   <script src="api.js"></script>
   <script>
     const $ = id => document.getElementById(id);
@@ -680,11 +694,20 @@
       async toggleCompanySvaPack(empId, packId) {
         const emp = this.cachedCompanies.find(x => x.id === empId);
         if (!emp) return;
-        const curr = Array.isArray(emp.packs_ia) ? emp.packs_ia.slice() : [];
-        const next = curr.includes(packId) ? curr.filter(x => x !== packId) : [...curr, packId];
-        await crmActualizarEmpresa(empId, { packs_ia: next, sva_elegidos_fijos: next.length > 0 });
-        toast('✓ Módulos Adicionales IA actualizados y sincronizados con la App de ' + emp.nombre);
-        this.loadCompanies();
+        const prev = Array.isArray(emp.packs_ia) ? emp.packs_ia.slice() : [];
+        const next = prev.includes(packId) ? prev.filter(x => x !== packId) : [...prev, packId];
+        // Actualización optimista inmediata en pantalla
+        emp.packs_ia = next;
+        emp.sva_elegidos_fijos = next.length > 0;
+        this.renderCompaniesView();
+        try {
+          await crmActualizarEmpresa(empId, { packs_ia: next, sva_elegidos_fijos: next.length > 0 });
+          toast('✓ Módulos IA actualizados en vivo para ' + emp.nombre);
+        } catch (e) {
+          emp.packs_ia = prev;
+          this.renderCompaniesView();
+          toast('⚠️ Error guardando módulo IA: ' + e.message);
+        }
       },
 
       async resetCompanyIaQuota(empId, empRuc, empName) {
@@ -824,13 +847,19 @@
       },
 
       async renewCompanyCycle(id, periodicidad) {
-        const nextCorte = calcularProximoCorte(periodicidad, new Date());
-        await crmActualizarEmpresa(id, {
-          fecha_proximo_corte: nextCorte,
-          activa: true
-        });
-        toast(`✓ Pago registrado. Próximo corte programado para el ${nextCorte}.`);
-        this.loadBillingTab();
+        try {
+          const nextCorte = typeof calcularProximoCorte === 'function'
+            ? calcularProximoCorte(periodicidad, new Date())
+            : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10);
+          await crmActualizarEmpresa(id, {
+            fecha_proximo_corte: nextCorte,
+            activa: true
+          });
+          toast(`✓ Pago registrado. Próximo corte programado para el ${nextCorte}.`);
+          await this.loadBillingTab();
+        } catch (e) {
+          toast('⚠️ Error renovando ciclo: ' + e.message);
+        }
       },
 
       // -------------------------------------------------------------------
@@ -857,7 +886,8 @@
           if (q && !(
             (u.nombre_completo || '').toLowerCase().includes(q) ||
             (u.email || '').toLowerCase().includes(q) ||
-            (u.empresa_nombre || '').toLowerCase().includes(q)
+            (u.empresa_nombre || '').toLowerCase().includes(q) ||
+            (u.empresa_ruc || '').toLowerCase().includes(q)
           )) return false;
           return true;
         });
@@ -882,7 +912,7 @@
                   return `<option value="${esc(emp.ruc)}" ${this.userFilterEmpresa === emp.ruc ? 'selected' : ''}>${esc(emp.nombre)} — Cupo: ${cnt}/${emp.max_usuarios}</option>`;
                 }).join('')}
               </select>
-              <input type="text" value="${esc(this.userSearch)}" oninput="CRM.userSearch=this.value; CRM.renderUsersView();" placeholder="🔍 Buscar usuario o correo..." class="w-full sm:w-64 px-3 py-1.5 rounded-xl border border-[#d7e1e0] text-[11px]" />
+              <input type="text" value="${esc(this.userSearch)}" oninput="CRM.userSearch=this.value; CRM.renderUsersView();" placeholder="🔍 Buscar por usuario, correo, empresa o RUC..." class="w-full sm:w-64 px-3 py-1.5 rounded-xl border border-[#d7e1e0] text-[11px]" />
             </div>
 
             <div class="space-y-2.5">
@@ -940,9 +970,14 @@
       },
 
       async toggleUserActive(id, activo) {
-        await crmActualizarUsuario(id, { activo });
-        toast(activo ? '✅ Usuario activado / reactivado.' : '⏸️ Usuario bloqueado.');
-        this.loadUsers();
+        try {
+          await crmActualizarUsuario(id, { activo });
+          toast(activo ? '✅ Acceso activado / reactivado.' : '⏸️ Acceso pausado / bloqueado.');
+          if (this.currentTab === 'staff') await this.loadStaffTab();
+          else await this.loadUsers();
+        } catch (e) {
+          toast('⚠️ Error cambiando estado: ' + e.message);
+        }
       },
 
       openEditUserModal(idx) {
@@ -1768,24 +1803,41 @@
       },
 
       // -------------------------------------------------------------------
-      // VISTA DIVIDIDA EN DOS: HOJA DE VIDA 360° DEL CLIENTE
+      // VISTA DIVIDIDA EN DOS: HOJA DE VIDA 360° POR BÚSQUEDA EXACTA DE RUC
+      // (Privacidad estricta: NO muestra listado general de empresas)
       // -------------------------------------------------------------------
       openClient360ByRuc(ruc) {
-        this.selected360Ruc = ruc || '';
+        const cleanRuc = String(ruc || '').trim();
+        this.selected360Ruc = cleanRuc;
+        this.search360 = cleanRuc;
         this.setTab('crm360');
+      },
+
+      async submitRucSearch360() {
+        const val = ($('inputRucSearch360')?.value || '').trim();
+        if (!val) {
+          return toast('⚠️ Ingresa el número de RUC exacto que figura en tu ticket asignado.');
+        }
+        this.search360 = val;
+        this.selected360Ruc = val;
+        await this.renderCrm360SplitView();
+      },
+
+      clearRucSearch360() {
+        this.search360 = '';
+        this.selected360Ruc = '';
+        this.renderCrm360SplitView();
       },
 
       async loadCrm360View() {
         const body = $('crm-body');
-        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando directorio y Hoja de Vida 360°...</div>';
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Preparando buscador confidencial por RUC...</div>';
         try {
           const [emps, usrs, tks] = await Promise.all([crmListarEmpresas(), crmListarUsuarios(), crmListarTickets()]);
           this.cachedCompanies = emps;
           this.cachedUsers = usrs;
           this.cachedTickets = tks;
-          if (!this.selected360Ruc && emps.length > 0) {
-            this.selected360Ruc = emps[0].ruc;
-          }
+          // No preseleccionar ninguna empresa por defecto para mantener privacidad absoluta
           await this.renderCrm360SplitView();
         } catch (e) {
           body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
@@ -1794,12 +1846,11 @@
 
       async renderCrm360SplitView() {
         const body = $('crm-body');
-        const q = (this.search360 || '').toLowerCase();
-        const list = this.cachedCompanies.filter(c =>
-          !q || (c.nombre || '').toLowerCase().includes(q) || (c.ruc || '').toLowerCase().includes(q)
-        );
-        const selEmp = this.cachedCompanies.find(c => c.ruc === this.selected360Ruc) || list[0] || null;
-        if (selEmp) this.selected360Ruc = selEmp.ruc;
+        const rucQuery = String(this.selected360Ruc || this.search360 || '').trim();
+        // Búsqueda estricta por RUC exacto (no muestra listado de otros clientes)
+        const selEmp = rucQuery
+          ? (this.cachedCompanies.find(c => String(c.ruc || '').trim() === rucQuery) || null)
+          : null;
 
         let hist360 = { facturas: [], proformas: [], cobros: [], notasCredito: [], ordenes: [], clientes: [] };
         if (selEmp && typeof crmObtenerHojaVidaCliente360 === 'function') {
@@ -1813,34 +1864,49 @@
 
         body.innerHTML = `
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-            <!-- PANEL IZQUIERDO (4 cols): DIRECTORIO DE CLIENTES EMPRESARIALES -->
-            <div class="lg:col-span-4 bg-white rounded-2xl p-3.5 border border-[#dce6e5] space-y-2.5">
-              <div class="font-extrabold text-sm text-[#073e3b]">🏢 Cartera de Empresas (${list.length})</div>
-              <input type="text" value="${esc(this.search360)}" oninput="CRM.search360=this.value; CRM.renderCrm360SplitView();" placeholder="🔍 Buscar empresa o RUC..." class="w-full px-3 py-2 rounded-xl border border-[#d7e1e0] text-[11px]" />
-              <div class="space-y-1.5 max-h-[70vh] overflow-y-auto pr-1">
-                ${list.map(emp => {
-                  const active = selEmp && emp.ruc === selEmp.ruc;
-                  const tkOpen = this.cachedTickets.filter(t => t.empresa_ruc === emp.ruc && (t.estado === 'PENDIENTE' || t.estado === 'ABIERTO')).length;
-                  return `
-                    <button onclick="CRM.selected360Ruc='${esc(emp.ruc)}'; CRM.renderCrm360SplitView();" class="w-full p-3 rounded-xl text-left transition cursor-pointer border ${active ? 'bg-[#073e3b] text-white border-[#073e3b] shadow' : 'bg-[#f5f8f8] hover:bg-[#e7f5f1] text-[#17343a] border-[#dce6e5]'}">
-                      <div class="flex items-center justify-between gap-1">
-                        <strong class="text-xs truncate">${esc(emp.nombre)}</strong>
-                        ${tkOpen > 0 ? `<span class="px-1.5 py-0.5 rounded-full text-[9.5px] font-black bg-amber-400 text-[#073e3b] shrink-0">${tkOpen} ticket</span>` : ''}
-                      </div>
-                      <div class="text-[10.5px] font-mono opacity-80 mt-0.5">RUC: ${esc(emp.ruc)}</div>
-                      <div class="text-[10px] mt-1 flex items-center justify-between opacity-90">
-                        <span>Plan: <strong>${esc(emp.plan_activo || 'piloto')}</strong></span>
-                        <span>${emp.activa ? '● Activa' : '● Pausada'}</span>
-                      </div>
+            <!-- PANEL IZQUIERDO (4 cols): BUSCADOR CONFIDENCIAL POR RUC EXACTO -->
+            <div class="lg:col-span-4 bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+              <div>
+                <div class="font-extrabold text-sm text-[#073e3b]">🔍 Consulta Confidencial por RUC</div>
+                <p class="text-[11px] text-slate-500 mt-0.5">Por seguridad y privacidad de datos, ingresa el <strong>RUC exacto</strong> del cliente que aparece en tu ticket asignado.</p>
+              </div>
+
+              <div class="space-y-2">
+                <label class="font-bold text-[11px] text-[#073e3b] block">Número de RUC de la Empresa *</label>
+                <input id="inputRucSearch360" type="text" maxlength="13" value="${esc(rucQuery)}" onkeydown="if(event.key==='Enter') CRM.submitRucSearch360();" placeholder="Ej. 1234567890001" class="w-full px-3 py-2.5 rounded-xl border border-[#d7e1e0] font-mono font-bold text-xs focus:outline-none focus:border-[#087e70]" />
+                <div class="flex gap-1.5">
+                  <button type="button" onclick="CRM.submitRucSearch360()" class="flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                    Buscar Hoja de Vida
+                  </button>
+                  ${rucQuery ? `
+                    <button type="button" onclick="CRM.clearRucSearch360()" class="px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer" title="Limpiar búsqueda">
+                      ✕
                     </button>
-                  `;
-                }).join('')}
+                  ` : ''}
+                </div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[10.5px] text-slate-600 space-y-1">
+                <div class="font-bold text-[#073e3b]">🛡️ Control de Privacidad Activo</div>
+                <p>No se listan empresas de forma masiva. Solo puedes consultar el expediente individual ingresando el RUC exacto desde tu bandeja de tickets.</p>
               </div>
             </div>
 
-            <!-- PANEL DERECHO (8 cols): HOJA DE VIDA 360° DEL CLIENTE SELECCIONADO -->
+            <!-- PANEL DERECHO (8 cols): HOJA DE VIDA 360° DEL CLIENTE CONSULTADO -->
             <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-              ${!selEmp ? '<p class="text-slate-500">Selecciona una empresa a la izquierda para ver su Hoja de Vida 360°.</p>' : `
+              ${!rucQuery ? `
+                <div class="py-12 text-center space-y-2">
+                  <div class="text-3xl">🗂️</div>
+                  <div class="text-sm font-extrabold text-[#073e3b]">Ingresa un RUC para consultar su Hoja de Vida 360°</div>
+                  <p class="text-[11px] text-slate-500 max-w-md mx-auto">Escribe el RUC exacto en el buscador de la izquierda o pulsa <strong>"🗂️ Abrir Hoja de Vida 360° →"</strong> directamente dentro de un ticket asignado.</p>
+                </div>
+              ` : (!selEmp ? `
+                <div class="py-10 text-center space-y-2">
+                  <div class="text-3xl">⚠️</div>
+                  <div class="text-sm font-extrabold text-rose-700">No se encontró ninguna empresa con RUC "${esc(rucQuery)}"</div>
+                  <p class="text-[11px] text-slate-500">Verifica que los 13 dígitos del RUC coincidan exactamente con los registrados en el ticket.</p>
+                </div>
+              ` : `
                 <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0b5651] text-white space-y-1.5">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -1922,7 +1988,7 @@
                     ${(hist360.cobros.length === 0 && hist360.proformas.length === 0) ? '<p class="text-[11px] text-slate-500">Sin pagos o proformas registradas.</p>' : ''}
                   </div>
                 </div>
-              `}
+              `)}
             </div>
           </div>
         `;
