@@ -346,15 +346,23 @@
 
       open() {
         const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
-        if (!ses || !this.isInternalRole(ses.rol)) {
+        const rolNorm = String((ses && ses.rol) || '').trim().toUpperCase();
+        if (!ses || !this.isInternalRole(rolNorm)) {
           $('crm-overlay').classList.add('hidden');
           return toast('⛔ Acceso denegado: Solo personal autorizado (Súper-Admin, Soporte o Ventas) puede ingresar.');
         }
-        const isSuper = ses.rol === 'SUPERADMIN';
-        // Ocultar pestañas administrativas si es colaborador de Soporte o Ventas (ellos ven Tickets + Hoja de Vida 360°)
+        const isSuper = (rolNorm === 'SUPERADMIN');
         ['companies', 'users', 'staff', 'billing', 'repo'].forEach(t => {
           const btn = $('crm-tab-' + t);
-          if (btn) btn.classList.toggle('hidden', !isSuper);
+          if (btn) {
+            if (!isSuper) {
+              btn.classList.add('hidden');
+              btn.style.display = 'none';
+            } else {
+              btn.classList.remove('hidden');
+              btn.style.display = '';
+            }
+          }
         });
         $('crm-overlay').classList.remove('hidden');
         this.setTab(isSuper ? this.currentTab : 'tickets');
@@ -362,7 +370,16 @@
 
       setTab(tab) {
         const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
-        if (ses && ses.rol !== 'SUPERADMIN' && !['tickets', 'crm360'].includes(tab)) {
+        const rolNorm = String((ses && ses.rol) || '').trim().toUpperCase();
+        const isSuper = (rolNorm === 'SUPERADMIN');
+        ['companies', 'users', 'staff', 'billing', 'repo'].forEach(t => {
+          const btn = $('crm-tab-' + t);
+          if (btn) {
+            btn.classList.toggle('hidden', !isSuper);
+            btn.style.display = isSuper ? '' : 'none';
+          }
+        });
+        if (!isSuper && !['tickets', 'crm360'].includes(tab)) {
           tab = 'tickets';
         }
         this.currentTab = tab;
@@ -1281,19 +1298,32 @@
 
       renderTicketsView() {
         const body = $('crm-body');
-        const abiertos = this.cachedTickets.filter(t => t.estado === 'PENDIENTE' || t.estado === 'ABIERTO');
-        const enProceso = this.cachedTickets.filter(t => t.estado === 'EN_PROCESO');
-        const cerrados = this.cachedTickets.filter(t => t.estado === 'APROBADO' || t.estado === 'RECHAZADO');
+        const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        const rolNorm = String((sesNow && sesNow.rol) || '').trim().toUpperCase();
+        const isSuper = (rolNorm === 'SUPERADMIN');
+        const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
+
+        // Si es SOPORTE o VENTAS: ve ÚNICAMENTE los tickets asignados a su correo (nunca los sin asignar ni los de otros)
+        const baseTickets = isSuper
+          ? this.cachedTickets
+          : this.cachedTickets.filter(t => {
+              const assigned = String(t.asignado_a || (t.detalle && t.detalle.asignado_a_email) || '').trim().toLowerCase();
+              return assigned !== '' && assigned === myEmail;
+            });
+
+        const abiertos = baseTickets.filter(t => t.estado === 'PENDIENTE' || t.estado === 'ABIERTO');
+        const enProceso = baseTickets.filter(t => t.estado === 'EN_PROCESO');
+        const cerrados = baseTickets.filter(t => t.estado === 'APROBADO' || t.estado === 'RECHAZADO');
 
         let listToShow = abiertos;
         if (this.ticketFilterStatus === 'EN_PROCESO') listToShow = enProceso;
         else if (this.ticketFilterStatus === 'CERRADOS') listToShow = cerrados;
-        else if (this.ticketFilterStatus === 'TODOS') listToShow = this.cachedTickets;
+        else if (this.ticketFilterStatus === 'TODOS') listToShow = baseTickets;
 
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
             <div>
-              <h3 class="text-sm font-extrabold text-[#073e3b]">🎫 Bandeja de Tickets (${this.cachedTickets.length})</h3>
+              <h3 class="text-sm font-extrabold text-[#073e3b]">🎫 ${isSuper ? `Bandeja Global de Tickets (${baseTickets.length})` : `Mis Tickets Asignados (${baseTickets.length})`}</h3>
               <p class="text-[11px] text-slate-500">Cambia libremente entre Abierto, En Proceso o Cerrado (ida y vuelta) registrando siempre el motivo en bitácora.</p>
             </div>
 
@@ -1308,13 +1338,15 @@
                 🟢 Cerrados (${cerrados.length})
               </button>
               <button onclick="CRM.ticketFilterStatus='TODOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.ticketFilterStatus === 'TODOS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
-                Todos (${this.cachedTickets.length})
+                Todos (${baseTickets.length})
               </button>
-              <select onchange="CRM.ticketAssigneeFilter=this.value; CRM.renderTicketsView();" class="ml-auto border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-bold text-[#073e3b]">
-                <option value="ALL" ${this.ticketAssigneeFilter === 'ALL' ? 'selected' : ''}>👤 Todos los responsables</option>
-                <option value="MINE" ${this.ticketAssigneeFilter === 'MINE' ? 'selected' : ''}>⭐ Mis tickets asignados</option>
-                <option value="UNASSIGNED" ${this.ticketAssigneeFilter === 'UNASSIGNED' ? 'selected' : ''}>⚪ Sin asignar</option>
-              </select>
+              ${isSuper ? `
+                <select onchange="CRM.ticketAssigneeFilter=this.value; CRM.renderTicketsView();" class="ml-auto border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-bold text-[#073e3b]">
+                  <option value="ALL" ${this.ticketAssigneeFilter === 'ALL' ? 'selected' : ''}>👤 Todos los responsables</option>
+                  <option value="MINE" ${this.ticketAssigneeFilter === 'MINE' ? 'selected' : ''}>⭐ Mis tickets asignados</option>
+                  <option value="UNASSIGNED" ${this.ticketAssigneeFilter === 'UNASSIGNED' ? 'selected' : ''}>⚪ Sin asignar</option>
+                </select>
+              ` : `<span class="ml-auto px-2.5 py-1 rounded-xl bg-[#e7f5f1] text-[#073e3b] text-[11px] font-bold">👤 Agente: ${esc(sesNow?.nombre_completo || myEmail)} [${esc(rolNorm)}]</span>`}
             </div>
 
             ${(() => {
@@ -1379,13 +1411,15 @@
                     <div class="p-2 rounded-xl bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                       <div class="flex items-center gap-1.5">
                         <span class="font-bold text-[#073e3b]">🎧 Responsable:</span>
-                        <select onchange="CRM.assignTicketStaff('${tk.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-[#f5f8f8] font-bold text-[#073e3b]">
-                          <option value="">-- Sin asignar --</option>
-                          ${(this.cachedStaff || []).map(st => {
-                            const currAssigned = tk.asignado_a || det.asignado_a_email || '';
-                            return `<option value="${esc(st.email)}" ${currAssigned === st.email ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(st.rol)}]</option>`;
-                          }).join('')}
-                        </select>
+                        ${isSuper ? `
+                          <select onchange="CRM.assignTicketStaff('${tk.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-[#f5f8f8] font-bold text-[#073e3b]">
+                            <option value="">-- Sin asignar --</option>
+                            ${(this.cachedStaff || []).map(st => {
+                              const currAssigned = tk.asignado_a || det.asignado_a_email || '';
+                              return `<option value="${esc(st.email)}" ${currAssigned === st.email ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(st.rol)}]</option>`;
+                            }).join('')}
+                          </select>
+                        ` : `<span class="px-2 py-0.5 rounded-lg bg-[#e7f5f1] text-[#073e3b] font-bold">${esc(sesNow?.nombre_completo || myEmail)}</span>`}
                       </div>
                       <button onclick="CRM.openClient360ByRuc('${esc(tk.empresa_ruc)}')" class="px-2.5 py-1 rounded-lg bg-[#e7f5f1] hover:bg-[#087e70] text-[#073e3b] hover:text-white border border-[#b9d1cd] font-extrabold cursor-pointer">
                         🗂️ Abrir Hoja de Vida 360° →
