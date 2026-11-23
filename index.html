@@ -4897,41 +4897,118 @@
           toast(`🎙️ Prueba Piloto aplicada (te quedan ${remAfter}/5 usos de cortesía).`);
         }
 
-        let matchedClient = appData.clients[0].name;
+        const normStr = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const escRx = s => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const normText = normStr(rawInput);
+
+        // Detectar cliente real de la lista o después de la palabra "cliente"
+        let matchedClient = appData.clients[0] ? appData.clients[0].name : 'Cliente mostrador';
         for (const c of appData.clients) {
-          if (text.includes(c.name.toLowerCase().split(' ')[1] || c.name.toLowerCase())) {
+          if (c.id === '9999999999999') continue;
+          const cNorm = normStr(c.name);
+          const cParts = cNorm.split(/\s+/).filter(w => w.length >= 3);
+          if (normText.includes(cNorm) || (cParts.length > 1 && normText.includes(cParts[1]))) {
             matchedClient = c.name;
             break;
           }
         }
+        const mCliWord = rawInput.match(/cliente\s+([a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]{2,40})/i);
+        if (mCliWord) {
+          const spokenCli = mCliWord[1].trim();
+          const foundDb = appData.clients.find(c => normStr(c.name).includes(normStr(spokenCli)));
+          if (foundDb) {
+            matchedClient = foundDb.name;
+          } else if (spokenCli) {
+            matchedClient = spokenCli.charAt(0).toUpperCase() + spokenCli.slice(1);
+          }
+        }
 
-        const numWords = { un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, diez: 10 };
+        // Mapear jerga / apodos configurados en Entrenador IA (ej. "arroz grande = Arroz premium 5 kg")
+        const jargonMap = {};
+        String(appData.aiTraining.jargon || '').split('|').forEach(pair => {
+          const parts = pair.split('=');
+          if (parts.length === 2) {
+            const alias = normStr(parts[0]).trim();
+            const target = normStr(parts[1]).trim();
+            if (alias && target) jargonMap[target] = alias;
+          }
+        });
+
+        const numWords = {
+          un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
+          seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12,
+          quince: 15, veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, cien: 100
+        };
+        const qtyToken = '(\\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cuarenta|cincuenta|cien)';
+        const parseQty = raw => {
+          const k = normStr(raw).trim();
+          return numWords[k] || parseInt(k, 10) || 1;
+        };
+
         const loaded = [];
+        const outOfStock = [];
 
         appData.products.forEach(prod => {
-          for (const kw of prod.keywords) {
-            const regex = new RegExp(`(\\d+|un|uno|una|dos|tres|cuatro|cinco|seis|diez)\\s+${kw}`, 'i');
-            const m = text.match(regex);
-            if (m) {
-              const rawQty = m[1].toLowerCase();
-              const qty = numWords[rawQty] || parseInt(rawQty, 10) || 1;
-              const safeQty = Math.min(qty, prod.stock);
-              if (safeQty > 0) {
-                const ex = appData.cart.find(c => c.id === prod.id);
-                if (ex) ex.qty += safeQty;
-                else appData.cart.push({ ...prod, qty: safeQty, itemDiscountPct: 0 });
-                loaded.push(`${safeQty}x ${prod.name}`);
-              }
+          const pNorm = normStr(prod.name);
+          const stopWords = new Set(['de', 'del', 'la', 'el', 'en', 'con', 'sin', 'por', 'para', 'kg', 'gr', 'ml', 'lt', 'unid', 'lata']);
+          const nameWords = pNorm.split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !stopWords.has(w));
+          const twoWordPrefix = nameWords.length >= 2 ? (nameWords[0] + '\\s+' + nameWords[1]) : null;
+          const kws = Array.isArray(prod.keywords) ? prod.keywords.map(k => normStr(k).trim()).filter(Boolean) : [];
+          const alias = jargonMap[pNorm] ? [jargonMap[pNorm]] : [];
+
+          const patternsToTest = [
+            escRx(pNorm),
+            ...(twoWordPrefix ? [twoWordPrefix] : []),
+            ...alias.map(escRx),
+            ...kws.map(escRx),
+            ...nameWords.map(escRx)
+          ];
+
+          let detectedQty = null;
+          for (const pat of patternsToTest) {
+            // Caso A: Cantidad ANTES del producto (ej. "5 leche entera", "dos arroces", "5 x leche")
+            const rxBefore = new RegExp(`${qtyToken}\\s*(?:[*x×]|por|unidades\\s+de|unid\\s+de)?\\s*${pat}`, 'i');
+            const mBefore = normText.match(rxBefore);
+            if (mBefore) {
+              detectedQty = parseQty(mBefore[1]);
               break;
             }
+            // Caso B: Cantidad DESPUÉS del producto (ej. "leche entera *5", "leche x 5", "leche por 5", "leche 5")
+            const rxAfter = new RegExp(`${pat}(?:\\s+[a-z0-9]+){0,2}\\s*(?:[*x×]|por|:)?\\s*${qtyToken}`, 'i');
+            const mAfter = normText.match(rxAfter);
+            if (mAfter) {
+              detectedQty = parseQty(mAfter[1]);
+              break;
+            }
+            // Caso C: Producto mencionado sin número explícito -> asume 1 unidad
+            const rxOnly = new RegExp(`(?:^|[^a-z0-9])${pat}(?:$|[^a-z0-9])`, 'i');
+            if (rxOnly.test(normText)) {
+              detectedQty = 1;
+              break;
+            }
+          }
+
+          if (detectedQty !== null) {
+            if (prod.stock <= 0) {
+              outOfStock.push(prod.name);
+              return;
+            }
+            const safeQty = Math.min(detectedQty, prod.stock);
+            const ex = appData.cart.find(c => c.id === prod.id);
+            if (ex) ex.qty += safeQty;
+            else appData.cart.push({ ...prod, qty: safeQty, itemDiscountPct: 0 });
+            loaded.push(`${safeQty}x ${prod.name}`);
           }
         });
 
         if (!loaded.length) {
-          const p1 = appData.products[0];
-          const p2 = appData.products[1];
-          appData.cart.push({ ...p1, qty: 2, itemDiscountPct: 0 }, { ...p2, qty: 3, itemDiscountPct: 0 });
-          loaded.push(`2x ${p1.name}`, `3x ${p2.name}`);
+          const catalogSample = appData.products.slice(0, 6).map(p => p.name).join(', ');
+          $('voiceResult').innerHTML = `
+            <div class="text-rose-700 font-bold">⚠️ No se encontró ningún producto coincidente con "${esc(rawInput)}".</div>
+            ${outOfStock.length ? `<div class="mt-1 text-amber-800">Sin stock disponible: <strong>${esc(outOfStock.join(', '))}</strong>.</div>` : ''}
+            <div class="mt-1 text-slate-600">Productos disponibles en bodega: <strong>${esc(catalogSample)}</strong>.</div>
+          `;
+          return toast('⚠️ Producto no reconocido en el inventario. Revisa el nombre dictado.');
         }
 
         $('voiceResult').innerHTML = `
