@@ -1,0 +1,1678 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vozkora Control CRM — Consola Maestra SaaS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; background-color: #edf3f2; color: #17343a; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- PANTALLA DE ACCESO EXCLUSIVO SUPERADMIN CRM -->
+  <div id="crm-login-screen" class="fixed inset-0 z-50 bg-[#073e3b] flex items-center justify-center p-4">
+    <div class="w-full max-w-[390px] bg-white rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
+      <div class="text-center space-y-1.5 border-b border-slate-100 pb-4">
+        <img src="mascota.png" alt="Vozkora" class="w-16 h-16 mx-auto rounded-full object-cover border-2 border-[#087e70]" />
+        <div class="flex items-center justify-center gap-1.5">
+          <img src="logo.png" alt="VOZKORA" class="h-6 w-auto object-contain" />
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#073e3b] text-[#70d2bd]">CONTROL CRM</span>
+        </div>
+        <p class="text-slate-500">Acceso restringido a Administración Central Vozkora</p>
+      </div>
+      <div>
+        <label class="font-bold text-[#073e3b]">Correo Súper-Administrador</label>
+        <input id="crm-email" type="email" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] focus:outline-none focus:border-[#087e70]" placeholder="admin@vozkora.com" />
+      </div>
+      <div>
+        <label class="font-bold text-[#073e3b]">Contraseña</label>
+        <input id="crm-pass" type="password" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] focus:outline-none focus:border-[#087e70] font-mono" placeholder="••••••••" />
+      </div>
+      <div id="crm-login-err" class="hidden p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-[11px]"></div>
+      <button id="btn-crm-login" onclick="CrmAuth.login()" class="w-full py-3 rounded-xl font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+        Ingresar a Consola Maestra →
+      </button>
+    </div>
+  </div>
+
+  <!-- CONSOLA MAESTRA VOZKORA CONTROL CRM -->
+  <div id="crm-overlay" class="hidden flex-1 flex flex-col min-h-screen">
+    <header class="bg-white border-b border-[#dce6e5] px-4 py-3 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-30 shadow-xs">
+      <div class="flex items-center gap-2.5">
+        <img src="mascota.png" alt="Mascota" class="w-9 h-9 rounded-full object-cover border border-[#087e70]/30" />
+        <div>
+          <div class="flex items-center gap-1.5">
+            <img src="logo.png" alt="VOZKORA" class="h-5 w-auto object-contain" />
+            <span class="text-xs font-black px-2 py-0.5 rounded-full bg-[#073e3b] text-[#70d2bd]">CONTROL CRM</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">● En Vivo</span>
+          </div>
+          <div class="text-[10.5px] text-slate-500">Gobierno SaaS · Empresas, Leads en Caliente, Tickets y Auditoría Excel</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="CRM.setTab(CRM.currentTab); toast('🔄 Datos actualizados desde Supabase.');" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] cursor-pointer">
+          🔄 Refrescar
+        </button>
+        <button onclick="CrmAuth.logout()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 cursor-pointer">
+          Cerrar Sesión
+        </button>
+      </div>
+    </header>
+
+    <nav class="bg-[#073e3b] text-white px-4 py-2 flex gap-2 overflow-x-auto shrink-0 text-xs font-bold">
+      <button id="crm-tab-companies" onclick="CRM.setTab('companies')" class="px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0">🏢 Empresas (Clientes SaaS)</button>
+      <button id="crm-tab-users" onclick="CRM.setTab('users')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">👥 Usuarios y Cupos</button>
+      <button id="crm-tab-billing" onclick="CRM.setTab('billing')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">💳 Cobranzas y Cortes</button>
+      <button id="crm-tab-tickets" onclick="CRM.setTab('tickets')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🔥 Leads WhatsApp & Tickets</button>
+      <button id="crm-tab-repo" onclick="CRM.setTab('repo')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">📊 Hojas Auditoría (Excel)</button>
+    </nav>
+
+    <main id="crm-body" class="flex-1 p-4 max-w-6xl w-full mx-auto space-y-4 text-xs">
+      Cargando consola maestra...
+    </main>
+  </div>
+
+  <!-- MODAL GLOBAL CRM -->
+  <div id="phone-modal" class="hidden fixed inset-0 z-[90] bg-slate-950/65 backdrop-blur-[2px] p-4 items-center justify-center">
+    <div class="bg-white w-full max-w-[500px] max-h-[90vh] overflow-y-auto rounded-3xl p-5 border border-[#dce6e5] shadow-2xl space-y-3 text-[#17343a]">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <h4 id="phone-modal-title" class="text-sm font-extrabold text-[#073e3b]">Título</h4>
+        <button onclick="V.closeModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center cursor-pointer">✕</button>
+      </div>
+      <div id="phone-modal-body" class="text-xs space-y-2.5"></div>
+      <div id="phone-modal-actions" class="flex justify-end gap-2 pt-2 border-t border-slate-100"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] hidden bg-[#073e3b] text-white border border-[#70d2bd]/40 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold max-w-[92vw] text-center"></div>
+
+  <script src="api.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let toastTimer = null;
+    function toast(msg) {
+      const el = $('toast');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add('hidden'), 3200);
+    }
+    function nowFormatted() {
+      const d = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    window.V = {
+      openModal(title, bodyHtml, actionsHtml) {
+        $('phone-modal-title').textContent = title;
+        $('phone-modal-body').innerHTML = bodyHtml;
+        $('phone-modal-actions').innerHTML = actionsHtml;
+        const m = $('phone-modal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+      },
+      closeModal() {
+        const m = $('phone-modal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+      }
+    };
+
+    const PLANS = [
+      {
+        id: 'piloto',
+        rank: 1,
+        name: 'Piloto',
+        badge: 'Freemium',
+        popular: false,
+        monthlyPrice: 0,
+        annualPrice: 0,
+        includedUsers: 1,
+        allowExtraUsers: false,
+        extraUserMonthly: 0,
+        extraUserAnnual: 0,
+        includedSVACount: 0,
+        includesComboFull: false,
+        subtitle: '15 días o 30 facturas',
+        features: [
+          '1 usuario incluido',
+          'Sync Offline + Facturación SRI',
+          'Sin auditoría preventiva automática',
+          '5 pruebas Voz IA · 0 módulos gratis'
+        ]
+      },
+      {
+        id: 'impulso',
+        rank: 2,
+        name: 'Impulso',
+        badge: null,
+        popular: false,
+        monthlyPrice: 12.99,
+        annualPrice: 124.00,
+        includedUsers: 2,
+        allowExtraUsers: true,
+        extraUserMonthly: 1.00,
+        extraUserAnnual: 9.60,
+        includedSVACount: 0,
+        includesComboFull: false,
+        subtitle: 'Autoventa ágil',
+        features: [
+          '2 usuarios (+$1,00/extra)',
+          'Todo lo de Piloto +',
+          'Facturas/Cobros ilimitados',
+          'Auditoría SRI + Foto RUC'
+        ]
+      },
+      {
+        id: 'comercio',
+        rank: 3,
+        name: 'Comercio',
+        badge: 'NUEVO',
+        popular: false,
+        monthlyPrice: 18.99,
+        annualPrice: 182.00,
+        includedUsers: 3,
+        allowExtraUsers: true,
+        extraUserMonthly: 1.00,
+        extraUserAnnual: 9.60,
+        includedSVACount: 1,
+        includesComboFull: false,
+        subtitle: 'Tiendas, Ferreterías y Servicios',
+        features: [
+          '3 usuarios (+$1,00/extra)',
+          'Todo lo de Impulso +',
+          '🎁 1 Módulo Adicional IA GRATIS',
+          'POS Cámara Escáner + Proformas'
+        ]
+      },
+      {
+        id: 'expansion',
+        rank: 4,
+        name: 'Expansión',
+        badge: 'MÁS POPULAR',
+        popular: true,
+        monthlyPrice: 24.99,
+        annualPrice: 239.00,
+        includedUsers: 5,
+        allowExtraUsers: true,
+        extraUserMonthly: 1.00,
+        extraUserAnnual: 9.60,
+        includedSVACount: 2,
+        includesComboFull: false,
+        subtitle: 'Distribuidoras y Mayoristas',
+        features: [
+          '5 usuarios (+$1,00/extra)',
+          'Todo lo de Comercio +',
+          '🎁 2 Módulos Adicionales IA GRATIS',
+          'Multi-Bodega, Alertas Stock + Guías'
+        ]
+      },
+      {
+        id: 'dominio',
+        rank: 5,
+        name: 'Dominio',
+        badge: null,
+        popular: false,
+        monthlyPrice: 49.99,
+        annualPrice: 479.00,
+        includedUsers: 15,
+        allowExtraUsers: true,
+        extraUserMonthly: 1.00,
+        extraUserAnnual: 9.60,
+        includedSVACount: 4,
+        includesComboFull: false,
+        subtitle: 'Flotas y Multi-Sucursal',
+        features: [
+          '15 usuarios (+$1,00/extra)',
+          'Todo lo de Expansión +',
+          '🎁 4 Módulos Adicionales IA GRATIS',
+          'Multi-Ruta GPS + Dashboard'
+        ]
+      },
+      {
+        id: 'enterprise',
+        rank: 6,
+        name: 'Enterprise',
+        badge: 'FULL IA',
+        popular: false,
+        monthlyPrice: 79.99,
+        annualPrice: 767.00,
+        includedUsers: 30,
+        allowExtraUsers: true,
+        extraUserMonthly: 1.00,
+        extraUserAnnual: 9.60,
+        includedSVACount: 6,
+        includesComboFull: true,
+        subtitle: 'Corporativo Multisectorial',
+        features: [
+          '30 usuarios (+$1,00/extra)',
+          'Todo lo de Dominio +',
+          '⚡ Combo Full IA GRATIS (6 módulos)',
+          'API Abierta ERP, Reglas IA + VIP 24/7'
+        ]
+      }
+    ];
+
+    // -----------------------------------------------------------------------
+    // 2. CATÁLOGO DE LOS 6 MÓDULOS SVA IA
+    // -----------------------------------------------------------------------
+    const SVA_PACKS = [
+      {
+        id: 'voz',
+        name: 'Pack Voz y Clientes IA',
+        monthlyPrice: 4.99,
+        annualPrice: 48.00,
+        icon: '🎙️',
+        desc: 'Facturación por voz natural, onboarding por voz/foto RUC y Cuadro de Entrenamiento IA.'
+      },
+      {
+        id: 'cobranza',
+        name: 'Pack Cobranza y Bancos IA',
+        monthlyPrice: 5.99,
+        annualPrice: 57.00,
+        icon: '🏦',
+        desc: 'Cobranza predictiva WhatsApp, conciliador Deuna!/transferencias y OCR retenciones SRI.'
+      },
+      {
+        id: 'ventas',
+        name: 'Pack Ventas y Margen IA',
+        monthlyPrice: 6.99,
+        annualPrice: 67.00,
+        icon: '🛡️',
+        desc: 'Escudo de margen en vivo, reposición sugerida, radar clientes dormidos y catálogo WhatsApp.'
+      },
+      {
+        id: 'gerencia',
+        name: 'Pack Gerencia y Control IA',
+        monthlyPrice: 5.99,
+        annualPrice: 57.00,
+        icon: '🎧',
+        desc: 'Briefing matutino en audio, detector de anomalías/fraude y calculadora de comisiones.'
+      },
+      {
+        id: 'operaciones',
+        name: 'Pack Operaciones y Taller IA',
+        monthlyPrice: 5.99,
+        annualPrice: 57.00,
+        icon: '🛠️',
+        desc: 'Órdenes de trabajo, control de lotes/vencimientos/garantías e inventario físico por voz.'
+      },
+      {
+        id: 'finanzas',
+        name: 'Pack Finanzas y Pre-Cierre SRI',
+        monthlyPrice: 4.99,
+        annualPrice: 48.00,
+        icon: '🧾',
+        desc: 'OCR de facturas de proveedores/gastos, copiloto de pre-cierre IVA SRI y pedidos B2B.'
+      }
+    ];
+
+
+
+    window.CRM = {
+      currentTab: 'companies',
+      cachedCompanies: [],
+      companySearch: '',
+      companyFilterStatus: 'ALL',
+      cachedUsers: [],
+      userFilterEmpresa: 'ALL',
+      userSearch: '',
+      cachedTickets: [],
+      ticketFilterStatus: 'ABIERTOS',
+      repoTable: 'repo_facturas',
+      repoRows: [],
+      repoFilterEmpresa: 'ALL',
+      repoFilterEntorno: 'ALL',
+      repoFilterDesde: '',
+      repoFilterHasta: '',
+      repoSearch: '',
+
+      open() {
+        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        if (!ses || ses.rol !== 'SUPERADMIN') {
+          $('crm-overlay').classList.add('hidden');
+          return toast('⛔ Acceso denegado: Solo Súper-Administrador puede ingresar a Vozkora Control CRM.');
+        }
+        $('crm-overlay').classList.remove('hidden');
+        this.setTab(this.currentTab);
+      },
+
+      switchToAppMode() {
+        $('crm-overlay').classList.add('hidden');
+        toast('Vista App Móvil activa. Toca el botón superior derecho para volver al CRM.');
+      },
+
+      setTab(tab) {
+        this.currentTab = tab;
+        ['companies', 'users', 'billing', 'tickets', 'repo'].forEach(t => {
+          const btn = $('crm-tab-' + t);
+          if (btn) {
+            btn.className = (t === tab)
+              ? 'px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0'
+              : 'px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0';
+          }
+        });
+        if (tab === 'companies') this.loadCompanies();
+        else if (tab === 'users') this.loadUsers();
+        else if (tab === 'billing') this.loadBillingTab();
+        else if (tab === 'tickets') this.loadTickets();
+        else if (tab === 'repo') this.loadRepo(this.repoTable);
+      },
+
+      // -------------------------------------------------------------------
+      // PESTAÑA 1: EMPRESAS (REGISTRO PRIVADO DE CLIENTES SAAS VOZKORA)
+      // -------------------------------------------------------------------
+      async loadCompanies() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando registro privado de empresas...</div>';
+        try {
+          const [emps, usrs] = await Promise.all([crmListarEmpresas(), crmListarUsuarios()]);
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.renderCompaniesView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold">Error cargando empresas: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderCompaniesView() {
+        const body = $('crm-body');
+        const q = (this.companySearch || '').toLowerCase();
+        const filtered = this.cachedCompanies.filter(c => {
+          if (this.companyFilterStatus === 'ACTIVAS' && !c.activa) return false;
+          if (this.companyFilterStatus === 'SUSPENDIDAS' && c.activa) return false;
+          if (q && !(
+            (c.nombre || '').toLowerCase().includes(q) ||
+            (c.ruc || '').toLowerCase().includes(q)
+          )) return false;
+          return true;
+        });
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🏢 Registro Privado de Empresas (${this.cachedCompanies.length})</h3>
+                <p class="text-[11px] text-slate-500">Tus clientes SaaS contratados: define su Plan, Cupo máximo de usuarios, Entorno y APIs del Proveedor Software Contable.</p>
+              </div>
+              <button onclick="CRM.openNewCompanyModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                + Registrar Nueva Empresa
+              </button>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+              <div class="flex gap-1.5">
+                <button onclick="CRM.companyFilterStatus='ALL'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
+                  Todas (${this.cachedCompanies.length})
+                </button>
+                <button onclick="CRM.companyFilterStatus='ACTIVAS'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'ACTIVAS' ? 'bg-[#087e70] text-white' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
+                  Activas (${this.cachedCompanies.filter(x => x.activa).length})
+                </button>
+                <button onclick="CRM.companyFilterStatus='SUSPENDIDAS'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'SUSPENDIDAS' ? 'bg-rose-600 text-white' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
+                  Suspendidas (${this.cachedCompanies.filter(x => !x.activa).length})
+                </button>
+              </div>
+              <input type="text" value="${esc(this.companySearch)}" oninput="CRM.companySearch=this.value; CRM.renderCompaniesView();" placeholder="🔍 Buscar empresa o RUC..." class="w-full sm:w-64 px-3 py-1.5 rounded-xl border border-[#d7e1e0] text-[11px]" />
+            </div>
+
+            <div class="space-y-2.5">
+              ${filtered.map(emp => {
+                const realIdx = this.cachedCompanies.findIndex(x => x.id === emp.id);
+                const empUsers = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo);
+                const usedCount = empUsers.length;
+                const maxCount = Number(emp.max_usuarios) || 1;
+                const hasKeys = !!(emp.contifico_api_key && emp.contifico_pos_token);
+                return `
+                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border ${emp.activa ? 'border-[#dce6e5]' : 'border-rose-300 bg-rose-50/50'} space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span class="font-extrabold text-sm text-[#073e3b]">${esc(emp.nombre)}</span>
+                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd]">${esc(emp.entorno)}</span>
+                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${usedCount >= maxCount ? 'bg-amber-100 text-amber-900' : 'bg-[#e7f5f1] text-[#087e70]'}">
+                          👥 Cupo Usuarios: ${usedCount} / ${maxCount}
+                        </span>
+                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${hasKeys ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">
+                          ${hasKeys ? '🔑 API Proveedor Software Contable OK' : '⚠️ Falta API Software Contable'}
+                        </span>
+                      </div>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${emp.activa ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+                        ${emp.activa ? '● Activa' : '● Suspendida'}
+                      </span>
+                    </div>
+
+                    <div class="text-[11px] text-slate-600 font-mono">
+                      RUC: <strong>${esc(emp.ruc)}</strong> · Tel: ${esc(emp.telefono || 'N/A')} · Contacto: ${esc(emp.email_contacto || 'N/A')}
+                    </div>
+
+                    <div class="text-[10.5px] text-slate-600 flex flex-wrap items-center gap-2">
+                      <span class="px-2 py-0.5 rounded font-extrabold ${String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL' ? 'bg-amber-100 text-amber-900' : 'bg-cyan-50 text-cyan-900'}">
+                        ${String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL' ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
+                      </span>
+                      <span>Próximo corte: <strong class="font-mono">${esc(emp.fecha_proximo_corte || '01 del mes')}</strong></span>
+                      <span>· Control corte: <strong>${emp.control_corte === false ? 'Exento' : 'Activo'}</strong>${emp.exento_hasta ? ` (Exento hasta ${esc(emp.exento_hasta)})` : ''}</span>
+                    </div>
+
+                    ${(() => {
+                      const iaMax = typeof obtenerUmbralIaPorPlan === 'function' ? obtenerUmbralIaPorPlan(emp.plan_activo) : 5000;
+                      const periodoHoy = new Date().toISOString().slice(0, 7);
+                      const isPilot = String(emp.plan_activo || '').toLowerCase() === 'piloto';
+                      const iaUsed = (isPilot || !emp.consultas_ia_periodo || emp.consultas_ia_periodo === periodoHoy)
+                        ? (Number(emp.consultas_ia_mes) || 0)
+                        : 0;
+                      const pct = iaMax > 0 ? Math.min(100, Number(((iaUsed / iaMax) * 100).toFixed(1))) : 0;
+                      const semCls = pct > 90
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : (pct >= 70 ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-emerald-100 text-emerald-900 border-emerald-300');
+                      const barCls = pct > 90 ? 'bg-rose-600' : (pct >= 70 ? 'bg-amber-500' : 'bg-[#087e70]');
+                      return `
+                        <div class="p-2 rounded-xl bg-white border ${semCls} flex flex-wrap items-center justify-between gap-2 text-[10.5px]">
+                          <div class="flex-1 min-w-[180px] space-y-1">
+                            <div class="flex items-center justify-between font-extrabold">
+                              <span>🤖 Consumo IA mes: ${iaUsed.toLocaleString('es-EC')} / ${iaMax.toLocaleString('es-EC')} (${pct}%)</span>
+                              <span>${pct > 90 ? '🔴 Crítico' : (pct >= 70 ? '🟡 Alto' : '🟢 Normal')}</span>
+                            </div>
+                            <div class="w-full h-1.5 rounded-full bg-black/10 overflow-hidden">
+                              <div class="h-full ${barCls}" style="width: ${pct}%"></div>
+                            </div>
+                          </div>
+                          <button onclick="CRM.resetCompanyIaQuota('${emp.id}', '${esc(emp.ruc)}', '${esc(emp.nombre)}')" class="px-2.5 py-1 rounded-lg bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] font-extrabold text-[10px] cursor-pointer shrink-0">
+                            ↺ Reiniciar a 0
+                          </button>
+                        </div>
+                      `;
+                    })()}
+
+                    <!-- Módulos SVA (Módulos Adicionales IA) activos y editables directamente desde el CRM -->
+                    <div class="p-2 rounded-xl bg-white border border-slate-200 space-y-1">
+                      <div class="text-[10px] font-extrabold text-[#073e3b]">🤖 Módulos SVA (Módulos Adicionales IA) Activos — Toca para activar/quitar:</div>
+                      <div class="flex flex-wrap gap-1">
+                        ${SVA_PACKS.map(pk => {
+                          const empPacks = Array.isArray(emp.packs_ia) ? emp.packs_ia : [];
+                          const active = empPacks.includes(pk.id);
+                          return `<button onclick="CRM.toggleCompanySvaPack('${emp.id}', '${pk.id}')" class="px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer ${active ? 'bg-[#087e70] text-white' : 'bg-slate-100 text-slate-500'}">
+                            ${active ? '✓' : '+'} ${pk.icon} ${pk.name.replace('Pack ', '').replace(' IA', '')}
+                          </button>`;
+                        }).join('')}
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2 pt-1">
+                      <select onchange="CRM.changeCompanyPlan('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
+                        ${PLANS.map(pl => `<option value="${pl.id}" ${emp.plan_activo === pl.id ? 'selected' : ''}>Plan: ${pl.name} (${pl.includedUsers} usu.)</option>`).join('')}
+                      </select>
+                      <select onchange="CRM.changeCompanyPeriodicity('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
+                        <option value="MENSUAL" ${(emp.periodicidad || 'MENSUAL') === 'MENSUAL' ? 'selected' : ''}>Periodicidad: MENSUAL</option>
+                        <option value="ANUAL" ${emp.periodicidad === 'ANUAL' ? 'selected' : ''}>Periodicidad: ANUAL (VIP)</option>
+                      </select>
+                      <div class="inline-flex items-center gap-1 bg-white border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px]">
+                        <span class="font-bold text-slate-600">Cupo máx:</span>
+                        <input type="number" min="1" max="500" value="${maxCount}" onchange="CRM.changeCompanyQuota('${emp.id}', this.value)" class="w-12 text-center font-mono font-extrabold text-[#073e3b] border-b border-slate-300" />
+                      </div>
+                      <select onchange="CRM.changeCompanyEnv('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
+                        <option value="DEMO" ${emp.entorno === 'DEMO' ? 'selected' : ''}>Entorno: DEMO</option>
+                        <option value="SANDBOX" ${emp.entorno === 'SANDBOX' ? 'selected' : ''}>Entorno: SANDBOX</option>
+                        <option value="PRODUCCION" ${emp.entorno === 'PRODUCCION' ? 'selected' : ''}>Entorno: PRODUCCIÓN</option>
+                      </select>
+                      <button onclick="CRM.openCompanyApiModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                        🔑 API Proveedor Software Contable
+                      </button>
+                      <button onclick="CRM.userFilterEmpresa='${esc(emp.ruc)}'; CRM.setTab('users');" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
+                        👥 Usuarios (${usedCount})
+                      </button>
+                      <button onclick="CRM.toggleCompanyActive('${emp.id}', ${!emp.activa})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${emp.activa ? 'bg-rose-100 text-rose-800' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        ${emp.activa ? 'Suspender' : 'Reactivar'}
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      },
+
+      openNewCompanyModal() {
+        V.openModal(
+          '🏢 Registrar Nueva Empresa Cliente (Vozkora CRM)',
+          `<div class="space-y-2">
+             <div>
+               <label class="font-bold text-[11px]">Razón Social / Nombre Empresa *</label>
+               <input id="empNewName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="ACME S.A.">
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">RUC (13 dígitos) *</label>
+                 <input id="empNewRuc" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0000000000001">
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Teléfono WhatsApp (para envíos y cobros)</label>
+                 <input id="empNewTel" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0900000000">
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Correo del Representante / Dueño</label>
+               <input id="empNewEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="gerencia@acme.com">
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Plan Contratado</label>
+                 <select id="empNewPlan" onchange="const p=PLANS.find(x=>x.id===this.value); if(p && $('empNewQuota')) $('empNewQuota').value=p.includedUsers;" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                   ${PLANS.map(pl => `<option value="${pl.id}" ${pl.id === 'expansion' ? 'selected' : ''}>${pl.name} (${pl.includedUsers} usu. base)</option>`).join('')}
+                 </select>
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Cupo Máx. Usuarios (Base + Extras)</label>
+                 <input id="empNewQuota" type="number" min="1" max="500" value="5" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold">
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Entorno Inicial</label>
+               <select id="empNewEnv" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                 <option value="SANDBOX">SANDBOX (Pruebas Proveedor Software Contable)</option>
+                 <option value="PRODUCCION">PRODUCCIÓN (SRI Real)</option>
+                 <option value="DEMO">DEMO</option>
+               </select>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveNewCompany()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Empresa</button>`
+        );
+      },
+
+      async saveNewCompany() {
+        const nombre = $('empNewName').value.trim();
+        const ruc = $('empNewRuc').value.trim();
+        const telefono = $('empNewTel').value.trim();
+        const email_contacto = $('empNewEmail').value.trim().toLowerCase();
+        const plan_activo = $('empNewPlan').value;
+        const max_usuarios = Math.max(1, parseInt($('empNewQuota').value, 10) || 1);
+        const entorno = $('empNewEnv').value;
+        if (!nombre || !ruc) return toast('Ingresa nombre y RUC de la empresa.');
+        try {
+          await crmCrearEmpresa({ nombre, ruc, telefono, email_contacto, plan_activo, max_usuarios, entorno, activa: true });
+          V.closeModal();
+          toast(`✓ Empresa ${nombre} registrada con cupo de ${max_usuarios} usuario(s).`);
+          this.loadCompanies();
+        } catch (e) {
+          toast('Error creando empresa: ' + e.message);
+        }
+      },
+
+      async changeCompanyPlan(id, plan_activo) {
+        const pl = PLANS.find(x => x.id === plan_activo);
+        const max_usuarios = pl ? pl.includedUsers : 5;
+        await crmActualizarEmpresa(id, { plan_activo, max_usuarios });
+        toast(`✓ Plan actualizado a ${pl ? pl.name : plan_activo} (Cupo base: ${max_usuarios} usuarios).`);
+        this.loadCompanies();
+      },
+
+      async changeCompanyQuota(id, val) {
+        const max_usuarios = Math.max(1, parseInt(val, 10) || 1);
+        await crmActualizarEmpresa(id, { max_usuarios });
+        toast(`✓ Cupo máximo actualizado a ${max_usuarios} usuario(s).`);
+        this.loadCompanies();
+      },
+
+      async changeCompanyEnv(id, entorno) {
+        await crmActualizarEmpresa(id, { entorno });
+        toast('✓ Entorno de empresa cambiado a ' + entorno);
+        this.loadCompanies();
+      },
+
+      async toggleCompanyActive(id, activa) {
+        await crmActualizarEmpresa(id, { activa });
+        toast(activa ? '✓ Empresa reactivada.' : '⛔ Empresa suspendida.');
+        this.loadCompanies();
+      },
+
+      openCompanyApiModal(idx) {
+        const emp = this.cachedCompanies[idx];
+        if (!emp) return;
+        V.openModal(
+          `🔑 API Proveedor Software Contable · ${emp.nombre}`,
+          `<div class="space-y-2.5">
+             <p class="text-[11px] text-slate-600">Estas credenciales se aplicarán a todos los usuarios asignados a <strong>${esc(emp.nombre)}</strong> (RUC: ${esc(emp.ruc)}) en entorno <strong>${esc(emp.entorno)}</strong>:</p>
+             <div>
+               <label class="text-[11px] font-bold text-[#073e3b]">API Key Proveedor Software Contable</label>
+               <input id="empApiKey" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[11px]" placeholder="Pega aquí el API Key del Proveedor Software Contable" value="${esc(emp.contifico_api_key || '')}">
+             </div>
+             <div>
+               <label class="text-[11px] font-bold text-[#073e3b]">Token POS Proveedor Software Contable</label>
+               <input id="empPosToken" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[11px]" placeholder="Pega aquí el Token POS del Proveedor Software Contable" value="${esc(emp.contifico_pos_token || '')}">
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveCompanyApi('${emp.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Credenciales</button>`
+        );
+      },
+
+      async saveCompanyApi(id) {
+        try {
+          await crmActualizarEmpresa(id, {
+            contifico_api_key: $('empApiKey').value.trim(),
+            contifico_pos_token: $('empPosToken').value.trim()
+          });
+          V.closeModal();
+          toast('✓ Credenciales API del Proveedor Software Contable guardadas para la empresa.');
+          this.loadCompanies();
+        } catch (e) {
+          toast('Error: ' + e.message);
+        }
+      },
+
+      async changeCompanyPeriodicity(id, periodicidad) {
+        const fecha_proximo_corte = calcularProximoCorte(periodicidad);
+        await crmActualizarEmpresa(id, { periodicidad, fecha_proximo_corte });
+        toast(`✓ Periodicidad cambiada a ${periodicidad}. Próximo corte: ${fecha_proximo_corte}`);
+        this.loadCompanies();
+      },
+
+      async toggleCompanySvaPack(empId, packId) {
+        const emp = this.cachedCompanies.find(x => x.id === empId);
+        if (!emp) return;
+        const curr = Array.isArray(emp.packs_ia) ? emp.packs_ia.slice() : [];
+        const next = curr.includes(packId) ? curr.filter(x => x !== packId) : [...curr, packId];
+        await crmActualizarEmpresa(empId, { packs_ia: next, sva_elegidos_fijos: next.length > 0 });
+        toast('✓ Módulos Adicionales IA actualizados y sincronizados con la App de ' + emp.nombre);
+        this.loadCompanies();
+      },
+
+      async resetCompanyIaQuota(empId, empRuc, empName) {
+        await crmReiniciarConsumoIaEmpresa(empId, empRuc);
+        toast(`✓ Contador de consumo IA de ${empName} reiniciado a 0.`);
+        this.loadCompanies();
+      },
+
+      // -------------------------------------------------------------------
+      // PESTAÑA COBRANZAS Y CORTES AUTOMÁTICOS (DÍA 01 / GRACIA 1-5 / BLOQUEO +5)
+      // -------------------------------------------------------------------
+      billingFilter: 'ALL',
+      async loadBillingTab() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Calculando estado de cartera y fechas de corte...</div>';
+        try {
+          this.cachedCompanies = await crmListarEmpresas();
+          this.renderBillingView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderBillingView() {
+        const body = $('crm-body');
+        const enriched = this.cachedCompanies.map(emp => ({
+          emp,
+          subStatus: evaluarEstadoSuscripcion(emp)
+        }));
+
+        const alDiaCount = enriched.filter(x => x.subStatus.estado === 'AL_DIA' || x.subStatus.estado.startsWith('EXENTO')).length;
+        const moraGraciaCount = enriched.filter(x => x.subStatus.estado === 'PENDIENTE_RENOVACION').length;
+        const bloqueadosCount = enriched.filter(x => x.subStatus.estado === 'BLOQUEADO_CORTE').length;
+
+        const filtered = enriched.filter(x => {
+          if (this.billingFilter === 'GRACIA') return x.subStatus.estado === 'PENDIENTE_RENOVACION';
+          if (this.billingFilter === 'BLOQUEADOS') return x.subStatus.estado === 'BLOQUEADO_CORTE';
+          if (this.billingFilter === 'AL_DIA') return x.subStatus.estado === 'AL_DIA' || x.subStatus.estado.startsWith('EXENTO');
+          return true;
+        });
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div>
+              <h3 class="text-sm font-extrabold text-[#073e3b]">💳 Cobranzas Automáticas, Fechas de Corte (Día 01) y Pasarela</h3>
+              <p class="text-[11px] text-slate-500">Regla 1: Días 1–5 tras corte = Aviso rojo en App · Regla 2: +5 días tras corte = Bloqueo total con redirección a pasarela.</p>
+            </div>
+
+            <!-- Canal Oficial Google Play Compliant (Ticket VENTAS_UPGRADE + WhatsApp Directo) -->
+            <div class="p-3 rounded-2xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b] flex items-center justify-between gap-2">
+              <span>📲 <strong>Activaciones y Renovaciones (Cumplimiento Google Play):</strong> Toda solicitud desde la App crea automáticamente un ticket <code>VENTAS_UPGRADE</code> y abre WhatsApp oficial <strong>+57 323 939 9953</strong> con el cálculo exacto.</span>
+            </div>
+
+            <!-- Filtros Semáforo -->
+            <div class="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2.5">
+              <button onclick="CRM.billingFilter='ALL'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
+                Todas (${enriched.length})
+              </button>
+              <button onclick="CRM.billingFilter='AL_DIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'AL_DIA' ? 'bg-[#087e70] text-white' : 'bg-emerald-50 text-emerald-900 border border-emerald-200'}">
+                🟢 Al día / Exentas (${alDiaCount})
+              </button>
+              <button onclick="CRM.billingFilter='GRACIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'GRACIA' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
+                🟡 En días de gracia 1–5 (${moraGraciaCount})
+              </button>
+              <button onclick="CRM.billingFilter='BLOQUEADOS'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'BLOQUEADOS' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-900 border border-rose-200'}">
+                🔴 Bloqueadas +5 días (${bloqueadosCount})
+              </button>
+            </div>
+
+            <div class="space-y-2.5">
+              ${filtered.map(({ emp, subStatus }) => {
+                const pl = PLANS.find(p => p.id === emp.plan_activo) || PLANS[3];
+                const isAnual = String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+                const monto = isAnual ? pl.annualPrice : pl.monthlyPrice;
+                const badgeCls = subStatus.estado === 'BLOQUEADO_CORTE'
+                  ? 'bg-rose-100 text-rose-800'
+                  : (subStatus.estado === 'PENDIENTE_RENOVACION'
+                    ? 'bg-amber-100 text-amber-900'
+                    : 'bg-emerald-100 text-emerald-800');
+                const badgeTxt = subStatus.estado === 'BLOQUEADO_CORTE'
+                  ? `🔴 Bloqueada (${subStatus.diasMora} días mora)`
+                  : (subStatus.estado === 'PENDIENTE_RENOVACION'
+                    ? `🟡 Aviso Rojo (${subStatus.diasMora} días tras corte)`
+                    : (subStatus.estado === 'EXENTO' ? '⚪ Control Corte Desactivado' : (subStatus.estado === 'EXENTO_HASTA' ? `🎁 Exento hasta ${subStatus.exentoHasta}` : '🟢 Al día')));
+
+                return `
+                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <strong class="text-sm text-[#073e3b]">${esc(emp.nombre)}</strong>
+                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isAnual ? 'bg-amber-100 text-amber-900' : 'bg-cyan-50 text-cyan-900'}">
+                          ${isAnual ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
+                        </span>
+                        <span class="ml-1 font-mono text-[11px] font-bold text-[#087e70]">Plan ${esc(pl.name)} ($${monto.toFixed(2)})</span>
+                      </div>
+                      <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${badgeCls}">${badgeTxt}</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] bg-white p-2.5 rounded-xl border border-slate-200">
+                      <div>
+                        <label class="font-bold text-slate-600 block">Fecha Próximo Corte (Día 01):</label>
+                        <input type="date" value="${esc(emp.fecha_proximo_corte || '')}" onchange="CRM.updateBillingField('${emp.id}', { fecha_proximo_corte: this.value })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
+                      </div>
+                      <div>
+                        <label class="font-bold text-slate-600 block">Control de Corte Automático:</label>
+                        <select onchange="CRM.updateBillingField('${emp.id}', { control_corte: this.value === 'true' })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 bg-white font-bold">
+                          <option value="true" ${emp.control_corte !== false ? 'selected' : ''}>✅ Activado (Aplica Reglas 1 y 2)</option>
+                          <option value="false" ${emp.control_corte === false ? 'selected' : ''}>⏸️ Desactivado (Exento)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="font-bold text-slate-600 block">Exento / Meses Gratis Hasta:</label>
+                        <input type="date" value="${esc(emp.exento_hasta || '')}" onchange="CRM.updateBillingField('${emp.id}', { exento_hasta: this.value || null })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 pt-1">
+                      <button onclick="CRM.renewCompanyCycle('${emp.id}', '${esc(emp.periodicidad || 'MENSUAL')}')" class="px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                        ✓ Registrar Pago y Renovar Próximo Ciclo
+                      </button>
+                      <button onclick="const msg=encodeURIComponent('Hola ${esc(emp.nombre)}, te recordamos que tu suscripción Vozkora (${isAnual ? 'Anual' : 'Mensual'}) tiene corte el ${esc(emp.fecha_proximo_corte || 'día 01')}.'); window.open('https://wa.me/${esc((emp.telefono || '').replace(/\D/g,''))}?text='+msg, '_blank');" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-100 text-emerald-900 cursor-pointer">
+                        💬 Recordatorio WhatsApp
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      },
+
+      async updateBillingField(id, patchObj) {
+        await crmActualizarEmpresa(id, patchObj);
+        toast('✓ Configuración de corte actualizada en Supabase.');
+        this.loadBillingTab();
+      },
+
+      async renewCompanyCycle(id, periodicidad) {
+        const nextCorte = calcularProximoCorte(periodicidad, new Date());
+        await crmActualizarEmpresa(id, {
+          fecha_proximo_corte: nextCorte,
+          activa: true
+        });
+        toast(`✓ Pago registrado. Próximo corte programado para el ${nextCorte}.`);
+        this.loadBillingTab();
+      },
+
+      // -------------------------------------------------------------------
+      // PESTAÑA 2: USUARIOS POR EMPRESA (CUPO POR PLAN + 1 SOLO DISPOSITIVO)
+      // -------------------------------------------------------------------
+      async loadUsers() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando usuarios y cupos por plan...</div>';
+        try {
+          const [emps, usrs] = await Promise.all([crmListarEmpresas(), crmListarUsuarios()]);
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.renderUsersView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold">Error cargando usuarios: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderUsersView() {
+        const body = $('crm-body');
+        const q = (this.userSearch || '').toLowerCase();
+        const filtered = this.cachedUsers.filter(u => {
+          if (this.userFilterEmpresa !== 'ALL' && u.empresa_ruc !== this.userFilterEmpresa) return false;
+          if (q && !(
+            (u.nombre_completo || '').toLowerCase().includes(q) ||
+            (u.email || '').toLowerCase().includes(q) ||
+            (u.empresa_nombre || '').toLowerCase().includes(q)
+          )) return false;
+          return true;
+        });
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">👥 Usuarios de Acceso a la App (${this.cachedUsers.length})</h3>
+                <p class="text-[11px] text-slate-500">Cada usuario opera exclusivamente sobre su empresa asignada, respeta el cupo del plan y solo entra en 1 dispositivo.</p>
+              </div>
+              <button onclick="CRM.openNewUserForm()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                + Crear Usuario en Empresa
+              </button>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+              <select onchange="CRM.userFilterEmpresa=this.value; CRM.renderUsersView();" class="border border-[#d7e1e0] rounded-xl px-3 py-1.5 bg-[#f5f8f8] text-[11px] font-bold">
+                <option value="ALL">Todas las empresas (${this.cachedUsers.length} usuarios)</option>
+                ${this.cachedCompanies.map(emp => {
+                  const cnt = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+                  return `<option value="${esc(emp.ruc)}" ${this.userFilterEmpresa === emp.ruc ? 'selected' : ''}>${esc(emp.nombre)} — Cupo: ${cnt}/${emp.max_usuarios}</option>`;
+                }).join('')}
+              </select>
+              <input type="text" value="${esc(this.userSearch)}" oninput="CRM.userSearch=this.value; CRM.renderUsersView();" placeholder="🔍 Buscar usuario o correo..." class="w-full sm:w-64 px-3 py-1.5 rounded-xl border border-[#d7e1e0] text-[11px]" />
+            </div>
+
+            <div class="space-y-2.5">
+              ${filtered.map(u => {
+                const realIdx = this.cachedUsers.findIndex(x => x.id === u.id);
+                const hasDeviceLock = !!u.session_token;
+                return `
+                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border ${u.activo ? 'border-[#dce6e5]' : 'border-rose-300 bg-rose-50/50'} space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span class="font-extrabold text-sm text-[#073e3b]">${esc(u.nombre_completo || u.email)}</span>
+                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd]">${esc(u.rol)}</span>
+                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-white border border-slate-200">🏢 ${esc(u.empresa_nombre)}</span>
+                      </div>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${hasDeviceLock ? 'bg-cyan-100 text-cyan-900' : 'bg-slate-200 text-slate-700'}">
+                        ${hasDeviceLock ? `📱 En uso (${esc(u.dispositivo_info || '1 disp.')})` : '⚪ Dispositivo libre'}
+                      </span>
+                    </div>
+                    <div class="text-[11px] text-slate-600 font-mono">
+                      Correo: <strong>${esc(u.email)}</strong> · Clave: <strong>${esc(u.clave)}</strong> · RUC Empresa: ${esc(u.empresa_ruc)}
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 pt-1">
+                      <button onclick="CRM.openEditUserModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#087e70] text-white hover:bg-[#073e3b] cursor-pointer">
+                        ✏️ Editar Usuario
+                      </button>
+                      <button onclick="CRM.openEditPermsModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                        🛡️ Permisos
+                      </button>
+                      ${hasDeviceLock ? `
+                        <button onclick="CRM.releaseUserDevice('${u.id}', '${esc(u.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer">
+                          🔓 Liberar Dispositivo
+                        </button>
+                      ` : ''}
+                      <button onclick="CRM.toggleUserActive('${u.id}', ${!u.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${u.activo ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        ${u.activo ? '⏸️ Bloquear Usuario' : '✅ Activar / Reactivar'}
+                      </button>
+                      ${u.rol !== 'SUPERADMIN' ? `
+                        <button onclick="CRM.deleteUserConfirm('${u.id}', '${esc(u.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-100 hover:bg-rose-600 text-rose-800 hover:text-white cursor-pointer">
+                          🗑️ Eliminar
+                        </button>
+                      ` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      },
+
+      async releaseUserDevice(id, email) {
+        await crmActualizarUsuario(id, { session_token: null, dispositivo_info: null });
+        toast(`🔓 Sesión de dispositivo liberada para ${email}. Ya puede ingresar en un nuevo equipo.`);
+        this.loadUsers();
+      },
+
+      async toggleUserActive(id, activo) {
+        await crmActualizarUsuario(id, { activo });
+        toast(activo ? '✅ Usuario activado / reactivado.' : '⏸️ Usuario bloqueado.');
+        this.loadUsers();
+      },
+
+      openEditUserModal(idx) {
+        const u = this.cachedUsers[idx];
+        if (!u) return;
+        V.openModal(
+          `✏️ Editar Usuario · ${u.nombre_completo || u.email}`,
+          `<div class="space-y-2">
+             <div>
+               <label class="font-bold text-[11px]">Empresa Asignada</label>
+               <select id="usrEditCompanyId" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 ${this.cachedCompanies.map(emp => `
+                   <option value="${emp.id}" ${(u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) ? 'selected' : ''}>
+                     ${esc(emp.nombre)} (RUC: ${esc(emp.ruc)})
+                   </option>
+                 `).join('')}
+               </select>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Nombre Completo *</label>
+               <input id="usrEditFullName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" value="${esc(u.nombre_completo || '')}" />
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Correo de Acceso *</label>
+                 <input id="usrEditEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" value="${esc(u.email || '')}" />
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Contraseña *</label>
+                 <input id="usrEditPass" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="${esc(u.clave || '')}" />
+               </div>
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Rol</label>
+                 <select id="usrEditRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                   <option value="ADMIN_EMPRESA" ${u.rol === 'ADMIN_EMPRESA' ? 'selected' : ''}>Administrador de Empresa</option>
+                   <option value="OPERADOR" ${u.rol === 'OPERADOR' ? 'selected' : ''}>Operador / Vendedor</option>
+                   <option value="DEMO" ${u.rol === 'DEMO' ? 'selected' : ''}>Demo</option>
+                   ${u.rol === 'SUPERADMIN' ? '<option value="SUPERADMIN" selected>Súper-Administrador</option>' : ''}
+                 </select>
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Estado de Acceso</label>
+                 <select id="usrEditActivo" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                   <option value="true" ${u.activo ? 'selected' : ''}>✅ Activo</option>
+                   <option value="false" ${!u.activo ? 'selected' : ''}>⏸️ Bloqueado</option>
+                 </select>
+               </div>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveEditedUser('${u.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Cambios</button>`
+        );
+      },
+
+      async saveEditedUser(id) {
+        const empId = $('usrEditCompanyId').value;
+        const emp = this.cachedCompanies.find(c => c.id === empId);
+        const nombre_completo = $('usrEditFullName').value.trim();
+        const email = $('usrEditEmail').value.trim().toLowerCase();
+        const clave = $('usrEditPass').value.trim();
+        const rol = $('usrEditRol').value;
+        const activo = $('usrEditActivo').value === 'true';
+
+        if (!nombre_completo || !email || !clave) {
+          return toast('Completa nombre, correo y contraseña.');
+        }
+
+        const patch = {
+          nombre_completo,
+          email,
+          clave,
+          rol,
+          activo
+        };
+        if (emp) {
+          patch.empresa_id = emp.id;
+          patch.empresa_nombre = emp.nombre;
+          patch.empresa_ruc = emp.ruc;
+          patch.entorno = emp.entorno;
+          patch.plan_activo = emp.plan_activo;
+          patch.packs_ia = emp.packs_ia || [];
+        }
+
+        try {
+          await crmActualizarUsuario(id, patch);
+          V.closeModal();
+          toast(`✓ Usuario ${email} actualizado correctamente.`);
+          this.loadUsers();
+        } catch (e) {
+          toast('Error actualizando usuario: ' + e.message);
+        }
+      },
+
+      async deleteUserConfirm(id, email) {
+        if (!confirm(`⚠️ ¿Estás seguro de ELIMINAR permanentemente el usuario ${email}? Esta acción liberará su cupo en la empresa.`)) {
+          return;
+        }
+        try {
+          await crmEliminarUsuario(id);
+          toast(`🗑️ Usuario ${email} eliminado correctamente.`);
+          this.loadUsers();
+        } catch (e) {
+          toast('Error eliminando usuario: ' + e.message);
+        }
+      },
+
+      openNewUserForm(prefill = {}) {
+        if (!this.cachedCompanies.length) {
+          return toast('Primero registra una empresa en la pestaña Empresas.');
+        }
+        const defaultEmp = this.cachedCompanies.find(c => c.ruc === prefill.empresa_ruc) || this.cachedCompanies[0];
+        const getQuotaText = (empId) => {
+          const emp = this.cachedCompanies.find(c => c.id === empId);
+          if (!emp) return '';
+          const used = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+          return `Plan ${emp.plan_activo.toUpperCase()}: ${used} de ${emp.max_usuarios} usuarios activos usados.`;
+        };
+
+        V.openModal(
+          '+ Crear Usuario Asignado a Empresa',
+          `<div class="space-y-2">
+             <div>
+               <label class="font-bold text-[11px]">1. Selecciona la Empresa Cliente *</label>
+               <select id="usrNewCompanyId" onchange="const el=$('usrQuotaIndicator'); if(el) el.textContent=CRM.getQuotaStatusText(this.value);" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 ${this.cachedCompanies.map(emp => {
+                   const used = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+                   return `<option value="${emp.id}" ${defaultEmp && emp.id === defaultEmp.id ? 'selected' : ''}>${esc(emp.nombre)} (RUC: ${esc(emp.ruc)}) — Cupo: ${used}/${emp.max_usuarios}</option>`;
+                 }).join('')}
+               </select>
+               <div id="usrQuotaIndicator" class="text-[10.5px] font-bold text-[#087e70] mt-1">${defaultEmp ? getQuotaText(defaultEmp.id) : ''}</div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">2. Nombre Completo del Colaborador *</label>
+               <input id="usrNewFullName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Gabriela Gómez" value="${esc(prefill.nombre || '')}">
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Correo de Acceso *</label>
+                 <input id="usrNewEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="ggg@matriz.com" value="${esc(prefill.email || '')}">
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Contraseña *</label>
+                 <input id="usrNewPass" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="VOZKORA2026">
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Rol dentro de la Empresa</label>
+               <select id="usrNewRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
+                 <option value="ADMIN_EMPRESA">Administrador de Empresa</option>
+                 <option value="OPERADOR" selected>Operador / Vendedor (1 solo dispositivo)</option>
+               </select>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveNewUser()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Validar Cupo y Crear</button>`
+        );
+      },
+
+      getQuotaStatusText(empId) {
+        const emp = this.cachedCompanies.find(c => c.id === empId);
+        if (!emp) return '';
+        const used = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+        if (used >= emp.max_usuarios) {
+          return `⚠️ CUPO LLENO (${used}/${emp.max_usuarios}): Amplía el cupo de usuarios de ${emp.nombre} antes de crear otro.`;
+        }
+        return `✓ Cupo disponible en Plan ${emp.plan_activo.toUpperCase()}: ${used} de ${emp.max_usuarios} usuarios usados.`;
+      },
+
+      async saveNewUser() {
+        const empId = $('usrNewCompanyId').value;
+        const emp = this.cachedCompanies.find(c => c.id === empId);
+        const nombre_completo = $('usrNewFullName').value.trim();
+        const email = $('usrNewEmail').value.trim().toLowerCase();
+        const clave = $('usrNewPass').value.trim();
+        const rol = $('usrNewRol').value;
+
+        if (!emp || !nombre_completo || !email || !clave) {
+          return toast('Completa empresa, nombre, correo y contraseña.');
+        }
+
+        // Cruce estricto contra el cupo contratado en el plan de la empresa
+        const activeUsersCount = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+        if (activeUsersCount >= emp.max_usuarios) {
+          return toast(`⛔ Límite alcanzado: ${emp.nombre} tiene ${activeUsersCount}/${emp.max_usuarios} usuarios en su plan ${emp.plan_activo.toUpperCase()}. Amplía el cupo en Empresas.`);
+        }
+
+        try {
+          await crmCrearUsuario({
+            empresa_id: emp.id,
+            empresa_nombre: emp.nombre,
+            empresa_ruc: emp.ruc,
+            empresa_telefono: emp.telefono || '',
+            nombre_completo,
+            email,
+            clave,
+            rol,
+            entorno: emp.entorno,
+            plan_activo: emp.plan_activo,
+            packs_ia: emp.packs_ia || ['voz', 'ventas'],
+            activo: true
+          });
+          V.closeModal();
+          toast(`✓ Usuario ${email} creado en ${emp.nombre} (${activeUsersCount + 1}/${emp.max_usuarios} cupos).`);
+          this.loadUsers();
+        } catch (e) {
+          toast('Error creando usuario: ' + e.message);
+        }
+      },
+
+      openEditPermsModal(idx) {
+        const u = this.cachedUsers[idx];
+        if (!u) return;
+        const perms = u.permisos || {};
+        const permKeys = [
+          ['facturar', 'Emitir Facturas'],
+          ['proformas', 'Crear Proformas'],
+          ['clientes', 'Crear Clientes (API Contífico)'],
+          ['inventario_ver', 'Ver Inventario'],
+          ['inventario_editar', 'Editar Bodega'],
+          ['cobranza', 'Cobrar Cartera'],
+          ['bancos', 'Ver Bancos'],
+          ['programador_ruta', '🗺️ Programador de Ruta GPS'],
+          ['reportes', 'Ver Reportes'],
+          ['configuracion', 'Entrenar IA']
+        ];
+        V.openModal(
+          `🛡️ Permisos · ${u.nombre_completo || u.email}`,
+          `<div class="space-y-2.5">
+             <div class="p-2 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b]">
+               Empresa asignada: <strong>${esc(u.empresa_nombre)}</strong> (RUC: ${esc(u.empresa_ruc)})
+             </div>
+             <div class="grid grid-cols-2 gap-1.5">
+               ${permKeys.map(pk => `
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-[#f5f8f8] border border-slate-200 text-[11px] cursor-pointer">
+                   <input type="checkbox" id="perm_${pk[0]}" ${perms[pk[0]] ? 'checked' : ''}>
+                   <span>${pk[1]}</span>
+                 </label>
+               `).join('')}
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.savePermsAndApi('${u.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Permisos</button>`
+        );
+      },
+
+      async savePermsAndApi(id) {
+        const keys = ['facturar','proformas','clientes','inventario_ver','inventario_editar','cobranza','bancos','programador_ruta','reportes','configuracion'];
+        const permisos = {};
+        keys.forEach(k => { permisos[k] = !!$('perm_' + k)?.checked; });
+        try {
+          await crmActualizarUsuario(id, { permisos });
+          V.closeModal();
+          toast('✓ Permisos del usuario actualizados.');
+          this.loadUsers();
+        } catch (e) {
+          toast('Error guardando: ' + e.message);
+        }
+      },
+
+      // -------------------------------------------------------------------
+      // PESTAÑA 3: TICKETS CON FLUJO BIDIRECCIONAL, MOTIVO OBLIGATORIO Y BITÁCORA
+      // -------------------------------------------------------------------
+      ticketLabel(st) {
+        if (st === 'PENDIENTE') return '🟡 Abierto';
+        if (st === 'EN_PROCESO') return '🔵 En Proceso';
+        if (st === 'APROBADO') return '🟢 Cerrado (Resuelto)';
+        if (st === 'RECHAZADO') return '🔴 Cerrado (Rechazado)';
+        return st;
+      },
+
+      async loadTickets() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando tickets de solicitud...</div>';
+        try {
+          const [tks, emps, usrs] = await Promise.all([crmListarTickets(), crmListarEmpresas(), crmListarUsuarios()]);
+          this.cachedTickets = tks;
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.renderTicketsView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderTicketsView() {
+        const body = $('crm-body');
+        const abiertos = this.cachedTickets.filter(t => t.estado === 'PENDIENTE' || t.estado === 'ABIERTO');
+        const enProceso = this.cachedTickets.filter(t => t.estado === 'EN_PROCESO');
+        const cerrados = this.cachedTickets.filter(t => t.estado === 'APROBADO' || t.estado === 'RECHAZADO');
+
+        let listToShow = abiertos;
+        if (this.ticketFilterStatus === 'EN_PROCESO') listToShow = enProceso;
+        else if (this.ticketFilterStatus === 'CERRADOS') listToShow = cerrados;
+        else if (this.ticketFilterStatus === 'TODOS') listToShow = this.cachedTickets;
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div>
+              <h3 class="text-sm font-extrabold text-[#073e3b]">🎫 Bandeja de Tickets (${this.cachedTickets.length})</h3>
+              <p class="text-[11px] text-slate-500">Cambia libremente entre Abierto, En Proceso o Cerrado (ida y vuelta) registrando siempre el motivo en bitácora.</p>
+            </div>
+
+            <div class="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2.5">
+              <button onclick="CRM.ticketFilterStatus='ABIERTOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'ABIERTOS' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
+                🟡 Abiertos (${abiertos.length})
+              </button>
+              <button onclick="CRM.ticketFilterStatus='EN_PROCESO'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'EN_PROCESO' ? 'bg-cyan-700 text-white' : 'bg-cyan-50 text-cyan-900 border border-cyan-200'}">
+                🔵 En Proceso (${enProceso.length})
+              </button>
+              <button onclick="CRM.ticketFilterStatus='CERRADOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'CERRADOS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">
+                🟢 Cerrados (${cerrados.length})
+              </button>
+              <button onclick="CRM.ticketFilterStatus='TODOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.ticketFilterStatus === 'TODOS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
+                Todos (${this.cachedTickets.length})
+              </button>
+            </div>
+
+            ${listToShow.length === 0 ? '<p class="text-slate-500 py-3">No hay tickets en esta sub-ventana.</p>' : ''}
+            <div class="space-y-2.5">
+              ${listToShow.map(tk => {
+                const realIdx = this.cachedTickets.findIndex(x => x.id === tk.id);
+                const det = tk.detalle || {};
+                const hist = Array.isArray(det.historial) ? det.historial : [];
+                const lastNote = hist.length > 0 ? hist[hist.length - 1] : null;
+                const badgeCls = tk.estado === 'PENDIENTE'
+                  ? 'bg-amber-100 text-amber-900'
+                  : (tk.estado === 'EN_PROCESO'
+                    ? 'bg-cyan-100 text-cyan-900'
+                    : (tk.estado === 'APROBADO' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'));
+
+                const clientFullMsg = tk.tipo_solicitud === 'NUEVO_USUARIO'
+                  ? `Solicita crear usuario para <strong>${esc(det.nombre || 'N/A')}</strong> (${esc(det.email_nuevo || 'N/A')}) · Perfil: <strong>${esc(det.perfil || 'N/A')}</strong>${det.descripcion ? ' · Nota: ' + esc(det.descripcion) : ''}`
+                  : `${esc(det.descripcion || det.motivo || JSON.stringify(det))}`;
+
+                return `
+                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                    <div class="flex flex-wrap justify-between items-center gap-2">
+                      <div>
+                        <strong class="text-sm text-[#073e3b]">${esc(tk.empresa_nombre)}</strong>
+                        <span class="text-[11px] font-mono text-slate-500 ml-1">(RUC: ${esc(tk.empresa_ruc)})</span>
+                      </div>
+                      <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${badgeCls}">${this.ticketLabel(tk.estado)}</span>
+                    </div>
+
+                    <div class="text-[11px] text-slate-600">
+                      Categoría: <strong>${esc(det.categoria || tk.tipo_solicitud)}</strong> · Enviado por: <strong>${esc(tk.solicitado_por)}</strong> · Tel: <span class="font-mono">${esc(det.telefono_contacto || 'N/A')}</span> · Fecha: ${esc((tk.creado_en || '').slice(0, 16).replace('T', ' '))}
+                    </div>
+
+                    <!-- Mensaje original del cliente SIEMPRE VISIBLE en cualquier estado -->
+                    <div class="p-2.5 rounded-xl bg-white border border-slate-200 text-[11.5px] text-slate-800 space-y-1">
+                      <div class="text-[10px] font-extrabold uppercase text-[#087e70]">📩 Solicitud / Mensaje del Cliente:</div>
+                      <div>${clientFullMsg}</div>
+                    </div>
+
+                    ${hist.length > 0 ? `
+                      <div class="p-2.5 rounded-xl bg-[#e7f5f1]/60 border border-[#b9d1cd] text-[10.5px] text-[#073e3b] space-y-1">
+                        <div class="font-extrabold uppercase text-[9.5px] text-[#087e70]">📜 Historial Completo de Movimientos (${hist.length}):</div>
+                        ${hist.map((h, i) => `
+                          <div class="border-t border-[#b9d1cd]/50 pt-1 first:border-0 first:pt-0">
+                            <span class="font-bold">#${i + 1} [${esc(h.fecha)}] ${esc(h.de_estado)} → ${esc(h.a_estado)}:</span>
+                            <span>${esc(h.motivo)}</span>
+                            <span class="text-slate-500">(${esc(h.autor || 'Sistema')})</span>
+                          </div>
+                        `).join('')}
+                      </div>
+                    ` : ''}
+
+                    <!-- Controles libres de cambio de estado (Ida y Vuelta) + Bitácora -->
+                    <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                      ${tk.estado !== 'PENDIENTE' ? `
+                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'PENDIENTE')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer">
+                          🟡 Pasar a Abierto
+                        </button>
+                      ` : ''}
+                      ${tk.estado !== 'EN_PROCESO' ? `
+                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'EN_PROCESO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-cyan-100 hover:bg-cyan-200 text-cyan-900 cursor-pointer">
+                          🔵 Pasar a En Proceso
+                        </button>
+                      ` : ''}
+                      ${tk.estado !== 'APROBADO' ? `
+                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'APROBADO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                          🟢 Cerrar (Resuelto)
+                        </button>
+                      ` : ''}
+                      ${tk.estado !== 'RECHAZADO' ? `
+                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'RECHAZADO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 cursor-pointer">
+                          🔴 Cerrar (Rechazado)
+                        </button>
+                      ` : ''}
+
+                      <button onclick="CRM.openTicketBitacoraModal(${realIdx})" class="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                        📜 Bitácora (${hist.length || 1})
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      },
+
+      openTicketTransitionModal(idx, targetEstado) {
+        const tk = this.cachedTickets[idx];
+        if (!tk) return;
+        const fromLabel = this.ticketLabel(tk.estado);
+        const toLabel = this.ticketLabel(targetEstado);
+        const isUserCreation = tk.tipo_solicitud === 'NUEVO_USUARIO' && targetEstado === 'APROBADO';
+
+        V.openModal(
+          `🔄 Cambiar Estado de Ticket`,
+          `<div class="space-y-2.5">
+             <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] space-y-1">
+               <div><strong>Empresa:</strong> ${esc(tk.empresa_nombre)} (RUC: ${esc(tk.empresa_ruc)})</div>
+               <div><strong>Cambio de estado:</strong> ${fromLabel} → <strong>${toLabel}</strong></div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px] text-[#073e3b]">Motivo / Observación obligatoria del cambio *</label>
+               <textarea id="tkTransitionReason" rows="3" class="w-full border border-[#d7e1e0] rounded-xl p-2.5 mt-1 text-xs focus:outline-none focus:border-[#087e70]" placeholder="Escribe obligatoriamente el porqué del cambio de estado o la solución aplicada..."></textarea>
+             </div>
+             ${isUserCreation ? `
+               <label class="flex items-center gap-2 p-2 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] font-bold text-[#073e3b] cursor-pointer">
+                 <input type="checkbox" id="tkAlsoCreateUser" checked />
+                 <span>Abrir formulario para crear el usuario (${esc(tk.detalle?.email_nuevo || '')}) inmediatamente</span>
+               </label>
+             ` : ''}
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.confirmTicketTransition(${idx}, '${targetEstado}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Cambio en Bitácora</button>`
+        );
+      },
+
+      async confirmTicketTransition(idx, targetEstado) {
+        const tk = this.cachedTickets[idx];
+        if (!tk) return;
+        const motivo = ($('tkTransitionReason')?.value || '').trim();
+        if (!motivo) {
+          return toast('⚠️ Debes escribir obligatoriamente el motivo del cambio de estado.');
+        }
+
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { email: 'admin@vozkora.com' };
+        const det = Object.assign({}, tk.detalle || {});
+        const prevHist = Array.isArray(det.historial) ? det.historial.slice() : [
+          {
+            fecha: (tk.creado_en || '').slice(0, 16).replace('T', ' ') || nowFormatted(),
+            de_estado: 'NUEVO',
+            a_estado: '🟡 Abierto',
+            motivo: det.descripcion || 'Solicitud inicial del cliente',
+            autor: tk.solicitado_por
+          }
+        ];
+
+        prevHist.push({
+          fecha: nowFormatted(),
+          de_estado: this.ticketLabel(tk.estado),
+          a_estado: this.ticketLabel(targetEstado),
+          motivo,
+          autor: ses.email
+        });
+        det.historial = prevHist;
+
+        const alsoCreateUser = !!$('tkAlsoCreateUser')?.checked;
+
+        try {
+          const updatedRow = await crmActualizarTicket(tk.id, targetEstado, det);
+          if (updatedRow) {
+            this.cachedTickets[idx] = updatedRow;
+          } else {
+            this.cachedTickets[idx].estado = targetEstado;
+            this.cachedTickets[idx].detalle = det;
+          }
+          V.closeModal();
+          toast(`✓ Ticket actualizado a ${this.ticketLabel(targetEstado)} y guardado en bitácora.`);
+          await this.loadTickets();
+
+          if (alsoCreateUser && tk.tipo_solicitud === 'NUEVO_USUARIO' && targetEstado === 'APROBADO') {
+            this.openNewUserForm({
+              empresa_ruc: tk.empresa_ruc,
+              nombre: det.nombre || '',
+              email: det.email_nuevo || ''
+            });
+          }
+        } catch (e) {
+          toast('Error actualizando ticket: ' + e.message);
+        }
+      },
+
+      openTicketBitacoraModal(idx) {
+        const tk = this.cachedTickets[idx];
+        if (!tk) return;
+        const det = tk.detalle || {};
+        const hist = Array.isArray(det.historial) && det.historial.length > 0
+          ? det.historial
+          : [{
+              fecha: (tk.creado_en || '').slice(0, 16).replace('T', ' ') || nowFormatted(),
+              de_estado: 'NUEVO',
+              a_estado: this.ticketLabel(tk.estado),
+              motivo: det.descripcion || 'Solicitud registrada por el cliente',
+              autor: tk.solicitado_por
+            }];
+
+        const clientMsg = tk.tipo_solicitud === 'NUEVO_USUARIO'
+          ? `Alta de usuario: ${det.nombre || ''} (${det.email_nuevo || ''}) · Perfil: ${det.perfil || ''}`
+          : (det.descripcion || 'Sin descripción adicional');
+
+        V.openModal(
+          `📜 Bitácora Completa del Ticket`,
+          `<div class="space-y-2.5">
+             <div class="p-2.5 rounded-xl bg-[#073e3b] text-white text-[11px] space-y-1">
+               <div class="flex justify-between items-center">
+                 <strong>${esc(tk.empresa_nombre)}</strong>
+                 <span class="px-2 py-0.5 rounded-full bg-white/15 text-[#70d2bd] text-[10px] font-bold">${this.ticketLabel(tk.estado)}</span>
+               </div>
+               <div class="text-teal-100 text-[10.5px]">RUC: ${esc(tk.empresa_ruc)} · Solicitante: ${esc(tk.solicitado_por)}</div>
+               <div class="pt-1 border-t border-white/15 text-teal-50"><strong>Mensaje original:</strong> ${esc(clientMsg)}</div>
+             </div>
+
+             <div class="text-[11px] font-extrabold text-[#073e3b]">Historial cronológico de estados y motivos (${hist.length}):</div>
+             <div class="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+               ${hist.map((h, i) => `
+                 <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] space-y-1">
+                   <div class="flex justify-between items-center font-bold text-[#073e3b]">
+                     <span>#${i + 1} · ${esc(h.de_estado)} → ${esc(h.a_estado)}</span>
+                     <span class="font-mono text-[10px] text-slate-500">${esc(h.fecha)}</span>
+                   </div>
+                   <div class="text-slate-700"><strong>Motivo:</strong> ${esc(h.motivo)}</div>
+                   <div class="text-[10px] text-slate-500">Registrado por: ${esc(h.autor || 'Sistema')}</div>
+                 </div>
+               `).join('')}
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Cerrar Bitácora</button>`
+        );
+      },
+
+      // -------------------------------------------------------------------
+      // PESTAÑA 4: HOJAS DE AUDITORÍA (EXCEL) CON FILTROS AVANZADOS
+      // -------------------------------------------------------------------
+      async loadRepo(tabla) {
+        this.repoTable = tabla;
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Consultando hoja de auditoría en Supabase...</div>';
+        try {
+          this.repoRows = await consultarRepositorio(tabla);
+          this.renderRepoView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      getFilteredRepoRows() {
+        const q = (this.repoSearch || '').toLowerCase();
+        return this.repoRows.filter(r => {
+          if (this.repoFilterEmpresa !== 'ALL' && r.empresa_ruc !== this.repoFilterEmpresa) return false;
+          if (this.repoFilterEntorno !== 'ALL' && r.entorno !== this.repoFilterEntorno) return false;
+          const rowDate = (r.creado_en || '').slice(0, 10);
+          if (this.repoFilterDesde && rowDate && rowDate < this.repoFilterDesde) return false;
+          if (this.repoFilterHasta && rowDate && rowDate > this.repoFilterHasta) return false;
+          if (q) {
+            const hay = Object.values(r).some(v => String(v ?? '').toLowerCase().includes(q));
+            if (!hay) return false;
+          }
+          return true;
+        });
+      },
+
+      renderRepoView() {
+        const body = $('crm-body');
+        const sheets = [
+          ['repo_facturas', '🧾 Facturas SRI'],
+          ['repo_clientes', '👥 Clientes'],
+          ['repo_notas_credito', '↩️ Notas Crédito'],
+          ['repo_proformas', '📄 Proformas'],
+          ['repo_cobros', '💰 Cobros'],
+          ['repo_ordenes_trabajo', '👷 Órdenes Trabajo']
+        ];
+
+        const empresasMap = {};
+        this.repoRows.forEach(r => {
+          if (r.empresa_ruc) empresasMap[r.empresa_ruc] = r.empresa_nombre || r.empresa_ruc;
+        });
+
+        const filteredRows = this.getFilteredRepoRows();
+        const cols = filteredRows.length > 0
+          ? Object.keys(filteredRows[0]).filter(k => typeof filteredRows[0][k] !== 'object' && k !== 'id')
+          : [];
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">📊 Repositorio Maestro de Auditoría (Hojas tipo Excel)</h3>
+                <p class="text-[11px] text-slate-500">Filtra por empresa, entorno, fechas o texto y exporta exactamente lo filtrado a CSV/Excel.</p>
+              </div>
+              <button onclick="CRM.exportRepoCsv()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
+                📥 Descargar Excel / CSV (${filteredRows.length})
+              </button>
+            </div>
+
+            <div class="flex flex-wrap gap-1.5">
+              ${sheets.map(s => `
+                <button onclick="CRM.loadRepo('${s[0]}')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.repoTable === s[0] ? 'bg-[#087e70] text-white' : 'bg-[#f5f8f8] text-[#073e3b] border border-[#dce6e5]'}">
+                  ${s[1]}
+                </button>
+              `).join('')}
+            </div>
+
+            <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-[11px]">
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Empresa / RUC</label>
+                <select onchange="CRM.repoFilterEmpresa=this.value; CRM.renderRepoView();" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 bg-white font-semibold">
+                  <option value="ALL">Todas las empresas</option>
+                  ${Object.entries(empresasMap).map(([ruc, nom]) => `
+                    <option value="${esc(ruc)}" ${this.repoFilterEmpresa === ruc ? 'selected' : ''}>${esc(nom)} (${esc(ruc)})</option>
+                  `).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Entorno</label>
+                <select onchange="CRM.repoFilterEntorno=this.value; CRM.renderRepoView();" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 bg-white font-semibold">
+                  <option value="ALL" ${this.repoFilterEntorno === 'ALL' ? 'selected' : ''}>Todos (Demo/Sandbox/Prod)</option>
+                  <option value="DEMO" ${this.repoFilterEntorno === 'DEMO' ? 'selected' : ''}>DEMO</option>
+                  <option value="SANDBOX" ${this.repoFilterEntorno === 'SANDBOX' ? 'selected' : ''}>SANDBOX</option>
+                  <option value="PRODUCCION" ${this.repoFilterEntorno === 'PRODUCCION' ? 'selected' : ''}>PRODUCCIÓN</option>
+                </select>
+              </div>
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Desde fecha</label>
+                <input type="date" value="${esc(this.repoFilterDesde)}" onchange="CRM.repoFilterDesde=this.value; CRM.renderRepoView();" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white font-mono" />
+              </div>
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Hasta fecha</label>
+                <input type="date" value="${esc(this.repoFilterHasta)}" onchange="CRM.repoFilterHasta=this.value; CRM.renderRepoView();" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white font-mono" />
+              </div>
+              <div>
+                <label class="font-bold text-slate-600 block mb-0.5">Buscar número / cliente</label>
+                <div class="flex gap-1">
+                  <input type="text" value="${esc(this.repoSearch)}" oninput="CRM.repoSearch=this.value; CRM.renderRepoView();" placeholder="Ej. FAC-001, Sol..." class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white" />
+                  <button onclick="CRM.repoFilterEmpresa='ALL'; CRM.repoFilterEntorno='ALL'; CRM.repoFilterDesde=''; CRM.repoFilterHasta=''; CRM.repoSearch=''; CRM.renderRepoView();" class="px-2 py-1 rounded-lg bg-white border border-slate-300 font-bold text-slate-600 cursor-pointer" title="Limpiar filtros">↺</button>
+                </div>
+              </div>
+            </div>
+
+            ${filteredRows.length === 0 ? '<p class="text-slate-500 py-4">No hay registros que coincidan con los filtros seleccionados.</p>' : `
+              <div class="overflow-x-auto border border-[#dce6e5] rounded-xl">
+                <table class="w-full text-left border-collapse text-[11px]">
+                  <thead class="bg-[#073e3b] text-white">
+                    <tr>${cols.map(c => `<th class="p-2 font-bold whitespace-nowrap">${esc(c)}</th>`).join('')}</tr>
+                  </thead>
+                  <tbody>
+                    ${filteredRows.map(r => `
+                      <tr class="border-b border-slate-100 hover:bg-[#f5f8f8]">
+                        ${cols.map(c => `<td class="p-2 whitespace-nowrap font-mono">${esc(r[c] ?? '')}</td>`).join('')}
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+        `;
+      },
+
+      exportRepoCsv() {
+        const rows = this.getFilteredRepoRows();
+        if (!rows.length) return toast('No hay filas filtradas para exportar.');
+        const cols = Object.keys(rows[0]);
+        const csv = [
+          cols.join(';'),
+          ...rows.map(r => cols.map(c => `"${String(typeof r[c] === 'object' ? JSON.stringify(r[c]) : (r[c] ?? '')).replace(/"/g, '""')}"`).join(';'))
+        ].join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${this.repoTable}_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
+        toast(`📥 Excel/CSV descargado (${rows.length} registros).`);
+      }
+    };
+
+
+
+    window.CrmAuth = {
+      async login() {
+        const email = $('crm-email').value;
+        const pass = $('crm-pass').value;
+        const err = $('crm-login-err');
+        const btn = $('btn-crm-login');
+        err.classList.add('hidden');
+        btn.textContent = 'Verificando credenciales...';
+        btn.disabled = true;
+        try {
+          const res = await loginVozkora(email, pass);
+          if (!res.ok) {
+            err.textContent = res.error;
+            err.classList.remove('hidden');
+            return;
+          }
+          if (res.user.rol !== 'SUPERADMIN') {
+            cerrarSesionVozkora();
+            err.textContent = '⛔ Acceso denegado: Esta consola es exclusiva para Súper-Administradores de Vozkora.';
+            err.classList.remove('hidden');
+            return;
+          }
+          $('crm-login-screen').classList.add('hidden');
+          CRM.open();
+        } catch (e) {
+          err.textContent = 'Error de conexión: ' + e.message;
+          err.classList.remove('hidden');
+        } finally {
+          btn.textContent = 'Ingresar a Consola Maestra →';
+          btn.disabled = false;
+        }
+      },
+      logout() {
+        cerrarSesionVozkora();
+        $('crm-overlay').classList.add('hidden');
+        $('crm-login-screen').classList.remove('hidden');
+      }
+    };
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+      if (ses && ses.rol === 'SUPERADMIN') {
+        $('crm-login-screen').classList.add('hidden');
+        CRM.open();
+      }
+    });
+  </script>
+</body>
+</html>
