@@ -154,77 +154,33 @@ async function refrescarSesionDesdeSupabase(sesionActual) {
 async function loginVozkora(email, clave) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   const cleanPass = String(clave || '').trim();
-  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?email=eq.${encodeURIComponent(cleanEmail)}&select=*`;
-  const resp = await fetch(url, { headers: supaHeaders() });
-  if (!resp.ok) throw new Error('No se pudo conectar con Supabase');
-  const rows = await resp.json();
-  if (!rows || rows.length === 0) {
-    return { ok: false, error: 'Usuario no encontrado en Vozkora.' };
-  }
-  const user = rows[0];
-  if (user.clave !== cleanPass) {
-    return { ok: false, error: 'Contraseña incorrecta.' };
-  }
-  if (!user.activo) {
-    return { ok: false, error: 'Este usuario está suspendido. Contacta al administrador.' };
-  }
-
-  let empresa = null;
-  if (user.empresa_id) {
-    const empResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?id=eq.${encodeURIComponent(user.empresa_id)}&select=*`, { headers: supaHeaders() });
-    if (empResp.ok) {
-      const empRows = await empResp.json();
-      if (empRows && empRows.length > 0) empresa = empRows[0];
-    }
-  } else if (user.empresa_ruc) {
-    const empResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?ruc=eq.${encodeURIComponent(user.empresa_ruc)}&select=*`, { headers: supaHeaders() });
-    if (empResp.ok) {
-      const empRows = await empResp.json();
-      if (empRows && empRows.length > 0) empresa = empRows[0];
-    }
-  }
-
-  if (empresa && !empresa.activa) {
-    return { ok: false, error: `La empresa ${empresa.nombre} se encuentra suspendida en Vozkora.` };
-  }
-
   const localDevId = obtenerDeviceIdLocal();
-  if (user.rol !== 'DEMO' && user.rol !== 'SUPERADMIN') {
-    if (user.session_token && user.session_token !== localDevId) {
-      return {
-        ok: false,
-        error: `⛔ Acceso bloqueado: El usuario ${user.email} ya tiene sesión activa en otro dispositivo (${user.dispositivo_info || 'Otro equipo'}). Solicita liberar dispositivo en Soporte / CRM.`
-      };
-    }
-    await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?id=eq.${encodeURIComponent(user.id)}`, {
-      method: 'PATCH',
-      headers: supaHeaders(),
-      body: JSON.stringify({
-        session_token: localDevId,
-        dispositivo_info: obtenerNombreDispositivo(),
-        ultimo_acceso: new Date().toISOString()
-      })
-    });
-    user.session_token = localDevId;
+  const devInfo = obtenerNombreDispositivo();
+
+  const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/login_vozkora_seguro`, {
+    method: 'POST',
+    headers: supaHeaders(),
+    body: JSON.stringify({
+      p_email: cleanEmail,
+      p_clave: cleanPass,
+      p_device_id: localDevId,
+      p_device_info: devInfo
+    })
+  });
+  if (!resp.ok) throw new Error('No se pudo conectar con el servicio de autenticación');
+  const data = await resp.json();
+  if (!data || !data.ok) {
+    return { ok: false, error: (data && data.error) ? data.error : 'Credenciales incorrectas.' };
   }
 
-  const sesionCompleta = Object.assign({}, user, {
-    empresa_id: empresa ? empresa.id : user.empresa_id,
-    empresa_nombre: empresa ? empresa.nombre : user.empresa_nombre,
-    empresa_ruc: empresa ? empresa.ruc : user.empresa_ruc,
-    empresa_telefono: empresa ? empresa.telefono : user.empresa_telefono,
-    plan_activo: empresa ? empresa.plan_activo : user.plan_activo,
-    periodicidad: empresa ? (empresa.periodicidad || 'MENSUAL') : 'MENSUAL',
-    fecha_proximo_corte: empresa ? (empresa.fecha_proximo_corte || calcularProximoCorte('MENSUAL')) : calcularProximoCorte('MENSUAL'),
-    control_corte: empresa ? (empresa.control_corte !== false) : true,
-    exento_hasta: empresa ? (empresa.exento_hasta || null) : null,
-    max_usuarios: empresa ? empresa.max_usuarios : 5,
-      sva_elegidos_fijos: empresa ? !!empresa.sva_elegidos_fijos : false,
-    packs_ia: empresa ? empresa.packs_ia : user.packs_ia,
-    entorno: empresa ? empresa.entorno : user.entorno,
-    contifico_api_key: empresa ? empresa.contifico_api_key : user.contifico_api_key,
-    contifico_pos_token: empresa ? empresa.contifico_pos_token : user.contifico_pos_token,
-    sva_elegidos_fijos: empresa ? !!empresa.sva_elegidos_fijos : false
+  const sesionCompleta = Object.assign({}, data.user, {
+    periodicidad: data.user.periodicidad || 'MENSUAL',
+    fecha_proximo_corte: data.user.fecha_proximo_corte || calcularProximoCorte('MENSUAL'),
+    control_corte: data.user.control_corte !== false,
+    exento_hasta: data.user.exento_hasta || null,
+    max_usuarios: Number(data.user.max_usuarios) || 5,
+    sva_elegidos_fijos: !!data.user.sva_elegidos_fijos,
+    session_token: localDevId
   });
 
   localStorage.setItem(VOZKORA_CONFIG.STORAGE_KEYS.SESION, JSON.stringify(sesionCompleta));
@@ -243,14 +199,49 @@ async function cerrarSesionVozkora() {
   const ses = obtenerSesionVozkora();
   if (ses && ses.id && ses.rol !== 'DEMO' && ses.rol !== 'SUPERADMIN') {
     try {
-      await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?id=eq.${encodeURIComponent(ses.id)}`, {
-        method: 'PATCH',
+      await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/logout_vozkora_seguro`, {
+        method: 'POST',
         headers: supaHeaders(),
-        body: JSON.stringify({ session_token: null, dispositivo_info: null })
+        body: JSON.stringify({ p_user_id: ses.id })
       });
     } catch (e) {}
   }
   localStorage.removeItem(VOZKORA_CONFIG.STORAGE_KEYS.SESION);
+}
+
+async function registrarInteresModuloVozkora(moduloNombre) {
+  const ses = obtenerSesionVozkora() || {};
+  try {
+    await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/registrar_interes_modulo_vozkora`, {
+      method: 'POST',
+      headers: supaHeaders(),
+      body: JSON.stringify({
+        p_empresa_ruc: ses.empresa_ruc || 'N/A',
+        p_empresa_nombre: ses.empresa_nombre || 'Empresa Vozkora',
+        p_email: ses.email || 'usuario@empresa.com',
+        p_modulo_nombre: moduloNombre || 'Módulo Empresarial'
+      })
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function solicitarEliminacionCuentaVozkora(motivo = '') {
+  const ses = obtenerSesionVozkora() || {};
+  const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/solicitar_eliminacion_cuenta_vozkora`, {
+    method: 'POST',
+    headers: supaHeaders(),
+    body: JSON.stringify({
+      p_empresa_ruc: ses.empresa_ruc || 'N/A',
+      p_empresa_nombre: ses.empresa_nombre || 'Empresa Vozkora',
+      p_email: ses.email || 'usuario@empresa.com',
+      p_motivo: motivo || 'Solicitud desde aplicación móvil'
+    })
+  });
+  if (!resp.ok) throw new Error('No se pudo registrar la solicitud de eliminación');
+  return true;
 }
 
 // -------------------------------------------------------------------------
@@ -463,7 +454,7 @@ async function consultarRepositorio(tabla, empresaRucFiltro = '') {
 }
 
 // -------------------------------------------------------------------------
-// G. PUENTE RENDER + SIIGO CONTÍFICO + MODO OFFLINE
+// G. PUENTE RENDER + PROVEEDOR SOFTWARE CONTABLE + MODO OFFLINE
 // -------------------------------------------------------------------------
 async function verificarConexionPuente() {
   try {
