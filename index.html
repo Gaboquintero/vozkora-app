@@ -585,7 +585,7 @@
       </div>
       <h3 class="text-lg font-extrabold text-[#073e3b]">Implementación Personalizada a Medida</h3>
       <p class="text-xs text-slate-600 leading-relaxed">
-        Configuramos tu <strong>Credenciales API de tu Software Contable</strong>, adaptamos los módulos según tu sector y dejamos entrenado tu Copiloto IA.
+        Configuramos tu <strong>Credenciales API de tu Proveedor Software Contable</strong>, adaptamos los módulos según tu sector y dejamos entrenado tu Copiloto IA.
       </p>
       <div id="quote-modal-summary" class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1 text-xs"></div>
       <div class="space-y-2">
@@ -840,7 +840,7 @@
         offlineQueue: 0,
         offlineQueueItems: [],
         briefingPlaying: false,
-        // Listado de Impuestos sincronizado desde Contífico (Ecuador)
+        // Listado de Impuestos sincronizado desde Proveedor Software Contable (Ecuador)
         contificoTaxes: [
           { code: 'IVA-15', name: 'IVA 15% General (Tarifa Vigente)', rate: 15, sector: 'Comercio General, Repuestos y Servicios' },
           { code: 'IVA-05', name: 'IVA 5% Construcción (Sector Inmobiliario)', rate: 5, sector: 'Ferreterías y Materiales de Construcción' },
@@ -2078,7 +2078,7 @@
         </div>
 
         <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 flex items-center justify-between text-xs">
-          <span class="font-bold">Conexión Software Contable</span>
+          <span class="font-bold">Conexión Proveedor Software Contable</span>
           <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold ${appData.offline ? 'bg-amber-100 text-amber-900' : 'bg-[#e4f4ef] text-[#087e70]'}">
             ${appData.offline ? `Offline (${appData.offlineQueueItems.length} pend.)` : 'Sincronización Activa'}
           </span>
@@ -2150,9 +2150,14 @@
           </div>
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2">
               <b>Detalle de venta (${appData.cart.length})</b>
-              <span class="text-[10px] font-bold ${hasMinPlan(2) ? 'text-[#087e70]' : 'text-slate-400'}">${hasMinPlan(2) ? '✓ Auditoría SRI OK' : 'Sin auditoría preventiva (Piloto)'}</span>
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] font-bold ${hasMinPlan(2) ? 'text-[#087e70]' : 'text-slate-400'}">${hasMinPlan(2) ? '✓ Auditoría SRI OK' : 'Sin auditoría (Piloto)'}</span>
+                <button type="button" onclick="V.clearSaleForm('${p}')" class="px-2 py-1 rounded-lg text-[10px] font-extrabold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer" title="Vaciar carrito y restablecer formulario">
+                  🗑️ Limpiar
+                </button>
+              </div>
             </div>
 
             <div class="space-y-1.5">
@@ -2310,7 +2315,7 @@
           </div>
 
           <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[10.5px] text-[#073e3b]">
-            <strong>Proforma Comercial:</strong> Se sincroniza con tu Software Contable sin rebajar inventario ni afectar facturación SRI, con PDF descargable.
+            <strong>Proforma Comercial:</strong> Se sincroniza con tu Proveedor Software Contable sin rebajar inventario ni afectar facturación SRI, con PDF descargable.
           </div>
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
@@ -2712,8 +2717,8 @@
           ${backBtn}
           <div class="space-y-1.5">
             <div>
-              <div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (API Contífico)</div>
-              <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados en Supabase y enviados vía API Software Contable</div>
+              <div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (API Proveedor Software Contable)</div>
+              <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados en Supabase y enviados vía API Proveedor Software Contable</div>
             </div>
             <div class="grid ${ocrRucAllowed ? 'grid-cols-3' : 'grid-cols-1'} gap-1.5">
               ${ocrRucAllowed ? `
@@ -3136,7 +3141,7 @@
           ${backBtn}
           <div class="text-base font-extrabold text-[#17343a]">⚙️ Configuración empresarial</div>
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
-            <b>Conexión Software Contable</b>
+            <b>Conexión Proveedor Software Contable</b>
             <input class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono text-[11px]" value="API_KEY_VOZKORA_98A7F6E5D4" readonly>
             <input class="w-full border border-[#d7e1e0] rounded-xl p-2 font-mono text-[11px]" value="TOKEN_POS_ECUADOR_2026" readonly>
             <button onclick="toast('✓ Conexión verificada con Software Contable (Pruebas).')" class="w-full py-2 rounded-xl text-xs font-bold bg-[#e7f5f1] text-[#087e70] border border-[#b9d1cd] cursor-pointer">
@@ -3183,13 +3188,15 @@
       if (p === 'sync') {
         const qList = appData.offlineQueueItems || [];
         const errItems = qList.filter(x => !!x.apiError);
+        const allChecked = qList.length > 0 && qList.every(x => !!x._selected);
+        const selectedCount = qList.filter(x => !!x._selected).length;
         return `
           ${backBtn}
           <div class="text-base font-extrabold text-[#17343a]">🔄 Sincronización y Cola Local</div>
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-4 text-center space-y-2.5 text-xs">
             <div class="text-4xl">${appData.offline ? '📴' : '📶'}</div>
-            <b class="text-sm block">${appData.offline ? 'Modo sin conexión activo (SQLite local)' : 'Conectividad activa con Software Contable'}</b>
-            <p class="text-[#71838a]">Sin internet o ante un rechazo API, <strong>ninguna operación se pierde</strong>: quedan guardadas con su fecha real de venta para reenviar o corregir.</p>
+            <b class="text-sm block">${appData.offline ? 'Modo sin conexión activo (SQLite local)' : 'Conectividad activa con Proveedor Software Contable'}</b>
+            <p class="text-[#71838a]">Sin internet o ante un rechazo API, <strong>ninguna operación se pierde</strong>: quedan guardadas con su fecha real de venta para reenviar, corregir o descartar.</p>
             <button onclick="V.toggleOffline()" class="w-full py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
               ${appData.offline ? `Restablecer conexión y sincronizar (${qList.length} pend.)` : 'Simular pérdida de Internet'}
             </button>
@@ -3202,18 +3209,34 @@
                 ${errItems.length ? `${errItems.length} con Error API` : (qList.length ? 'Esperando señal' : 'Todo sincronizado')}
               </span>
             </div>
+
+            ${qList.length ? `
+              <div class="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                <label class="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#073e3b] cursor-pointer select-none">
+                  <input type="checkbox" ${allChecked ? 'checked' : ''} onchange="V.toggleSelectAllQueue(this.checked)" class="w-4 h-4 accent-[#087e70] cursor-pointer" />
+                  <span>Seleccionar todas (${qList.length})</span>
+                </label>
+                <button type="button" onclick="V.deleteSelectedQueueItems()" ${selectedCount === 0 ? 'disabled' : ''} class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold ${selectedCount > 0 ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}">
+                  🗑️ Eliminar (${selectedCount})
+                </button>
+              </div>
+            ` : ''}
+
             ${qList.length ? qList.map((op, idx) => {
               const hasErr = !!op.apiError;
               return `
                 <div class="p-2.5 rounded-xl ${hasErr ? 'bg-rose-50 border-rose-300' : 'bg-amber-50/70 border-amber-200'} border space-y-1.5">
-                  <div class="flex justify-between items-center font-bold text-[#073e3b] gap-1">
-                    <span>${esc(op.module)} · <span class="font-mono">${esc(op.ref)}</span></span>
-                    <span class="font-mono text-[10px] px-1.5 py-0.5 rounded ${hasErr ? 'bg-rose-600 text-white' : 'bg-amber-200 text-amber-900'}">
+                  <div class="flex justify-between items-start font-bold text-[#073e3b] gap-1.5">
+                    <label class="inline-flex items-start gap-2 cursor-pointer min-w-0">
+                      <input type="checkbox" ${op._selected ? 'checked' : ''} onchange="V.toggleSelectQueueItem(${idx}, this.checked)" class="mt-0.5 w-4 h-4 accent-[#087e70] cursor-pointer shrink-0" />
+                      <span class="truncate">${esc(op.module)} · <span class="font-mono">${esc(op.ref)}</span></span>
+                    </label>
+                    <span class="font-mono text-[10px] px-1.5 py-0.5 rounded shrink-0 ${hasErr ? 'bg-rose-600 text-white' : 'bg-amber-200 text-amber-900'}">
                       ${hasErr ? `🔴 Pendiente con Error API${op.apiErrorStatus ? ' (' + op.apiErrorStatus + ')' : ''}` : `⏳ ${esc(op.fecha_operacion_real || op.time)}`}
                     </span>
                   </div>
-                  <div class="text-[11px] text-slate-700">${esc(op.detail)}</div>
-                  ${op.fecha_operacion_real ? `<div class="text-[10px] text-slate-500">🕒 Operación real: <strong class="font-mono">${esc(op.fecha_operacion_real)}</strong></div>` : ''}
+                  <div class="text-[11px] text-slate-700 pl-6">${esc(op.detail)}</div>
+                  ${op.fecha_operacion_real ? `<div class="text-[10px] text-slate-500 pl-6">🕒 Operación real: <strong class="font-mono">${esc(op.fecha_operacion_real)}</strong></div>` : ''}
                   ${hasErr ? `
                     <div class="p-2 rounded-lg bg-white border border-rose-200 text-[10.5px] text-rose-800 font-semibold">
                       Motivo del rechazo: ${esc(op.apiError)}
@@ -4363,7 +4386,7 @@
           {
             id: 'CONFIG_SRI_CONTIFICO',
             icon: '🏛️',
-            title: 'Configuración SRI / Contífico',
+            title: 'Configuración SRI / Proveedor Software Contable',
             desc: 'Ayuda con firma electrónica, API Key o Token POS',
             color: 'bg-slate-50 border-slate-200 text-slate-900'
           },
@@ -4568,6 +4591,20 @@
         renderPhone(returnPage);
       },
 
+      clearSaleForm(returnPage = 'billing') {
+        if (appData.cart.length > 0 && !confirm('¿Deseas limpiar todo el detalle de venta y restablecer el formulario?')) {
+          return;
+        }
+        appData.cart = [];
+        appData.discountMode = 'none';
+        appData.discountPct = 0;
+        renderPhone(returnPage);
+        if ($('saleClient') && $('saleClient').options.length > 0) $('saleClient').selectedIndex = 0;
+        if ($('saleQty')) $('saleQty').value = 1;
+        if ($('payMethod')) $('payMethod').selectedIndex = 0;
+        toast('🗑️ Formulario de facturación restablecido.');
+      },
+
       // --- Carrito Multi-Producto Proformas ---
       addQuoteCart() {
         const prod = appData.products.find(x => x.id === $('quoteProduct').value);
@@ -4660,7 +4697,7 @@
       openTaxesModal() {
         this.openModal(
           '🏛️ Listado de Impuestos (Tributación / SRI)',
-          `<p class="text-[11px] text-slate-600">Tarifas tributarias sincronizadas desde su cuenta de Software Contable en Ecuador:</p>
+          `<p class="text-[11px] text-slate-600">Tarifas tributarias sincronizadas desde su cuenta de Proveedor Software Contable en Ecuador:</p>
            <div class="space-y-1.5">
              ${appData.contificoTaxes.map(t => `
                <div class="p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] flex items-center justify-between gap-2">
@@ -4755,7 +4792,7 @@
           if (!apiRes.ok) {
             apiRejected = {
               status: apiRes.status || 422,
-              error: apiRes.error || 'Rechazo del servidor puente / Siigo Contífico'
+              error: apiRes.error || 'Rechazo del servidor puente / Proveedor Software Contable'
             };
             invObj.status = 'Pendiente con Error API';
           }
@@ -5131,7 +5168,7 @@
       },
 
       syncBankMovements() {
-        toast('🔄 Extractos bancarios sincronizados con tu Software Contable.');
+        toast('🔄 Extractos bancarios sincronizados con tu Proveedor Software Contable.');
         renderPhone('banking');
       },
 
@@ -5697,7 +5734,7 @@
               es_cliente: true
             }, false);
             if (!cliRes.ok) {
-              item.apiError = cliRes.error || 'Error HTTP al crear cliente en Contífico';
+              item.apiError = cliRes.error || 'Error HTTP al crear cliente en Proveedor Software Contable';
               item.apiErrorStatus = cliRes.status || 422;
               return false;
             }
@@ -5745,6 +5782,53 @@
           if (typeof item.onSync === 'function') item.onSync();
         }
         return itemOk;
+      },
+
+      toggleSelectQueueItem(idx, checked) {
+        if (appData.offlineQueueItems[idx]) {
+          appData.offlineQueueItems[idx]._selected = !!checked;
+          renderPhone('sync');
+        }
+      },
+
+      toggleSelectAllQueue(checked) {
+        (appData.offlineQueueItems || []).forEach(it => { it._selected = !!checked; });
+        renderPhone('sync');
+      },
+
+      deleteSelectedQueueItems() {
+        const list = appData.offlineQueueItems || [];
+        const toRemove = list.filter(x => !!x._selected);
+        if (!toRemove.length) return toast('Selecciona al menos una transacción.');
+        if (!confirm(`🗑️ ¿Eliminar ${toRemove.length} transacción(es) de la cola local? Ya no se enviarán al SRI ni al Proveedor Software Contable.`)) {
+          return;
+        }
+        toRemove.forEach(item => {
+          if (item.module === 'Facturación SRI') {
+            appData.invoices = appData.invoices.filter(x => x.id !== item.ref);
+          } else if (item.module === 'Proforma (PRO)') {
+            appData.quotes = appData.quotes.filter(x => x.id !== item.ref);
+          } else if (item.module === 'Nota de Crédito') {
+            appData.creditNotes = appData.creditNotes.filter(x => x.id !== item.ref);
+          } else if (item.module === 'Retención SRI') {
+            appData.retentions = appData.retentions.filter(x => x.id !== item.ref);
+          } else if (item.module === 'Guía de Remisión') {
+            appData.dispatchGuides = appData.dispatchGuides.filter(x => x.id !== item.ref);
+          } else if (item.module.startsWith('Cliente')) {
+            appData.clients = appData.clients.filter(x => x.id !== item.ref);
+          } else if (item.module === 'Producto Nuevo') {
+            appData.products = appData.products.filter(x => x.id !== item.ref);
+          } else if (item.module === 'Orden de Trabajo') {
+            appData.orders = appData.orders.filter(x => x.id !== item.ref);
+          }
+        });
+        appData.offlineQueueItems = list.filter(x => !x._selected);
+        syncOfflineBadgeUI();
+        if (typeof guardarColaOfflineLocal === 'function') {
+          guardarColaOfflineLocal(appData.offlineQueueItems);
+        }
+        renderPhone('sync');
+        toast(`🗑️ ${toRemove.length} transacción(es) eliminada(s) correctamente.`);
       },
 
       async retryQueuedApiItem(idx) {
@@ -6495,7 +6579,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 class="text-sm font-extrabold text-[#073e3b]">🏢 Registro Privado de Empresas (${this.cachedCompanies.length})</h3>
-                <p class="text-[11px] text-slate-500">Tus clientes SaaS contratados: define su Plan, Cupo máximo de usuarios, Entorno y APIs de Contífico.</p>
+                <p class="text-[11px] text-slate-500">Tus clientes SaaS contratados: define su Plan, Cupo máximo de usuarios, Entorno y APIs del Proveedor Software Contable.</p>
               </div>
               <button onclick="CRM.openNewCompanyModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                 + Registrar Nueva Empresa
@@ -6534,7 +6618,7 @@
                           👥 Cupo Usuarios: ${usedCount} / ${maxCount}
                         </span>
                         <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${hasKeys ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">
-                          ${hasKeys ? '🔑 API Software Contable OK' : '⚠️ Falta API Software Contable'}
+                          ${hasKeys ? '🔑 API Proveedor Software Contable OK' : '⚠️ Falta API Software Contable'}
                         </span>
                       </div>
                       <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${emp.activa ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
@@ -6616,7 +6700,7 @@
                         <option value="PRODUCCION" ${emp.entorno === 'PRODUCCION' ? 'selected' : ''}>Entorno: PRODUCCIÓN</option>
                       </select>
                       <button onclick="CRM.openCompanyApiModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
-                        🔑 API Software Contable
+                        🔑 API Proveedor Software Contable
                       </button>
                       <button onclick="CRM.userFilterEmpresa='${esc(emp.ruc)}'; CRM.setTab('users');" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
                         👥 Usuarios (${usedCount})
@@ -6670,7 +6754,7 @@
              <div>
                <label class="font-bold text-[11px]">Entorno Inicial</label>
                <select id="empNewEnv" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
-                 <option value="SANDBOX">SANDBOX (Pruebas Contífico)</option>
+                 <option value="SANDBOX">SANDBOX (Pruebas Proveedor Software Contable)</option>
                  <option value="PRODUCCION">PRODUCCIÓN (SRI Real)</option>
                  <option value="DEMO">DEMO</option>
                </select>
@@ -6731,16 +6815,16 @@
         const emp = this.cachedCompanies[idx];
         if (!emp) return;
         V.openModal(
-          `🔑 API Software Contable · ${emp.nombre}`,
+          `🔑 API Proveedor Software Contable · ${emp.nombre}`,
           `<div class="space-y-2.5">
              <p class="text-[11px] text-slate-600">Estas credenciales se aplicarán a todos los usuarios asignados a <strong>${esc(emp.nombre)}</strong> (RUC: ${esc(emp.ruc)}) en entorno <strong>${esc(emp.entorno)}</strong>:</p>
              <div>
-               <label class="text-[11px] font-bold text-[#073e3b]">API Key Software Contable</label>
-               <input id="empApiKey" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[11px]" placeholder="Pega aquí el API Key de Contífico" value="${esc(emp.contifico_api_key || '')}">
+               <label class="text-[11px] font-bold text-[#073e3b]">API Key Proveedor Software Contable</label>
+               <input id="empApiKey" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[11px]" placeholder="Pega aquí el API Key del Proveedor Software Contable" value="${esc(emp.contifico_api_key || '')}">
              </div>
              <div>
-               <label class="text-[11px] font-bold text-[#073e3b]">Token POS Software Contable</label>
-               <input id="empPosToken" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[11px]" placeholder="Pega aquí el Token POS de Contífico" value="${esc(emp.contifico_pos_token || '')}">
+               <label class="text-[11px] font-bold text-[#073e3b]">Token POS Proveedor Software Contable</label>
+               <input id="empPosToken" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[11px]" placeholder="Pega aquí el Token POS del Proveedor Software Contable" value="${esc(emp.contifico_pos_token || '')}">
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
@@ -6755,7 +6839,7 @@
             contifico_pos_token: $('empPosToken').value.trim()
           });
           V.closeModal();
-          toast('✓ Credenciales API de Contífico guardadas para la empresa.');
+          toast('✓ Credenciales API del Proveedor Software Contable guardadas para la empresa.');
           this.loadCompanies();
         } catch (e) {
           toast('Error: ' + e.message);

@@ -530,21 +530,50 @@ async function sincronizarClientePuenteContifico(clientePayload, esEdicion = fal
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.ok === false) {
-      const msg = data.error || data.mensaje || data.message || (`Error HTTP ${resp.status} al sincronizar cliente en Contífico`);
+      const detalleTec = data.error || data.mensaje || data.message || '';
+      const msg = traducirErrorApiContable(resp.status, detalleTec, 'cliente');
       return { ok: false, status: resp.status, error: msg, data };
     }
     return { ok: true, status: resp.status, data };
   } catch (e) {
-    return { ok: false, status: 0, error: e.message };
+    return { ok: false, status: 0, error: traducirErrorApiContable(0, e.message, 'cliente') };
   }
 }
 
 
 
 // -------------------------------------------------------------------------
-// G2. EMISIÓN DE DOCUMENTOS AL SERVIDOR PUENTE RENDER / SIIGO CONTÍFICO
-//     CON CONTROL DE ERRORES HTTP (REGLA 7) Y FECHA OFFLINE SRI (REGLA 8)
+// G2. EMISIÓN DE DOCUMENTOS AL PROVEEDOR SOFTWARE CONTABLE
+//     CON TRADUCCIÓN CONTABLE DE ERRORES HTTP (REGLA 7) Y FECHA OFFLINE SRI (REGLA 8)
 // -------------------------------------------------------------------------
+function traducirErrorApiContable(status, detalleTecnico = '', contexto = 'documento') {
+  const cleanDet = String(detalleTecnico || '')
+    .replace(/siigo\s*cont[ií]fico/gi, 'Proveedor Software Contable')
+    .replace(/cont[ií]fico/gi, 'Proveedor Software Contable')
+    .trim();
+  const extra = cleanDet ? ` Detalle técnico: ${cleanDet}` : '';
+
+  if (status === 400) {
+    return `Error 400 — Datos incompletos o con formato incorrecto al enviar al Proveedor Software Contable. Revisa RUC/cédula del cliente, productos, impuestos o forma de pago.${extra}`;
+  }
+  if (status === 401 || status === 403) {
+    return `Error ${status} — Credenciales API del Proveedor Software Contable no configuradas, inválidas o sin permisos. Verifica el API Key y Token POS de la empresa.${extra}`;
+  }
+  if (status === 404) {
+    return `Error 404 — Ruta o recurso no encontrado en el servidor puente del Proveedor Software Contable (verifica si el cliente o producto existe en el sistema contable).${extra}`;
+  }
+  if (status === 422) {
+    return `Error 422 — Validación tributaria/contable rechazada por el Proveedor Software Contable (ej. RUC/cédula inválido, establecimiento no autorizado o producto sin código).${extra}`;
+  }
+  if (status >= 500) {
+    return `Error ${status} — Falla temporal en el servidor del Proveedor Software Contable o puente de comunicación. Tu operación está a salvo; intenta reenviar en unos minutos.${extra}`;
+  }
+  if (status === 0) {
+    return `Sin respuesta del servidor puente del Proveedor Software Contable (conexión interrumpida o servidor despertando).${extra}`;
+  }
+  return `Error HTTP ${status} al transmitir ${contexto} al Proveedor Software Contable.${extra}`;
+}
+
 async function emitirDocumentoPuenteContifico(tipoDoc, docPayload) {
   const ses = obtenerSesionVozkora();
   const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
@@ -560,12 +589,13 @@ async function emitirDocumentoPuenteContifico(tipoDoc, docPayload) {
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.ok === false) {
-      const msg = data.error || data.mensaje || data.message || (`Error HTTP ${resp.status} del servidor puente / Siigo Contífico`);
+      const detalleTec = data.error || data.mensaje || data.message || '';
+      const msg = traducirErrorApiContable(resp.status, detalleTec, 'documento');
       return { ok: false, status: resp.status, error: msg, data };
     }
     return { ok: true, status: resp.status, data };
   } catch (e) {
-    return { ok: false, status: 0, error: e.message || 'Error de red con servidor puente' };
+    return { ok: false, status: 0, error: traducirErrorApiContable(0, e.message, 'documento') };
   }
 }
 
