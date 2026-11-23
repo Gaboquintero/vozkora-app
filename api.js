@@ -496,6 +496,69 @@ async function obtenerProductosVozkora() {
   }
 }
 
+async function obtenerCategoriasVozkora() {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  const empRuc = (ses && ses.empresa_ruc) ? ses.empresa_ruc : '123456789001';
+  const cacheKey = `vozkora_cache_categorias_${empRuc}`;
+  try {
+    const resp = await fetch(`${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/categorias`);
+    const data = await resp.json();
+    if (data.ok && Array.isArray(data.categorias)) {
+      localStorage.setItem(cacheKey, JSON.stringify(data.categorias));
+      return { origen: 'ONLINE', categorias: data.categorias };
+    }
+    throw new Error(data.error || 'Error leyendo categorías');
+  } catch (err) {
+    const locales = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+    return { origen: 'OFFLINE', categorias: locales };
+  }
+}
+
+async function obtenerBodegasVozkora() {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  const empRuc = (ses && ses.empresa_ruc) ? ses.empresa_ruc : '123456789001';
+  const cacheKey = `vozkora_cache_bodegas_${empRuc}`;
+  try {
+    const resp = await fetch(`${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/bodegas`);
+    const data = await resp.json();
+    if (data.ok && Array.isArray(data.bodegas)) {
+      localStorage.setItem(cacheKey, JSON.stringify(data.bodegas));
+      return { origen: 'ONLINE', bodegas: data.bodegas };
+    }
+    throw new Error(data.error || 'Error leyendo bodegas');
+  } catch (err) {
+    const locales = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+    return { origen: 'OFFLINE', bodegas: locales };
+  }
+}
+
+async function registrarMovimientoInventarioContifico(movPayload) {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  if (!ses || ses.rol === 'DEMO' || ses.entorno === 'DEMO') {
+    return { ok: true, simulated: true, status: 200, data: { mensaje: 'Movimiento simulado en Demo' } };
+  }
+  const endpoint = `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/movimiento-inventario`;
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(movPayload)
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.ok === false) {
+      const detalleTec = data.error || data.mensaje || data.message || '';
+      const msg = traducirErrorApiContable(resp.status, detalleTec, 'movimiento de bodega');
+      return { ok: false, status: resp.status, error: msg, data };
+    }
+    return { ok: true, status: resp.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, error: traducirErrorApiContable(0, e.message, 'movimiento de bodega') };
+  }
+}
+
 async function sincronizarProductoPuenteContifico(productoPayload, esEdicion = false) {
   const ses = obtenerSesionVozkora();
   const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;

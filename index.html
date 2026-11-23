@@ -849,6 +849,16 @@
           { code: 'NO-OBJ', name: 'No Objeto / Exento de IVA (0%)', rate: 0, sector: 'Servicios Educativos, Transporte y Exportación' }
         ],
         selectedIvaRate: 15,
+        categories: [
+          { id: 'CAT-GEN', nombre: 'General' },
+          { id: 'CAT-ALI', nombre: 'Alimentos y Bebidas' },
+          { id: 'CAT-FER', nombre: 'Ferretería y Construcción' },
+          { id: 'CAT-SER', nombre: 'Servicios Profesionales' }
+        ],
+        warehouses: [
+          { id: 'BOD-01', nombre: 'Bodega Principal' },
+          { id: 'BOD-02', nombre: 'Bodega Norte' }
+        ],
         products: [
           { id: 'P001', name: 'Arroz premium 5 kg', price: 5.50, cost: 4.10, stock: 40, warehouse: 'Bodega Principal', ivaRate: 0, keywords: ['arroz', 'arroces', 'grande'] },
           { id: 'P002', name: 'Aceite vegetal 1 L', price: 2.80, cost: 2.05, stock: 25, warehouse: 'Bodega Principal', ivaRate: 15, keywords: ['aceite', 'aceites', 'paca'] },
@@ -5852,25 +5862,56 @@
         const btn = $('btnSyncCatalogInv');
         if (btn) { btn.textContent = '⏳ Sincronizando...'; btn.disabled = true; }
         try {
-          if (typeof obtenerProductosVozkora === 'function') {
-            const res = await obtenerProductosVozkora();
-            if (res && Array.isArray(res.productos) && res.productos.length > 0) {
-              appData.products = res.productos.map((p, idx) => ({
-                id: p.codigo || ('P' + String(idx + 1).padStart(3, '0')),
-                barcode: (p.codigo_barra || p.codigo_barras || '').trim(),
-                name: p.nombre || 'Producto',
-                price: Number(p.pvp1 || 0) || 1.00,
-                cost: Number(((Number(p.pvp1 || 0) || 1.00) * 0.72).toFixed(2)),
-                stock: Number(p.cantidad_stock ?? 25),
-                warehouse: 'Bodega Principal',
-                ivaRate: Number(p.porcentaje_iva ?? 15),
-                keywords: [(p.nombre || 'producto').toLowerCase().split(' ')[0]]
-              }));
-              renderPhone('inventory');
-              toast(`✅ Catálogo sincronizado (${appData.products.length} productos desde Proveedor Software Contable).`);
-            } else {
-              toast('ℹ️ No se encontraron productos nuevos en el Proveedor Software Contable.');
-            }
+          const [resProd, resCat, resBod] = await Promise.all([
+            typeof obtenerProductosVozkora === 'function' ? obtenerProductosVozkora() : Promise.resolve(null),
+            typeof obtenerCategoriasVozkora === 'function' ? obtenerCategoriasVozkora() : Promise.resolve(null),
+            typeof obtenerBodegasVozkora === 'function' ? obtenerBodegasVozkora() : Promise.resolve(null)
+          ]);
+          if (resCat && Array.isArray(resCat.categorias) && resCat.categorias.length > 0) {
+            appData.categories = resCat.categorias.map(c => ({
+              id: c.id || c.codigo || c.nombre,
+              nombre: c.nombre || c.descripcion || 'General'
+            }));
+          }
+          if (resBod && Array.isArray(resBod.bodegas) && resBod.bodegas.length > 0) {
+            appData.warehouses = resBod.bodegas.map(b => ({
+              id: b.id || b.codigo || b.nombre,
+              nombre: b.nombre || b.descripcion || 'Bodega Principal'
+            }));
+          }
+          if (resProd && Array.isArray(resProd.productos) && resProd.productos.length > 0) {
+            const defBod = (appData.warehouses[0] && appData.warehouses[0].nombre) || 'Bodega Principal';
+            appData.products = resProd.productos.map((p, idx) => ({
+              id: p.codigo || ('P' + String(idx + 1).padStart(3, '0')),
+              apiId: p.id || null,
+              auxCode: p.codigo_auxiliar || '',
+              barcode: (p.codigo_barra || p.codigo_barras || '').trim(),
+              estado: p.estado || 'A',
+              categoryId: p.categoria_id || '',
+              tipo: p.tipo || 'PRO',
+              tipoProducto: p.tipo_producto || 'SIM',
+              unidad: p.unidad || 'Unidad',
+              tipoGastoPersonal: p.tipo_gasto_personal || 'No aplica',
+              description: p.descripcion || '',
+              catalogCode: p.codigo_proveedor || '',
+              catalogExtra: p.campo_adicional_catalogo || '',
+              name: p.nombre || 'Producto',
+              price: Number(p.pvp1 || 0) || 1.00,
+              pvp2: Number(p.pvp2 || 0) || 0,
+              pvp3: Number(p.pvp3 || 0) || 0,
+              pvpDist: Number(p.pvp4 || 0) || 0,
+              cost: Number(p.costo_promedio || ((Number(p.pvp1 || 0) || 1.00) * 0.72)).toFixed(2) * 1,
+              stock: Number(p.cantidad_stock ?? 0),
+              warehouse: defBod,
+              warehouseId: (appData.warehouses[0] && appData.warehouses[0].id) || '',
+              ivaRate: Number(p.porcentaje_iva ?? 15),
+              iceRule: 'No aplica',
+              keywords: [(p.nombre || 'producto').toLowerCase().split(' ')[0]]
+            }));
+            renderPhone('inventory');
+            toast(`✅ Catálogo sincronizado: ${appData.products.length} prod., ${appData.categories.length} cat., ${appData.warehouses.length} bodega(s).`);
+          } else {
+            toast('ℹ️ No se encontraron productos nuevos en el Proveedor Software Contable.');
           }
         } catch (e) {
           toast('⚠️ Error sincronizando catálogo: ' + e.message);
@@ -5879,154 +5920,357 @@
         }
       },
 
-      openNewProductModal(prefillBarcode = '') {
-        this.openModal(
-          '+ Nuevo producto en bodega',
-          `<div>
-             <label class="font-bold">Nombre del producto *</label>
-             <input id="mProdName" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Producto ACME 500 g">
-           </div>
-           <div>
-             <label class="font-bold">Código de barras (EAN / UPC para POS)</label>
-             <div class="flex gap-1.5 mt-1">
-               <input id="mProdBarcode" autocomplete="off" class="flex-1 border border-[#d7e1e0] rounded-xl p-2 font-mono text-xs" value="${esc(prefillBarcode)}" placeholder="7860000000001">
-               <button type="button" onclick="V.openRealCameraModal('prod_barcode', null)" class="px-2.5 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">📷 Leer</button>
-             </div>
-           </div>
-           <div class="grid grid-cols-2 gap-2">
-             <div>
-               <label class="font-bold">Precio venta ($)</label>
-               <input id="mProdPrice" type="number" step="0.01" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="0.00">
-             </div>
-             <div>
-               <label class="font-bold">Stock inicial</label>
-               <input id="mProdStock" type="number" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="0">
-             </div>
-           </div>
-           <div>
-             <label class="font-bold">Bodega asignada ${hasMultiWarehouse() ? '' : '(Bodega Única en tu plan)'}</label>
-             <select id="mProdWarehouse" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
-               <option>Bodega Principal</option>
-               ${hasMultiWarehouse() ? '<option>Bodega Norte</option>' : ''}
-             </select>
-           </div>`,
-          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.saveNewProduct()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
-        );
+      renderProductoFullFormHtml(prod = {}, opts = {}) {
+        const isEdit = !!opts.isEdit;
+        const idxRef = isEdit ? opts.idx : 'null';
+        const defaultCode = isEdit ? (prod.id || '') : ('P' + String(appData.products.length + 1).padStart(3, '0'));
+        const bVal = opts.overrideBarcode !== null && opts.overrideBarcode !== undefined ? opts.overrideBarcode : (prod.barcode || '');
+        const cats = Array.isArray(appData.categories) && appData.categories.length
+          ? appData.categories
+          : [{ id: 'CAT-GEN', nombre: 'General' }];
+        const bods = Array.isArray(appData.warehouses) && appData.warehouses.length
+          ? appData.warehouses
+          : [{ id: 'BOD-01', nombre: 'Bodega Principal' }, { id: 'BOD-02', nombre: 'Bodega Norte' }];
+        const visibleBods = hasMultiWarehouse() ? bods : [bods[0]];
+        const tipoVal = prod.tipo === 'SER' ? 'SER' : (prod.tipoProducto || 'SIM');
+
+        return `
+          <form autocomplete="off" onsubmit="return false;" class="space-y-2 max-h-[65vh] overflow-y-auto pr-1 text-[11px]">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold">Estado *</label>
+                <select id="prFormEstado" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-semibold">
+                  <option value="A" ${(prod.estado || 'A') === 'A' ? 'selected' : ''}>Activo</option>
+                  <option value="I" ${prod.estado === 'I' ? 'selected' : ''}>Inactivo</option>
+                </select>
+              </div>
+              <div>
+                <label class="font-bold">Tipo *</label>
+                <select id="prFormTipo" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-semibold">
+                  <option value="SIM" ${tipoVal === 'SIM' ? 'selected' : ''}>Producto · Simple</option>
+                  <option value="COP" ${tipoVal === 'COP' ? 'selected' : ''}>Producto · Compuesto</option>
+                  <option value="PRO" ${tipoVal === 'PRO' ? 'selected' : ''}>Producto · De producción</option>
+                  <option value="SER" ${tipoVal === 'SER' ? 'selected' : ''}>Servicio</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold">Código Principal *</label>
+                <input id="prFormCodigo" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono font-bold ${isEdit ? 'bg-slate-100 text-slate-600' : ''}" value="${esc(defaultCode)}" ${isEdit ? 'readonly' : ''} placeholder="P001" />
+              </div>
+              <div>
+                <label class="font-bold">Código Auxiliar</label>
+                <input id="prFormAuxCode" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" value="${esc(prod.auxCode || '')}" placeholder="AUX-001" />
+              </div>
+            </div>
+
+            <div>
+              <label class="font-bold">Código de Barras (EAN / UPC para POS)</label>
+              <div class="flex gap-1.5 mt-0.5">
+                <input id="prFormBarcode" autocomplete="off" class="flex-1 border border-[#d7e1e0] rounded-xl p-1.5 font-mono" value="${esc(bVal)}" placeholder="7860000000001" />
+                <button type="button" onclick="V.openRealCameraModal('prod_barcode', ${idxRef})" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">📷 Leer</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="font-bold">Nombre del Producto / Servicio *</label>
+              <input id="prFormNombre" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-bold" value="${esc(prod.name || '')}" placeholder="Producto ACME 500 g" />
+            </div>
+
+            <!-- Categoría con buscador + aviso claro de nube web -->
+            <div class="p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1">
+              <div class="flex items-center justify-between">
+                <label class="font-bold text-[#073e3b]">🔍 Categoría</label>
+                <input type="text" oninput="const q=this.value.toLowerCase(); Array.from($('prFormCategoria').options).forEach(o=>{ o.hidden = q && !o.text.toLowerCase().includes(q); });" placeholder="Filtrar..." class="w-28 border border-[#d7e1e0] rounded-lg px-2 py-0.5 text-[10px] bg-white" />
+              </div>
+              <select id="prFormCategoria" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 bg-white font-semibold">
+                ${cats.map(c => `<option value="${esc(c.id)}" ${String(prod.categoryId || '') === String(c.id) ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}
+              </select>
+              <div class="text-[9.5px] text-slate-600 leading-tight">
+                ℹ️ Si necesitas crear una categoría nueva, créala desde la <strong>nube web de tu Proveedor Software Contable</strong> y luego pulsa <strong>🔄 Sincronizar</strong>.
+              </div>
+            </div>
+
+            <!-- Unidad + Tipo gasto personal -->
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold">Unidad</label>
+                <select id="prFormUnidad" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-semibold">
+                  <option value="Unidad" ${(prod.unidad || 'Unidad') === 'Unidad' ? 'selected' : ''}>Unidad (Por defecto)</option>
+                  <option value="Caja" ${prod.unidad === 'Caja' ? 'selected' : ''}>Caja</option>
+                  <option value="Paquete" ${prod.unidad === 'Paquete' ? 'selected' : ''}>Paquete</option>
+                  <option value="Kilogramo" ${prod.unidad === 'Kilogramo' ? 'selected' : ''}>Kilogramo</option>
+                  <option value="Litro" ${prod.unidad === 'Litro' ? 'selected' : ''}>Litro</option>
+                </select>
+              </div>
+              <div>
+                <label class="font-bold">Tipo gasto personal</label>
+                <select id="prFormGastoPersonal" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white">
+                  <option value="No aplica" ${(prod.tipoGastoPersonal || 'No aplica') === 'No aplica' ? 'selected' : ''}>No aplica</option>
+                  <option value="Alimentación" ${prod.tipoGastoPersonal === 'Alimentación' ? 'selected' : ''}>Alimentación</option>
+                  <option value="Vivienda" ${prod.tipoGastoPersonal === 'Vivienda' ? 'selected' : ''}>Vivienda</option>
+                  <option value="Educación" ${prod.tipoGastoPersonal === 'Educación' ? 'selected' : ''}>Educación</option>
+                  <option value="Vestimenta" ${prod.tipoGastoPersonal === 'Vestimenta' ? 'selected' : ''}>Vestimenta</option>
+                  <option value="Salud" ${prod.tipoGastoPersonal === 'Salud' ? 'selected' : ''}>Salud</option>
+                  <option value="Turismo" ${prod.tipoGastoPersonal === 'Turismo' ? 'selected' : ''}>Turismo</option>
+                </select>
+              </div>
+            </div>
+            <div class="text-[9.5px] text-slate-500 -mt-1">
+              ℹ️ Por defecto se asigna <strong>"Unidad"</strong>. Para usar otras unidades personalizadas, configúralas en la nube web de tu Proveedor Software Contable.
+            </div>
+
+            <div>
+              <label class="font-bold">Descripción</label>
+              <input id="prFormDesc" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(prod.description || '')}" placeholder="Detalle o presentación del producto" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold">Código Catálogo</label>
+                <input id="prFormCatCode" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" value="${esc(prod.catalogCode || '')}" placeholder="CAT-000" />
+              </div>
+              <div>
+                <label class="font-bold">Campo Adicional Catálogo</label>
+                <input id="prFormCatExtra" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(prod.catalogExtra || '')}" placeholder="Marca / Línea" />
+              </div>
+            </div>
+
+            <!-- Precios PVP1, PVP2, PVP3 y PVP Distribuidor -->
+            <div class="p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+              <div class="font-extrabold text-[#073e3b]">💲 Precios de Venta (USD)</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="font-bold">PVP1 (Principal) *</label>
+                  <input id="prFormPvp1" type="number" step="0.01" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-mono font-bold" value="${prod.price || ''}" placeholder="0.00" />
+                </div>
+                <div>
+                  <label class="font-bold">PVP2</label>
+                  <input id="prFormPvp2" type="number" step="0.01" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-mono" value="${prod.pvp2 || ''}" placeholder="0.00" />
+                </div>
+                <div>
+                  <label class="font-bold">PVP3</label>
+                  <input id="prFormPvp3" type="number" step="0.01" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-mono" value="${prod.pvp3 || ''}" placeholder="0.00" />
+                </div>
+                <div>
+                  <label class="font-bold">PVP Distribuidor</label>
+                  <input id="prFormPvpDist" type="number" step="0.01" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-mono" value="${prod.pvpDist || ''}" placeholder="0.00" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Impuestos: IVA (15% por defecto) + ICE (No aplica por defecto) -->
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold">Imp. Valor Agregado (IVA)</label>
+                <select id="prFormIva" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-semibold">
+                  <option value="15" ${(prod.ivaRate ?? 15) === 15 ? 'selected' : ''}>IVA 15% (Por defecto)</option>
+                  <option value="5" ${prod.ivaRate === 5 ? 'selected' : ''}>IVA 5% Construcción</option>
+                  <option value="0" ${prod.ivaRate === 0 ? 'selected' : ''}>IVA 0% / Exento</option>
+                </select>
+              </div>
+              <div>
+                <label class="font-bold">Imp. Consumos Esp. (ICE)</label>
+                <select id="prFormIce" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white">
+                  <option value="No aplica" ${(prod.iceRule || 'No aplica') === 'No aplica' ? 'selected' : ''}>No aplica (Por defecto)</option>
+                  <option value="ICE Bebidas" ${prod.iceRule === 'ICE Bebidas' ? 'selected' : ''}>ICE Bebidas / Licores</option>
+                  <option value="ICE Otros" ${prod.iceRule === 'ICE Otros' ? 'selected' : ''}>ICE Otros Bienes</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Bodega + Stock con Movimiento Automático de Ingreso -->
+            <div class="p-2 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] space-y-1.5">
+              <div class="font-extrabold text-[#073e3b]">🏢 Bodega y Movimiento Automático de Stock</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="font-bold">Bodega Destino ${hasMultiWarehouse() ? '' : '(Única)'}</label>
+                  <select id="prFormWarehouse" class="w-full border border-[#b9d1cd] rounded-xl p-1.5 mt-0.5 bg-white font-semibold">
+                    ${visibleBods.map(b => `<option value="${esc(b.nombre)}" data-bid="${esc(b.id)}" ${(prod.warehouse || '') === b.nombre ? 'selected' : ''}>${esc(b.nombre)}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="font-bold">${isEdit ? 'Stock físico actual' : 'Stock inicial (Ingreso)'}</label>
+                  <input id="prFormStock" type="number" min="0" class="w-full border border-[#b9d1cd] rounded-xl p-1.5 mt-0.5 bg-white font-mono font-bold" value="${prod.stock ?? 0}" placeholder="0" />
+                </div>
+              </div>
+              <div class="text-[9.5px] text-[#073e3b]">
+                ⚡ Al guardar con stock mayor a 0, se crea el producto y se registra automáticamente el <strong>Movimiento de Ingreso (ING)</strong> en la bodega elegida vía API.
+              </div>
+            </div>
+          </form>
+        `;
       },
 
-      async saveNewProduct() {
-        const name = $('mProdName').value.trim();
-        const barcode = ($('mProdBarcode')?.value || '').trim();
-        const price = Number($('mProdPrice').value);
-        const stock = Number($('mProdStock').value) || 0;
-        const warehouse = $('mProdWarehouse').value;
-        if (!name || price <= 0) return toast('Ingresa un nombre y precio válido.');
-        const isOff = await ensureRealtimeOfflineCheck();
-        const id = 'P' + String(appData.products.length + 1).padStart(3, '0');
-        const newProd = { id, barcode, name, price, cost: Number((price * 0.72).toFixed(2)), stock, warehouse, ivaRate: 15, pendingSync: isOff, keywords: [name.toLowerCase().split(' ')[0]] };
-        appData.products.push(newProd);
-        if (isOff) {
-          enqueueOfflineOp('Producto Nuevo', id, `${name} · ${appMoney(price)} (${stock} unid. en ${warehouse})`, () => {
-            const pr = appData.products.find(x => x.id === id);
-            if (pr) pr.pendingSync = false;
-          }, null, null, newProd);
-        } else if (typeof sincronizarProductoPuenteContifico === 'function') {
-          await sincronizarProductoPuenteContifico({
-            codigo: id,
-            codigo_barra: barcode,
-            nombre: name,
-            pvp1: price,
-            cantidad_stock: stock,
-            porcentaje_iva: 15
-          }, false);
-        }
-        this.closeModal();
-        renderPhone('inventory');
-        toast(isOff ? `💾 Producto ${name} guardado en cola Offline.` : `✅ Producto ${name} creado y sincronizado vía API.`);
+      openNewProductModal(prefillBarcode = '') {
+        this.openModal(
+          '+ Nuevo Producto y Movimiento Bodega',
+          this.renderProductoFullFormHtml({ estado: 'A', ivaRate: 15, iceRule: 'No aplica', stock: 0 }, {
+            isEdit: false,
+            overrideBarcode: prefillBarcode
+          }),
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button id="btnSaveProdFull" onclick="V.submitProductoFullForm({ mode: 'new' })" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Crear y Registrar Bodega</button>`
+        );
       },
 
       openEditProductModal(idx, overrideBarcode = null) {
         const prod = appData.products[idx];
         if (!prod) return;
-        const bVal = overrideBarcode !== null ? overrideBarcode : (prod.barcode || '');
         this.openModal(
           `✏️ Editar Producto · ${prod.id}`,
-          `<div>
-             <label class="font-bold">Nombre del producto</label>
-             <input id="eProdName" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" value="${esc(prod.name)}">
-           </div>
-           <div>
-             <label class="font-bold">Código de barras (EAN / UPC para POS)</label>
-             <div class="flex gap-1.5 mt-1">
-               <input id="eProdBarcode" autocomplete="off" class="flex-1 border border-[#d7e1e0] rounded-xl p-2 font-mono text-xs" value="${esc(bVal)}" placeholder="7860000000001">
-               <button type="button" onclick="V.openRealCameraModal('prod_barcode', ${idx})" class="px-2.5 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">📷 Leer</button>
-             </div>
-           </div>
-           <div class="grid grid-cols-2 gap-2">
-             <div>
-               <label class="font-bold">Precio venta (USD)</label>
-               <input id="eProdPrice" type="number" step="0.01" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" value="${prod.price}">
-             </div>
-             <div>
-               <label class="font-bold">Stock físico en bodega</label>
-               <input id="eProdStock" type="number" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" value="${prod.stock}">
-             </div>
-           </div>
-           <div class="grid grid-cols-2 gap-2">
-             <div>
-               <label class="font-bold">Bodega</label>
-               <select id="eProdWarehouse" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
-                 <option ${prod.warehouse === 'Bodega Principal' ? 'selected' : ''}>Bodega Principal</option>
-                 ${hasMultiWarehouse() ? `<option ${prod.warehouse === 'Bodega Norte' ? 'selected' : ''}>Bodega Norte</option>` : ''}
-               </select>
-             </div>
-             <div>
-               <label class="font-bold">Tarifa IVA</label>
-               <select id="eProdIva" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
-                 <option value="15" ${prod.ivaRate === 15 ? 'selected' : ''}>15% General</option>
-                 <option value="5" ${prod.ivaRate === 5 ? 'selected' : ''}>5% Construcción</option>
-                 <option value="0" ${prod.ivaRate === 0 ? 'selected' : ''}>0% Exento/Canasta</option>
-               </select>
-             </div>
-           </div>`,
+          this.renderProductoFullFormHtml(prod, {
+            isEdit: true,
+            idx,
+            overrideBarcode
+          }),
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.saveEditedProduct(${idx})" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
+           <button id="btnSaveProdFull" onclick="V.submitProductoFullForm({ mode: 'edit', idx: ${idx} })" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
         );
       },
 
-      async saveEditedProduct(idx) {
-        const prod = appData.products[idx];
-        const name = $('eProdName').value.trim();
-        const barcode = ($('eProdBarcode')?.value || '').trim();
-        const price = Number($('eProdPrice').value);
-        const stock = Number($('eProdStock').value);
-        if (!name || price <= 0 || stock < 0) return toast('Verifica los valores del producto.');
-        const isOff = await ensureRealtimeOfflineCheck();
-        prod.name = name;
-        prod.barcode = barcode;
-        prod.price = price;
-        prod.stock = stock;
-        prod.warehouse = $('eProdWarehouse').value;
-        prod.ivaRate = Number($('eProdIva').value);
-        prod.pendingSync = isOff;
-        if (isOff) {
-          enqueueOfflineOp('Edición Bodega', prod.id, `${name} · ${appMoney(price)} · Stock: ${stock}`, () => {
-            prod.pendingSync = false;
-          });
-        } else if (typeof sincronizarProductoPuenteContifico === 'function') {
-          await sincronizarProductoPuenteContifico({
-            codigo: prod.id,
-            codigo_barra: barcode,
-            nombre: name,
-            pvp1: price,
-            cantidad_stock: stock,
-            porcentaje_iva: prod.ivaRate
-          }, true);
+      async submitProductoFullForm(opts = {}) {
+        const mode = opts.mode || 'new';
+        const isEdit = mode === 'edit';
+        const estado = $('prFormEstado')?.value || 'A';
+        const tipoSel = $('prFormTipo')?.value || 'SIM';
+        const isServicio = tipoSel === 'SER';
+        const codigo = ($('prFormCodigo')?.value || '').trim();
+        const auxCode = ($('prFormAuxCode')?.value || '').trim();
+        const barcode = ($('prFormBarcode')?.value || '').trim();
+        const name = ($('prFormNombre')?.value || '').trim();
+        const categoryId = $('prFormCategoria')?.value || '';
+        const unidad = $('prFormUnidad')?.value || 'Unidad';
+        const tipoGastoPersonal = $('prFormGastoPersonal')?.value || 'No aplica';
+        const description = ($('prFormDesc')?.value || '').trim();
+        const catalogCode = ($('prFormCatCode')?.value || '').trim();
+        const catalogExtra = ($('prFormCatExtra')?.value || '').trim();
+        const pvp1 = Number($('prFormPvp1')?.value) || 0;
+        const pvp2 = Number($('prFormPvp2')?.value) || 0;
+        const pvp3 = Number($('prFormPvp3')?.value) || 0;
+        const pvpDist = Number($('prFormPvpDist')?.value) || 0;
+        const ivaRate = Number($('prFormIva')?.value ?? 15);
+        const iceRule = $('prFormIce')?.value || 'No aplica';
+        const whSel = $('prFormWarehouse');
+        const warehouse = whSel ? whSel.value : 'Bodega Principal';
+        const warehouseId = (whSel && whSel.selectedOptions[0]) ? (whSel.selectedOptions[0].dataset.bid || '') : '';
+        const stock = Math.max(0, Number($('prFormStock')?.value) || 0);
+
+        if (!codigo || !name || pvp1 <= 0) {
+          return toast('Completa Código Principal, Nombre y PVP1 mayor a $0.');
         }
+
+        const btn = $('btnSaveProdFull');
+        if (btn) { btn.textContent = 'Sincronizando...'; btn.disabled = true; }
+
+        const isOff = await ensureRealtimeOfflineCheck();
+        const prevStock = (isEdit && appData.products[opts.idx]) ? Number(appData.products[opts.idx].stock || 0) : 0;
+        const stockDelta = isEdit ? Math.max(0, stock - prevStock) : stock;
+        const estCost = Number((pvp1 * 0.72).toFixed(2));
+
+        const prodObj = {
+          id: codigo,
+          apiId: (isEdit && appData.products[opts.idx]) ? (appData.products[opts.idx].apiId || null) : null,
+          auxCode,
+          barcode,
+          estado,
+          categoryId,
+          tipo: isServicio ? 'SER' : 'PRO',
+          tipoProducto: isServicio ? 'SIM' : tipoSel,
+          unidad,
+          tipoGastoPersonal,
+          description,
+          catalogCode,
+          catalogExtra,
+          name,
+          price: pvp1,
+          pvp2,
+          pvp3,
+          pvpDist,
+          cost: estCost,
+          stock,
+          warehouse,
+          warehouseId,
+          ivaRate,
+          iceRule,
+          pendingSync: isOff,
+          keywords: [name.toLowerCase().split(' ')[0]]
+        };
+
+        if (isEdit && appData.products[opts.idx]) {
+          appData.products[opts.idx] = prodObj;
+        } else {
+          appData.products.push(prodObj);
+        }
+
+        const apiProductPayload = {
+          id: prodObj.apiId || undefined,
+          estado,
+          codigo,
+          codigo_auxiliar: auxCode,
+          codigo_barra: barcode || auxCode,
+          categoria_id: categoryId && !categoryId.startsWith('CAT-') ? categoryId : undefined,
+          nombre: name,
+          descripcion: description,
+          tipo: prodObj.tipo,
+          tipo_producto: prodObj.tipoProducto,
+          unidad,
+          tipo_gasto_personal: tipoGastoPersonal,
+          codigo_proveedor: catalogCode,
+          campo_adicional_catalogo: catalogExtra,
+          pvp1,
+          pvp2: pvp2 || undefined,
+          pvp3: pvp3 || undefined,
+          pvp4: pvpDist || undefined,
+          porcentaje_iva: ivaRate,
+          ice: iceRule
+        };
+
+        let movMsg = '';
+        if (isOff) {
+          enqueueOfflineOp(isEdit ? 'Edición Bodega' : 'Producto Nuevo', codigo, `${name} · ${appMoney(pvp1)} · ${stock} unid. (${warehouse})`, () => {
+            const pr = appData.products.find(x => x.id === codigo);
+            if (pr) pr.pendingSync = false;
+          }, null, null, prodObj);
+        } else {
+          let createdApiProdId = prodObj.apiId;
+          if (typeof sincronizarProductoPuenteContifico === 'function') {
+            const pRes = await sincronizarProductoPuenteContifico(apiProductPayload, isEdit);
+            if (pRes && pRes.ok && pRes.data) {
+              createdApiProdId = (pRes.data.producto && pRes.data.producto.id) || pRes.data.id || createdApiProdId;
+              prodObj.apiId = createdApiProdId;
+            }
+          }
+
+          // Paso 2: Si es producto físico y hay stock inicial o incremento > 0, registrar Movimiento de Ingreso (ING) en la bodega seleccionada
+          if (!isServicio && stockDelta > 0 && typeof registrarMovimientoInventarioContifico === 'function') {
+            const dNow = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const fechaContifico = `${pad(dNow.getDate())}/${pad(dNow.getMonth() + 1)}/${dNow.getFullYear()}`;
+            const mRes = await registrarMovimientoInventarioContifico({
+              tipo: 'ING',
+              fecha: fechaContifico,
+              bodega_id: warehouseId && !warehouseId.startsWith('BOD-') ? warehouseId : undefined,
+              bodega_nombre: warehouse,
+              producto_id: createdApiProdId || undefined,
+              codigo_producto: codigo,
+              cantidad: stockDelta,
+              precio: estCost,
+              descripcion: `Ingreso inicial desde Vozkora App (${warehouse})`
+            });
+            movMsg = mRes && mRes.ok
+              ? ` + Ingreso de ${stockDelta} unid. en ${warehouse}`
+              : ` (Producto guardado; revisa bodega en nube)`;
+          }
+        }
+
         this.closeModal();
         renderPhone('inventory');
-        toast(isOff ? `💾 Cambios de ${prod.id} guardados en cola Offline.` : `✅ Producto ${prod.id} actualizado y sincronizado vía API.`);
+        toast(isOff
+          ? `💾 Producto ${name} guardado en cola Offline.`
+          : `✅ ${name} (${codigo}) sincronizado${movMsg}.`);
       },
 
       openCollectModal(clientName) {
