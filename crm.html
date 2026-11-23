@@ -1449,9 +1449,14 @@
                         </button>
                       ` : ''}
 
-                      <button onclick="CRM.openTicketBitacoraModal(${realIdx})" class="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
-                        📜 Bitácora (${hist.length || 1})
-                      </button>
+                      <div class="ml-auto flex items-center gap-1.5">
+                        <button onclick="CRM.openTicketCommentModal(${realIdx})" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-white hover:bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
+                          💬 Comentar
+                        </button>
+                        <button onclick="CRM.openTicketBitacoraModal(${realIdx})" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                          📜 Bitácora (${hist.length || 1})
+                        </button>
+                      </div>
                     </div>
                   </div>
                 `;
@@ -1546,6 +1551,72 @@
         }
       },
 
+      openTicketCommentModal(idx) {
+        const tk = this.cachedTickets[idx];
+        if (!tk) return;
+        const currLabel = this.ticketLabel(tk.estado);
+        V.openModal(
+          '💬 Agregar Nota / Comentario en Bitácora',
+          `<div class="space-y-2.5">
+             <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] space-y-1">
+               <div><strong>Empresa:</strong> ${esc(tk.empresa_nombre)} (RUC: ${esc(tk.empresa_ruc)})</div>
+               <div><strong>Estado actual (se mantiene sin cambios):</strong> ${currLabel}</div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px] text-[#073e3b]">Comentario / Seguimiento realizado *</label>
+               <textarea id="tkOnlyCommentText" rows="3" class="w-full border border-[#d7e1e0] rounded-xl p-2.5 mt-1 text-xs focus:outline-none focus:border-[#087e70]" placeholder="Escribe el avance, llamada o nota de seguimiento sin cambiar el estado del ticket..."></textarea>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.submitTicketComment(${idx})" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar en Bitácora</button>`
+        );
+      },
+
+      async submitTicketComment(idx) {
+        const tk = this.cachedTickets[idx];
+        if (!tk) return;
+        const comentario = ($('tkOnlyCommentText')?.value || '').trim();
+        if (!comentario) {
+          return toast('⚠️ Escribe un comentario antes de guardar en la bitácora.');
+        }
+
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { email: 'admin@vozkora.com' };
+        const det = Object.assign({}, tk.detalle || {});
+        const prevHist = Array.isArray(det.historial) ? det.historial.slice() : [
+          {
+            fecha: (tk.creado_en || '').slice(0, 16).replace('T', ' ') || nowFormatted(),
+            de_estado: 'NUEVO',
+            a_estado: '🟡 Abierto',
+            motivo: det.descripcion || 'Solicitud inicial del cliente',
+            autor: tk.solicitado_por
+          }
+        ];
+
+        const currLabel = this.ticketLabel(tk.estado);
+        prevHist.push({
+          fecha: nowFormatted(),
+          de_estado: '💬 Nota',
+          a_estado: currLabel,
+          motivo: comentario,
+          autor: ses.email
+        });
+        det.historial = prevHist;
+
+        try {
+          const updatedRow = await crmActualizarTicket(tk.id, tk.estado, det);
+          if (updatedRow) {
+            this.cachedTickets[idx] = updatedRow;
+          } else {
+            this.cachedTickets[idx].detalle = det;
+          }
+          V.closeModal();
+          toast('✓ Comentario registrado en la bitácora sin cambiar el estado.');
+          await this.loadTickets();
+        } catch (e) {
+          toast('Error guardando comentario: ' + e.message);
+        }
+      },
+
       openTicketBitacoraModal(idx) {
         const tk = this.cachedTickets[idx];
         if (!tk) return;
@@ -1590,7 +1661,8 @@
                `).join('')}
              </div>
            </div>`,
-          `<button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Cerrar Bitácora</button>`
+          `<button onclick="V.closeModal(); CRM.openTicketCommentModal(${idx});" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-white text-[#073e3b] border border-[#b9d1cd] cursor-pointer">💬 Agregar Comentario</button>
+           <button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Cerrar Bitácora</button>`
         );
       },
 
