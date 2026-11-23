@@ -475,10 +475,13 @@ async function verificarConexionPuente() {
 }
 
 async function obtenerProductosVozkora() {
-  const cacheKey = VOZKORA_CONFIG.STORAGE_KEYS.PRODUCTOS;
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  const empRuc = (ses && ses.empresa_ruc) ? ses.empresa_ruc : '123456789001';
+  const cacheKey = `${VOZKORA_CONFIG.STORAGE_KEYS.PRODUCTOS}_${empRuc}`;
   try {
     const resp = await fetch(
-      `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${VOZKORA_CONFIG.EMPRESA_ID}/productos`
+      `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/productos`
     );
     const data = await resp.json();
 
@@ -490,6 +493,31 @@ async function obtenerProductosVozkora() {
   } catch (err) {
     const locales = JSON.parse(localStorage.getItem(cacheKey) || '[]');
     return { origen: 'OFFLINE', productos: locales };
+  }
+}
+
+async function sincronizarProductoPuenteContifico(productoPayload, esEdicion = false) {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  if (!ses || ses.rol === 'DEMO' || ses.entorno === 'DEMO') {
+    return { ok: true, simulated: true, status: 200, data: { mensaje: 'Modo Demo local' } };
+  }
+  const endpoint = `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/producto`;
+  try {
+    const resp = await fetch(endpoint, {
+      method: esEdicion ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(productoPayload)
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.ok === false) {
+      const detalleTec = data.error || data.mensaje || data.message || '';
+      const msg = traducirErrorApiContable(resp.status, detalleTec, 'producto');
+      return { ok: false, status: resp.status, error: msg, data };
+    }
+    return { ok: true, status: resp.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, error: traducirErrorApiContable(0, e.message, 'producto') };
   }
 }
 
@@ -572,11 +600,8 @@ async function extraerDatosRucConIA({ textoPdf = '', imagenBase64 = '' }) {
     '- Si dice "Razón Social" o "SOCIEDADES", tipo_persona debe ser "Juridica".',
     '- Extrae la dirección completa del domicilio tributario (provincia, cantón, parroquia, calle, número, referencia).',
     '- Si un campo no aparece, déjalo como "" (o false en contribuyente_especial).',
-    textoPdf ? ('
-TEXTO EXTRAÍDO DEL PDF RUC:
-' + String(textoPdf).slice(0, 4500)) : ''
-  ].join('
-');
+    textoPdf ? ('\nTEXTO EXTRAÍDO DEL PDF RUC:\n' + String(textoPdf).slice(0, 4500)) : ''
+  ].join('\n');
 
   try {
     const resp = await fetch(endpoint, {

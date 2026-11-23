@@ -75,6 +75,7 @@
     .wave-bar { animation: pulseBar 1s ease-in-out infinite; }
   </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}</script>
 </head>
 <body class="min-h-screen flex flex-col font-sans antialiased selection:bg-emerald-200 selection:text-teal-950">
@@ -590,7 +591,7 @@
       <div id="quote-modal-summary" class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1 text-xs"></div>
       <div class="space-y-2">
         <input type="text" placeholder="Nombre de tu empresa y ciudad en Ecuador" class="w-full px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] text-xs focus:outline-none focus:border-[#087e70]">
-        <input type="text" placeholder="WhatsApp de contacto (ej. +593 99 123 4567)" class="w-full px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] text-xs focus:outline-none focus:border-[#087e70]">
+        <input type="text" placeholder="WhatsApp de contacto (+593 90 000 0000)" class="w-full px-3.5 py-2.5 rounded-xl border border-[#d7e1e0] text-xs focus:outline-none focus:border-[#087e70]">
       </div>
       <div id="quote-modal-ok" class="hidden p-3 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-xs text-[#087e70] font-bold">
         ✓ ¡Solicitud registrada! Un especialista de Vozkora te escribirá por WhatsApp para coordinar la configuración personalizada y el pago local en Ecuador (dLocal Go).
@@ -2007,30 +2008,46 @@
           <div class="flex items-center justify-between gap-2">
             <div>
               <b class="text-xs font-extrabold">Catálogo en Bodega (${appData.products.length})</b>
-              <div class="text-[10px] text-[#087e70] font-semibold">✏️ Edita precios, stock${multiBodegaOn ? ' y bodega asignada' : ''}</div>
+              <div class="text-[10px] text-[#087e70] font-semibold">✏️ Edita precios, stock y código de barras POS</div>
             </div>
-            <button onclick="V.openNewProductModal()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer shrink-0">
-              + Nuevo
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              ${hasMinPlan(3) ? `
+                <button id="btnSyncCatalogInv" onclick="V.syncCatalogFromAccounting()" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] cursor-pointer" title="Descargar productos y códigos de barras desde Proveedor Software Contable">
+                  🔄 Sincronizar
+                </button>
+              ` : ''}
+              <button onclick="V.openNewProductModal()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
+                + Nuevo
+              </button>
+            </div>
           </div>
           <div>
-            ${appData.products.map((p, idx) => `
+            ${appData.products.map((p, idx) => {
+              const bcode = (p.barcode || '').trim();
+              return `
               <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0 text-xs gap-2">
-                <div class="min-w-0">
+                <div class="min-w-0 space-y-0.5">
                   <div class="font-bold text-[#17343a] truncate">${esc(p.name)} ${p.pendingSync ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[9.5px]">⏳ Pend.</span>' : ''}</div>
                   <div class="text-[10.5px] text-[#71838a]">
                     ${p.id} · ${multiBodegaOn ? esc(p.warehouse) : 'Bodega Principal'} · IVA ${p.ivaRate}% ·
                     <span class="${multiBodegaOn && p.stock <= 15 ? 'text-rose-600 font-bold' : 'font-semibold'}">${p.stock} unid.</span>
                   </div>
+                  <div>
+                    ${bcode
+                      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[9.5px] font-bold">📊 Cód. Barras: ${esc(bcode)}</span>`
+                      : `<button type="button" onclick="V.openEditProductModal(${idx})" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[9.5px] font-bold cursor-pointer">⚠️ Sin cód. barras (Asignar)</button>`
+                    }
+                  </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                   <strong class="font-mono text-[#073e3b]">${appMoney(p.price)}</strong>
-                  <button onclick="V.openEditProductModal(${idx})" class="w-7 h-7 rounded-lg bg-[#e7f5f1] hover:bg-[#d0ebe4] text-[#073e3b] flex items-center justify-center text-xs font-bold cursor-pointer" title="Editar producto en bodega">
+                  <button onclick="V.openEditProductModal(${idx})" class="w-7 h-7 rounded-lg bg-[#e7f5f1] hover:bg-[#d0ebe4] text-[#073e3b] flex items-center justify-center text-xs font-bold cursor-pointer" title="Editar producto y código de barras">
                     ✏️
                   </button>
                 </div>
               </div>
-            `).join('')}
+            `;
+            }).join('')}
           </div>
         </div>
 
@@ -2556,16 +2573,16 @@
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="font-bold text-slate-600">Transportista</label>
-                <input id="guideCarrier" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. TransExpress S.A.">
+                <input id="guideCarrier" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Transportes ACME S.A.">
               </div>
               <div>
                 <label class="font-bold text-slate-600">Placa Vehículo</label>
-                <input id="guidePlate" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono" placeholder="Ej. PCQ-9182">
+                <input id="guidePlate" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono" placeholder="AAA-0000">
               </div>
             </div>
             <div>
               <label class="font-bold text-slate-600">Punto de Partida → Destino</label>
-              <input id="guideRoute" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. Bodega Norte → Local Comercial Pérez">
+              <input id="guideRoute" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Bodega Principal → Local ACME">
             </div>
             <div>
               <label class="font-bold text-slate-600">Detalle de Mercadería a Trasladar</label>
@@ -3293,7 +3310,7 @@
           </div>
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
-            <input id="woClient" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Cliente / empresa (ej. Transportes Sierra)">
+            <input id="woClient" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Cliente / empresa (ACME S.A.)">
             <input id="woDesc" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Descripción del servicio técnico">
             <input id="woObs" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Observación inicial de recepción">
             <button onclick="V.work()" class="w-full py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
@@ -3640,14 +3657,17 @@
       activeRoutePhotoIdx: null,
       openRealCameraModal(purpose = 'ruc', extraIdx = null) {
         this.activeRoutePhotoIdx = extraIdx;
+        const isBarcodeScan = (purpose === 'pos' || purpose === 'prod_barcode');
         const titleMap = {
           pos: '📷 Escáner Código de Barras POS',
+          prod_barcode: '📷 Escanear Código de Barras del Producto',
           ruc: '📷 Capturar Foto RUC del Cliente',
           voucher: '📷 Fotografiar Comprobante Deuna! / Transferencia',
           route: '📷 Foto Evidencia de Visita en Punto'
         };
         const btnLabelMap = {
-          pos: '✓ Agregar Producto',
+          pos: '✓ Buscar / Agregar',
+          prod_barcode: '✓ Usar Código',
           ruc: '📸 Capturar RUC',
           voucher: '📸 Usar Foto Voucher',
           route: '📸 Guardar Foto Visita'
@@ -3659,12 +3679,12 @@
              <div class="relative w-full h-52 bg-black rounded-2xl overflow-hidden flex items-center justify-center">
                <video id="vozkoraCameraVideo" autoplay playsinline class="w-full h-full object-cover"></video>
                <canvas id="vozkoraCameraCanvas" class="hidden"></canvas>
-               ${purpose === 'pos' ? '<div class="absolute inset-x-6 top-1/2 -translate-y-1/2 h-0.5 bg-emerald-400 shadow-[0_0_8px_#34d399]"></div>' : ''}
+               ${isBarcodeScan ? '<div class="absolute inset-x-6 top-1/2 -translate-y-1/2 h-0.5 bg-emerald-400 shadow-[0_0_8px_#34d399]"></div>' : ''}
              </div>
              <p id="cameraStatusMsg" class="text-[11px] text-slate-600">Iniciando cámara trasera...</p>
-             ${purpose === 'pos' ? `
+             ${isBarcodeScan ? `
                <div class="pt-1">
-                 <input id="manualBarcodeInput" class="w-full border border-[#d7e1e0] rounded-xl p-2 text-xs font-mono text-center" placeholder="O escribe / pistolea código (ej. P001, P002)" />
+                 <input id="manualBarcodeInput" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-2 text-xs font-mono text-center" placeholder="O escribe / pistolea código (ej. 7860000000001)" />
                </div>
              ` : ''}
              ${(purpose === 'voucher' || purpose === 'route' || purpose === 'ruc') ? `
@@ -3685,11 +3705,11 @@
               const video = $('vozkoraCameraVideo');
               if (video) video.srcObject = stream;
               if ($('cameraStatusMsg')) {
-                $('cameraStatusMsg').textContent = purpose === 'pos'
+                $('cameraStatusMsg').textContent = isBarcodeScan
                   ? '✓ Apunta al código de barras del producto (lectura automática activa)...'
                   : '✓ Cámara activa. Enfoca bien y toca el botón verde para capturar.';
               }
-              if (purpose === 'pos' && 'BarcodeDetector' in window && video) {
+              if (isBarcodeScan && 'BarcodeDetector' in window && video) {
                 try {
                   const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'upc_a', 'qr_code'] });
                   this.barcodeTimer = setInterval(async () => {
@@ -3699,8 +3719,12 @@
                         const rawVal = codes[0].rawValue;
                         clearInterval(this.barcodeTimer);
                         this.stopCameraStream();
-                        this.closeModal();
-                        this.addProductByBarcode(rawVal);
+                        if (purpose === 'prod_barcode') {
+                          this.applyScannedBarcodeToProductInput(rawVal);
+                        } else {
+                          this.closeModal();
+                          this.addProductByBarcode(rawVal);
+                        }
                       }
                     } catch (err) {}
                   }, 450);
@@ -3708,7 +3732,7 @@
               }
             })
             .catch(() => {
-              if ($('cameraStatusMsg')) $('cameraStatusMsg').textContent = '⚠️ Permiso de cámara no disponible; usa el campo de código o captura rápida.';
+              if ($('cameraStatusMsg')) $('cameraStatusMsg').textContent = '⚠️ Permiso de cámara no disponible; usa el campo manual.';
             });
         }
       },
@@ -3724,17 +3748,83 @@
         }
       },
 
+      pendingProductBarcodeDraft: '',
+      applyScannedBarcodeToProductInput(codeStr) {
+        const clean = String(codeStr || '').trim();
+        this.pendingProductBarcodeDraft = clean;
+        if (this.activeRoutePhotoIdx !== null && this.activeRoutePhotoIdx !== undefined) {
+          this.openEditProductModal(this.activeRoutePhotoIdx, clean);
+        } else {
+          this.openNewProductModal(clean);
+        }
+        toast(`📊 Código de barras leído: ${clean}`);
+      },
+
       addProductByBarcode(codeStr) {
         const clean = String(codeStr || '').trim().toUpperCase();
-        let prod = appData.products.find(x => x.id.toUpperCase() === clean || x.name.toUpperCase().includes(clean));
-        if (!prod) prod = appData.products[1];
-        if (prod && prod.stock > 0) {
+        if (!clean) return toast('⚠️ No se detectó ningún código de barras.');
+
+        const prod = appData.products.find(x =>
+          (x.barcode && String(x.barcode).trim().toUpperCase() === clean) ||
+          (x.id && String(x.id).trim().toUpperCase() === clean)
+        );
+
+        if (!prod) {
+          this.openModal(
+            `⚠️ Código No Asociado (${clean})`,
+            `<div class="space-y-2.5">
+               <p class="text-[11px] text-slate-700">El código de barras <strong class="font-mono text-[#073e3b]">${esc(clean)}</strong> no está asignado a ningún producto en tu inventario.</p>
+               <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+                 <label class="font-bold text-[11px] text-[#073e3b]">Asociar a un producto existente y sincronizar vía API:</label>
+                 <select id="assignBarcodeProdSelect" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white text-xs">
+                   ${appData.products.map((p, i) => `<option value="${i}">${esc(p.name)} (${esc(p.id)})</option>`).join('')}
+                 </select>
+                 <button type="button" onclick="V.assignBarcodeToExistingProduct('${esc(clean)}')" class="w-full py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
+                   🔗 Asociar Código y Agregar al Carrito
+                 </button>
+               </div>
+               <button type="button" onclick="V.closeModal(); V.openNewProductModal('${esc(clean)}');" class="w-full py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
+                 + Crear Producto Nuevo con este Código
+               </button>
+             </div>`,
+            `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cerrar</button>`
+          );
+          return;
+        }
+
+        if (prod.stock <= 0) {
+          return toast(`⚠️ ${prod.name} (${clean}) no tiene stock disponible en bodega.`);
+        }
+        const existing = appData.cart.find(c => c.id === prod.id);
+        if (existing) existing.qty += 1;
+        else appData.cart.push({ ...prod, qty: 1, itemDiscountPct: 0 });
+        toast(`📷 Producto identificado: +1 ${prod.name} (${clean})`);
+        renderPhone('pos');
+      },
+
+      async assignBarcodeToExistingProduct(barcodeVal) {
+        const idx = parseInt($('assignBarcodeProdSelect')?.value, 10);
+        const prod = appData.products[idx];
+        if (!prod) return;
+        prod.barcode = barcodeVal;
+        if (prod.stock > 0) {
           const existing = appData.cart.find(c => c.id === prod.id);
           if (existing) existing.qty += 1;
           else appData.cart.push({ ...prod, qty: 1, itemDiscountPct: 0 });
-          toast(`📷 Código leído (${clean || prod.id}): +1 ${prod.name}`);
-          renderPhone('pos');
         }
+        this.closeModal();
+        renderPhone('pos');
+        if (!appData.offline && typeof sincronizarProductoPuenteContifico === 'function') {
+          await sincronizarProductoPuenteContifico({
+            codigo: prod.id,
+            codigo_barra: barcodeVal,
+            nombre: prod.name,
+            pvp1: prod.price,
+            cantidad_stock: prod.stock,
+            porcentaje_iva: prod.ivaRate
+          }, true);
+        }
+        toast(`✅ Código ${barcodeVal} asociado a ${prod.name} y sincronizado vía API.`);
       },
 
       async compressImageDataUrl(rawDataUrl, maxWidth = 640, quality = 0.65) {
@@ -3782,10 +3872,15 @@
         const manualCode = ($('manualBarcodeInput')?.value || '').trim();
         const dataUrl = (purpose === 'voucher' || purpose === 'route' || purpose === 'ruc') ? await this.captureVideoFrameDataUrl() : '';
         this.stopCameraStream();
+        if (purpose === 'prod_barcode') {
+          if (manualCode) this.applyScannedBarcodeToProductInput(manualCode);
+          else toast('⚠️ Enfoca el código de barras o escríbelo en el cuadro.');
+          return;
+        }
         this.closeModal();
         if (purpose === 'pos') {
           if (manualCode) this.addProductByBarcode(manualCode);
-          else this.scanBarcodePOS();
+          else toast('⚠️ No se leyó código. Apunta al código de barras o escríbelo manualmente.');
         } else if (purpose === 'voucher') {
           this.openVoucherValidationModal(dataUrl);
         } else if (purpose === 'route') {
@@ -4077,8 +4172,19 @@
         };
       },
 
+      async runOcrOnImageSource(imageSource) {
+        if (!imageSource || typeof Tesseract === 'undefined') return '';
+        try {
+          const res = await Tesseract.recognize(imageSource, 'spa');
+          return (res && res.data && res.data.text) ? String(res.data.text) : '';
+        } catch (e) {
+          return '';
+        }
+      },
+
       async extractRucInfoFromPdfFile(file) {
         let fullText = '';
+        let firstPageCanvas = null;
         try {
           const buf = await file.arrayBuffer();
           if (window.pdfjsLib) {
@@ -4087,11 +4193,42 @@
             for (let p = 1; p <= maxPages; p++) {
               const page = await pdf.getPage(p);
               const content = await page.getTextContent();
-              const pageLines = content.items.map(it => (it.str || '').trim()).filter(Boolean);
-              fullText += pageLines.join('\n') + '\n';
+              // Reconstruir filas reales por coordenada Y (de arriba hacia abajo) y X (izquierda a derecha)
+              const items = content.items
+                .map(it => ({
+                  str: (it.str || '').trim(),
+                  x: it.transform ? Math.round(it.transform[4]) : 0,
+                  y: it.transform ? Math.round(it.transform[5]) : 0
+                }))
+                .filter(it => it.str.length > 0);
+              items.sort((a, b) => (Math.abs(b.y - a.y) > 5 ? (b.y - a.y) : (a.x - b.x)));
+              const rows = [];
+              items.forEach(it => {
+                const last = rows[rows.length - 1];
+                if (last && Math.abs(last.y - it.y) <= 5) {
+                  last.parts.push(it.str);
+                } else {
+                  rows.push({ y: it.y, parts: [it.str] });
+                }
+              });
+              fullText += rows.map(r => r.parts.join(' ')).join('\n') + '\n';
+
+              if (p === 1) {
+                const vp = page.getViewport({ scale: 1.6 });
+                firstPageCanvas = document.createElement('canvas');
+                firstPageCanvas.width = vp.width;
+                firstPageCanvas.height = vp.height;
+                await page.render({ canvasContext: firstPageCanvas.getContext('2d'), viewport: vp }).promise;
+              }
             }
           }
         } catch (e) {}
+
+        // Si el PDF venía escaneado como imagen sin capa de texto, ejecutar OCR local
+        if (fullText.replace(/\s+/g, '').length < 25 && firstPageCanvas) {
+          const ocrPdfText = await this.runOcrOnImageSource(firstPageCanvas.toDataURL('image/jpeg', 0.85));
+          if (ocrPdfText) fullText = ocrPdfText;
+        }
 
         const localParsed = this.parseRucPlainTextLocal(fullText);
         if (fullText && typeof extraerDatosRucConIA === 'function') {
@@ -4126,8 +4263,9 @@
         const tipo = datos.tipo_persona || 'Natural';
         const rucVal = datos.ruc || datos.id || '';
         const cedulaVal = datos.cedula || (tipo === 'Natural' && rucVal.length === 13 ? rucVal.slice(0, 10) : (rucVal.length === 10 ? rucVal : ''));
+        const uid = Date.now().toString(36);
         return `
-          <div class="space-y-2 max-h-[64vh] overflow-y-auto pr-1 text-[11px]">
+          <form autocomplete="off" onsubmit="return false;" class="space-y-2 max-h-[64vh] overflow-y-auto pr-1 text-[11px]">
             ${sourceBadge ? `<div class="p-2 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-bold">${sourceBadge}</div>` : ''}
 
             ${opts.withPdfPicker ? `
@@ -4166,38 +4304,38 @@
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="font-bold">RUC (13 dígitos)</label>
-                <input id="pFormRuc" maxlength="13" oninput="if($('pFormTipo').value==='Natural' && this.value.length>=10 && !$('pFormCedula').value) $('pFormCedula').value=this.value.slice(0,10);" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono font-bold ${isEdit ? 'bg-slate-100 text-slate-600' : ''}" value="${esc(rucVal)}" ${isEdit ? 'readonly' : ''} placeholder="2200342117001" />
+                <input id="pFormRuc" name="vk_ruc_${uid}" autocomplete="off" readonly onfocus="${isEdit ? '' : "this.removeAttribute('readonly')"}" maxlength="13" oninput="if($('pFormTipo').value==='Natural' && this.value.length>=10 && !$('pFormCedula').value) $('pFormCedula').value=this.value.slice(0,10);" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono font-bold ${isEdit ? 'bg-slate-100 text-slate-600' : ''}" value="${esc(rucVal)}" placeholder="0000000000001" />
               </div>
               <div>
                 <label class="font-bold">Cédula (10 dígitos)</label>
-                <input id="pFormCedula" maxlength="10" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" value="${esc(cedulaVal)}" placeholder="2200342117" />
+                <input id="pFormCedula" name="vk_ced_${uid}" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" maxlength="10" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" value="${esc(cedulaVal)}" placeholder="0000000000" />
               </div>
             </div>
 
             <div>
               <label class="font-bold">Nombre / Razón Social *</label>
-              <input id="pFormRazonSocial" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-bold" value="${esc(datos.razon_social || datos.name || '')}" placeholder="Ej. AGUILAR SANMARTIN JIMMY JAIRO" />
+              <input id="pFormRazonSocial" name="vk_raz_${uid}" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-bold" value="${esc(datos.razon_social || datos.name || '')}" placeholder="ACME ACME" />
             </div>
 
             <div>
               <label class="font-bold">Nombre Comercial</label>
-              <input id="pFormNombreComercial" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.nombre_comercial || '')}" placeholder="Opcional (ej. Comercial Los Andes)" />
+              <input id="pFormNombreComercial" name="vk_com_${uid}" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.nombre_comercial || '')}" placeholder="ACME COMERCIAL" />
             </div>
 
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <label class="font-bold">Teléfonos / WhatsApp *</label>
-                <input id="pFormTelefonos" type="tel" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" value="${esc(datos.telefonos || datos.phone || '')}" placeholder="0991234567" />
+                <input id="pFormTelefonos" name="vk_tel_${uid}" type="text" inputmode="tel" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" value="${esc(datos.telefonos || datos.phone || '')}" placeholder="0900000000" />
               </div>
               <div>
                 <label class="font-bold">Email</label>
-                <input id="pFormEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.email || '')}" placeholder="cliente@correo.com" />
+                <input id="pFormEmail" name="vk_mail_${uid}" type="text" inputmode="email" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.email || '')}" placeholder="usuario@acme.com" />
               </div>
             </div>
 
             <div>
               <label class="font-bold">Dirección (Domicilio Tributario)</label>
-              <input id="pFormDireccion" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.direccion || '')}" placeholder="Provincia, Cantón, Calle y Referencia" />
+              <input id="pFormDireccion" name="vk_dir_${uid}" type="text" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5" value="${esc(datos.direccion || '')}" placeholder="Av. Principal 000" />
             </div>
 
             <label class="inline-flex items-center gap-2 pt-0.5 font-bold text-[#073e3b] cursor-pointer">
@@ -4215,7 +4353,7 @@
                 <label class="inline-flex items-center gap-1 font-semibold cursor-pointer"><input id="pRolVendedor" type="checkbox" ${datos.es_vendedor ? 'checked' : ''} class="accent-[#087e70]" /> Vendedor</label>
               </div>
             </div>
-          </div>
+          </form>
         `;
       },
 
@@ -4276,21 +4414,43 @@
           '📷 Ficha de Persona · Foto RUC',
           this.renderPersonaFullFormHtml({ estado: 'Activo', tipo_persona: 'Natural', es_cliente: true }, {
             photoPreviewUrl: compressed,
-            sourceBadge: '⏳ Analizando foto del certificado RUC con IA...'
+            sourceBadge: '⏳ Leyendo texto de la foto del certificado RUC con OCR + IA...'
           }),
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
            <button id="btnSavePersonaFull" onclick="V.submitPersonaFullForm({ mode: 'photo' })" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
         );
 
-        if (compressed && typeof extraerDatosRucConIA === 'function') {
-          const aiRes = await extraerDatosRucConIA({ imagenBase64: compressed });
+        if (!compressed) return;
+
+        // 1. OCR local sobre la foto capturada
+        const ocrText = await this.runOcrOnImageSource(compressed);
+        const localParsed = this.parseRucPlainTextLocal(ocrText);
+        this.fillPersonaFormFields(localParsed);
+
+        // 2. Refinar con IA usando tanto el texto OCR como la imagen
+        if (typeof extraerDatosRucConIA === 'function') {
+          const aiRes = await extraerDatosRucConIA({ textoPdf: ocrText, imagenBase64: compressed });
           if (aiRes && aiRes.ok && aiRes.datos) {
-            this.fillPersonaFormFields(aiRes.datos);
-            toast('✅ Datos del RUC extraídos desde la foto. Completa teléfono/email.');
-          } else {
-            toast('⚠️ Revisa y completa los datos del certificado RUC en el formulario.');
+            const d = aiRes.datos;
+            const rucFinal = String(d.ruc || localParsed.ruc || '').replace(/\D/g, '').slice(0, 13);
+            const tipoFinal = d.tipo_persona === 'Juridica' ? 'Juridica' : (d.tipo_persona === 'Natural' ? 'Natural' : localParsed.tipo_persona);
+            this.fillPersonaFormFields({
+              ruc: rucFinal,
+              cedula: d.cedula || (tipoFinal === 'Natural' && rucFinal.length === 13 ? rucFinal.slice(0, 10) : localParsed.cedula),
+              tipo_persona: tipoFinal,
+              razon_social: (d.razon_social || localParsed.razon_social || '').trim(),
+              nombre_comercial: (d.nombre_comercial || localParsed.nombre_comercial || '').trim(),
+              direccion: (d.direccion || localParsed.direccion || '').trim(),
+              contribuyente_especial: typeof d.contribuyente_especial === 'boolean' ? d.contribuyente_especial : localParsed.contribuyente_especial,
+              estado: d.estado || 'Activo'
+            });
           }
         }
+
+        const foundAny = ($('pFormRuc')?.value || $('pFormRazonSocial')?.value);
+        toast(foundAny
+          ? '✅ Datos del RUC extraídos desde la foto. Completa teléfono/email.'
+          : '⚠️ Foto poco legible; completa los datos del certificado manualmente.');
       },
 
       // --- EDITAR CLIENTE EXISTENTE (SINCRONIZA EN APP Y SUPABASE CRM) ---
@@ -4758,7 +4918,7 @@
           `<p class="text-[11px] text-slate-600">Tu ticket quedará registrado con prioridad en <strong>Vozkora Control CRM</strong> para atención inmediata:</p>
            <div>
              <label class="font-bold">Teléfono WhatsApp de contacto (para envíos)</label>
-             <input id="tkGenPhone" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono" placeholder="Ej. 0991234567">
+             <input id="tkGenPhone" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono" placeholder="0900000000">
            </div>
            <div>
              <label class="font-bold">Detalle de la solicitud *</label>
@@ -4806,11 +4966,11 @@
           `<p class="text-[11px] text-slate-600">Por seguridad y control de licencias, toda alta de usuario se envía por ticket al equipo administrador de Vozkora.</p>
            <div>
              <label class="font-bold">Nombre completo del colaborador</label>
-             <input id="tkUserName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. Carlos Mendoza">
+             <input id="tkUserName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="ACME ACME">
            </div>
            <div>
              <label class="font-bold">Correo electrónico para acceso</label>
-             <input id="tkUserEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="carlos@empresa.com">
+             <input id="tkUserEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="usuario@acme.com">
            </div>
            <div>
              <label class="font-bold">Perfil / Permisos solicitados</label>
@@ -5688,21 +5848,59 @@
         );
       },
 
-      openNewProductModal() {
+      async syncCatalogFromAccounting() {
+        const btn = $('btnSyncCatalogInv');
+        if (btn) { btn.textContent = '⏳ Sincronizando...'; btn.disabled = true; }
+        try {
+          if (typeof obtenerProductosVozkora === 'function') {
+            const res = await obtenerProductosVozkora();
+            if (res && Array.isArray(res.productos) && res.productos.length > 0) {
+              appData.products = res.productos.map((p, idx) => ({
+                id: p.codigo || ('P' + String(idx + 1).padStart(3, '0')),
+                barcode: (p.codigo_barra || p.codigo_barras || '').trim(),
+                name: p.nombre || 'Producto',
+                price: Number(p.pvp1 || 0) || 1.00,
+                cost: Number(((Number(p.pvp1 || 0) || 1.00) * 0.72).toFixed(2)),
+                stock: Number(p.cantidad_stock ?? 25),
+                warehouse: 'Bodega Principal',
+                ivaRate: Number(p.porcentaje_iva ?? 15),
+                keywords: [(p.nombre || 'producto').toLowerCase().split(' ')[0]]
+              }));
+              renderPhone('inventory');
+              toast(`✅ Catálogo sincronizado (${appData.products.length} productos desde Proveedor Software Contable).`);
+            } else {
+              toast('ℹ️ No se encontraron productos nuevos en el Proveedor Software Contable.');
+            }
+          }
+        } catch (e) {
+          toast('⚠️ Error sincronizando catálogo: ' + e.message);
+        } finally {
+          if (btn) { btn.textContent = '🔄 Sincronizar'; btn.disabled = false; }
+        }
+      },
+
+      openNewProductModal(prefillBarcode = '') {
         this.openModal(
           '+ Nuevo producto en bodega',
           `<div>
-             <label class="font-bold">Nombre del producto</label>
-             <input id="mProdName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. Café molido 500 g">
+             <label class="font-bold">Nombre del producto *</label>
+             <input id="mProdName" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Producto ACME 500 g">
+           </div>
+           <div>
+             <label class="font-bold">Código de barras (EAN / UPC para POS)</label>
+             <div class="flex gap-1.5 mt-1">
+               <input id="mProdBarcode" autocomplete="off" class="flex-1 border border-[#d7e1e0] rounded-xl p-2 font-mono text-xs" value="${esc(prefillBarcode)}" placeholder="7860000000001">
+               <button type="button" onclick="V.openRealCameraModal('prod_barcode', null)" class="px-2.5 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">📷 Leer</button>
+             </div>
            </div>
            <div class="grid grid-cols-2 gap-2">
              <div>
                <label class="font-bold">Precio venta ($)</label>
-               <input id="mProdPrice" type="number" step="0.01" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="4.50">
+               <input id="mProdPrice" type="number" step="0.01" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="0.00">
              </div>
              <div>
                <label class="font-bold">Stock inicial</label>
-               <input id="mProdStock" type="number" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="30">
+               <input id="mProdStock" type="number" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="0">
              </div>
            </div>
            <div>
@@ -5713,38 +5911,57 @@
              </select>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.saveNewProduct()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Agregar</button>`
+           <button onclick="V.saveNewProduct()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
         );
       },
 
-      saveNewProduct() {
+      async saveNewProduct() {
         const name = $('mProdName').value.trim();
+        const barcode = ($('mProdBarcode')?.value || '').trim();
         const price = Number($('mProdPrice').value);
         const stock = Number($('mProdStock').value) || 0;
         const warehouse = $('mProdWarehouse').value;
         if (!name || price <= 0) return toast('Ingresa un nombre y precio válido.');
-        const isOff = appData.offline;
+        const isOff = await ensureRealtimeOfflineCheck();
         const id = 'P' + String(appData.products.length + 1).padStart(3, '0');
-        appData.products.push({ id, name, price, cost: Number((price * 0.72).toFixed(2)), stock, warehouse, ivaRate: 15, pendingSync: isOff, keywords: [name.toLowerCase().split(' ')[0]] });
+        const newProd = { id, barcode, name, price, cost: Number((price * 0.72).toFixed(2)), stock, warehouse, ivaRate: 15, pendingSync: isOff, keywords: [name.toLowerCase().split(' ')[0]] };
+        appData.products.push(newProd);
         if (isOff) {
           enqueueOfflineOp('Producto Nuevo', id, `${name} · ${appMoney(price)} (${stock} unid. en ${warehouse})`, () => {
             const pr = appData.products.find(x => x.id === id);
             if (pr) pr.pendingSync = false;
-          }, null, null, appData.products[appData.products.length - 1]);
+          }, null, null, newProd);
+        } else if (typeof sincronizarProductoPuenteContifico === 'function') {
+          await sincronizarProductoPuenteContifico({
+            codigo: id,
+            codigo_barra: barcode,
+            nombre: name,
+            pvp1: price,
+            cantidad_stock: stock,
+            porcentaje_iva: 15
+          }, false);
         }
         this.closeModal();
         renderPhone('inventory');
-        toast(isOff ? `💾 Producto ${name} guardado en cola Offline.` : `Producto ${name} agregado en ${warehouse}.`);
+        toast(isOff ? `💾 Producto ${name} guardado en cola Offline.` : `✅ Producto ${name} creado y sincronizado vía API.`);
       },
 
-      openEditProductModal(idx) {
+      openEditProductModal(idx, overrideBarcode = null) {
         const prod = appData.products[idx];
         if (!prod) return;
+        const bVal = overrideBarcode !== null ? overrideBarcode : (prod.barcode || '');
         this.openModal(
-          `✏️ Editar Producto (Admin Bodega)`,
+          `✏️ Editar Producto · ${prod.id}`,
           `<div>
-             <label class="font-bold">Nombre del producto (${prod.id})</label>
-             <input id="eProdName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" value="${esc(prod.name)}">
+             <label class="font-bold">Nombre del producto</label>
+             <input id="eProdName" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" value="${esc(prod.name)}">
+           </div>
+           <div>
+             <label class="font-bold">Código de barras (EAN / UPC para POS)</label>
+             <div class="flex gap-1.5 mt-1">
+               <input id="eProdBarcode" autocomplete="off" class="flex-1 border border-[#d7e1e0] rounded-xl p-2 font-mono text-xs" value="${esc(bVal)}" placeholder="7860000000001">
+               <button type="button" onclick="V.openRealCameraModal('prod_barcode', ${idx})" class="px-2.5 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">📷 Leer</button>
+             </div>
            </div>
            <div class="grid grid-cols-2 gap-2">
              <div>
@@ -5774,18 +5991,20 @@
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.saveEditedProduct(${idx})" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Cambios</button>`
+           <button onclick="V.saveEditedProduct(${idx})" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Sincronizar</button>`
         );
       },
 
-      saveEditedProduct(idx) {
+      async saveEditedProduct(idx) {
         const prod = appData.products[idx];
         const name = $('eProdName').value.trim();
+        const barcode = ($('eProdBarcode')?.value || '').trim();
         const price = Number($('eProdPrice').value);
         const stock = Number($('eProdStock').value);
         if (!name || price <= 0 || stock < 0) return toast('Verifica los valores del producto.');
-        const isOff = appData.offline;
+        const isOff = await ensureRealtimeOfflineCheck();
         prod.name = name;
+        prod.barcode = barcode;
         prod.price = price;
         prod.stock = stock;
         prod.warehouse = $('eProdWarehouse').value;
@@ -5795,10 +6014,19 @@
           enqueueOfflineOp('Edición Bodega', prod.id, `${name} · ${appMoney(price)} · Stock: ${stock}`, () => {
             prod.pendingSync = false;
           });
+        } else if (typeof sincronizarProductoPuenteContifico === 'function') {
+          await sincronizarProductoPuenteContifico({
+            codigo: prod.id,
+            codigo_barra: barcode,
+            nombre: name,
+            pvp1: price,
+            cantidad_stock: stock,
+            porcentaje_iva: prod.ivaRate
+          }, true);
         }
         this.closeModal();
         renderPhone('inventory');
-        toast(isOff ? `💾 Cambios de ${prod.id} guardados en cola Offline.` : `✓ Producto ${prod.id} actualizado y sincronizado.`);
+        toast(isOff ? `💾 Cambios de ${prod.id} guardados en cola Offline.` : `✅ Producto ${prod.id} actualizado y sincronizado vía API.`);
       },
 
       openCollectModal(clientName) {
@@ -6457,6 +6685,7 @@
           if (res && Array.isArray(res.productos) && res.productos.length > 0) {
             const mapped = res.productos.slice(0, 30).map((p, idx) => ({
               id: p.codigo || ('P' + String(idx + 1).padStart(3, '0')),
+              barcode: (p.codigo_barra || p.codigo_barras || '').trim(),
               name: p.nombre || 'Producto',
               price: Number(p.pvp1 || 0) || 1.00,
               cost: Number(((Number(p.pvp1 || 0) || 1.00) * 0.72).toFixed(2)),
@@ -6992,21 +7221,21 @@
           `<div class="space-y-2">
              <div>
                <label class="font-bold text-[11px]">Razón Social / Nombre Empresa *</label>
-               <input id="empNewName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Distribuidora El Oro S.A.">
+               <input id="empNewName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="ACME S.A.">
              </div>
              <div class="grid grid-cols-2 gap-2">
                <div>
                  <label class="font-bold text-[11px]">RUC (13 dígitos) *</label>
-                 <input id="empNewRuc" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0790012345001">
+                 <input id="empNewRuc" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0000000000001">
                </div>
                <div>
                  <label class="font-bold text-[11px]">Teléfono WhatsApp (para envíos y cobros)</label>
-                 <input id="empNewTel" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0991234567">
+                 <input id="empNewTel" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0900000000">
                </div>
              </div>
              <div>
                <label class="font-bold text-[11px]">Correo del Representante / Dueño</label>
-               <input id="empNewEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="gerencia@empresa.com">
+               <input id="empNewEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="gerencia@acme.com">
              </div>
              <div class="grid grid-cols-2 gap-2">
                <div>
