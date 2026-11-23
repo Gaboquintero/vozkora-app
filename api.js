@@ -777,3 +777,85 @@ function incrementarDocumentosPilotoLocal(empresaRuc, delta = 1) {
   const st = obtenerEstadoPilotoLocal(empresaRuc);
   return guardarEstadoPilotoLocal(st.ruc, st.fechaInicio, st.docsEmitidos + delta);
 }
+
+// -------------------------------------------------------------------------
+// K. POLÍTICA DE USO JUSTO ANTI-ABUSO IA (SUPABASE + LOCALSTORAGE)
+// -------------------------------------------------------------------------
+function obtenerUmbralIaPorPlan(planId) {
+  const pid = String(planId || 'piloto').toLowerCase();
+  if (pid === 'piloto') return 5;
+  if (pid === 'impulso' || pid === 'comercio') return 5000;
+  if (pid === 'expansion' || pid === 'dominio') return 15000;
+  if (pid === 'enterprise') return 40000;
+  return 5000;
+}
+
+async function registrarConsumoIaEmpresa(empresaId, empresaRuc, planId) {
+  const umbral = obtenerUmbralIaPorPlan(planId);
+  const periodoActual = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const localKey = 'vozkora_ia_uso_' + (empresaRuc || '123456789001');
+
+  let localData = { periodo: periodoActual, usadas: 0 };
+  try {
+    const raw = localStorage.getItem(localKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.periodo === periodoActual || String(planId).toLowerCase() === 'piloto') {
+        localData = { periodo: parsed.periodo || periodoActual, usadas: Number(parsed.usadas) || 0 };
+      }
+    }
+  } catch (e) {}
+
+  if (localData.usadas >= umbral) {
+    return { permitido: false, usadas: localData.usadas, umbral };
+  }
+
+  const nuevoValor = localData.usadas + 1;
+  try {
+    localStorage.setItem(localKey, JSON.stringify({ periodo: periodoActual, usadas: nuevoValor }));
+  } catch (e) {}
+
+  if (empresaId && !String(empresaId).startsWith('demo')) {
+    try {
+      const getResp = await fetch(
+        `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?id=eq.${encodeURIComponent(empresaId)}&select=consultas_ia_mes,consultas_ia_periodo,plan_activo`,
+        { headers: supaHeaders() }
+      );
+      if (getResp.ok) {
+        const rows = await getResp.json();
+        if (rows && rows.length > 0) {
+          const row = rows[0];
+          const isPilot = String(row.plan_activo || planId).toLowerCase() === 'piloto';
+          const mismoPeriodo = row.consultas_ia_periodo === periodoActual;
+          const baseDb = (isPilot || mismoPeriodo) ? (Number(row.consultas_ia_mes) || 0) : 0;
+          const realUmbral = obtenerUmbralIaPorPlan(row.plan_activo || planId);
+          if (baseDb >= realUmbral) {
+            return { permitido: false, usadas: baseDb, umbral: realUmbral };
+          }
+          const dbNext = baseDb + 1;
+          await crmActualizarEmpresa(empresaId, {
+            consultas_ia_mes: dbNext,
+            consultas_ia_periodo: periodoActual
+          });
+          localStorage.setItem(localKey, JSON.stringify({ periodo: periodoActual, usadas: dbNext }));
+          return { permitido: true, usadas: dbNext, umbral: realUmbral };
+        }
+      }
+    } catch (e) {}
+  }
+
+  return { permitido: true, usadas: nuevoValor, umbral };
+}
+
+async function crmReiniciarConsumoIaEmpresa(empresaId, empresaRuc = '') {
+  const periodoActual = new Date().toISOString().slice(0, 7);
+  if (empresaRuc) {
+    try {
+      localStorage.setItem('vozkora_ia_uso_' + empresaRuc, JSON.stringify({ periodo: periodoActual, usadas: 0 }));
+    } catch (e) {}
+  }
+  return await crmActualizarEmpresa(empresaId, {
+    consultas_ia_mes: 0,
+    consultas_ia_periodo: periodoActual
+  });
+}

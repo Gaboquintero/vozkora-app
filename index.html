@@ -1536,6 +1536,53 @@
     // 9. LÓGICA Y RENDERIZADO DE LA APP ANDROID (COMERCIAL LOS ANDES)
     // -----------------------------------------------------------------------
     // -----------------------------------------------------------------------
+    // GUARDRAIL ESTRICTO DE TEMA CONTABLE / EMPRESARIAL + USO JUSTO IA
+    // -----------------------------------------------------------------------
+    const MENSAJE_BLOQUEO_TEMA_IA = "⚠️ Vozkora IA está habilitada exclusivamente para operaciones contables, facturación, inventario, cartera y gestión comercial de tu empresa.";
+
+    function validarTemaContableVozkora(textoRaw) {
+      const txt = String(textoRaw || '').trim().toLowerCase();
+      if (!txt) return false;
+
+      // Bloqueo explícito de temas no empresariales / off-topic
+      const offTopicRegex = /(receta|cocina|chiste|poema|canci[oó]n|cuento|hor[oó]scopo|f[uú]tbol|partido|pel[ií]cula|novela|tarea escolar|ensayo|resumen de libro|traduce|programa un|c[oó]digo python|javascript|html|dieta|ejercicio|amor|consejo sentimental|clima|tiempo hoy|capital de|qui[eé]n gan[oó])/i;
+      if (offTopicRegex.test(txt)) return false;
+
+      // Vocabulario empresarial, contable, SRI Ecuador, comercial o de productos activos
+      const domainRegex = /(factur|proform|cotiz|cliente|ruc|c[eé]dula|sri|iva|retenci[oó]n|nota de cr[eé]dito|gu[ií]a|inventar|stock|bodega|producto|precio|costo|margen|descuento|comisi[oó]n|cartera|cobr|pago|transferencia|deuna|banco|concili|venta|vender|vende|compra|proveedor|gasto|cierre|declaraci[oó]n|orden|taller|ruta|gps|reponer|reposici[oó]n|saldo|abono|arroz|aceite|az[uú]car|leche|at[uú]n|kardex|asiento|contab|tribut)/i;
+      if (domainRegex.test(txt)) return true;
+
+      // Verificar si menciona algún producto o cliente real registrado en la empresa
+      const matchesProduct = (appData.products || []).some(p =>
+        txt.includes((p.name || '').toLowerCase()) ||
+        (Array.isArray(p.keywords) && p.keywords.some(k => k && txt.includes(k.toLowerCase())))
+      );
+      if (matchesProduct) return true;
+
+      const matchesClient = (appData.clients || []).some(c =>
+        c.id !== '9999999999999' && txt.includes((c.name || '').toLowerCase())
+      );
+      if (matchesClient) return true;
+
+      return false;
+    }
+
+    async function verificarYRegistrarUsoIa() {
+      const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+      if (ses.rol === 'SUPERADMIN') return { permitido: true };
+      const planId = getCurrentPlan().id;
+      if (typeof registrarConsumoIaEmpresa === 'function') {
+        const res = await registrarConsumoIaEmpresa(ses.empresa_id, ses.empresa_ruc, planId);
+        if (!res.permitido) {
+          toast(`⚠️ Has alcanzado el límite de uso justo IA (${res.usadas}/${res.umbral}) de tu plan.`);
+          return { permitido: false, res };
+        }
+        return { permitido: true, res };
+      }
+      return { permitido: true };
+    }
+
+    // -----------------------------------------------------------------------
     // CONTROL ESTRICTO PLAN PILOTO: MÁXIMO 30 DOCUMENTOS O 15 DÍAS
     // -----------------------------------------------------------------------
     function getPilotQuotaStatus() {
@@ -4029,8 +4076,10 @@
 
       // --- VALIDAR CAPTURA DE PAGO EN CARTERA (CÁMARA / IMAGEN / PDF + IA) ---
       capturedVoucherDataUrl: '',
-      openVoucherValidationModal(capturedDataUrl = '') {
-        this.capturedVoucherDataUrl = capturedDataUrl || '';
+      async openVoucherValidationModal(capturedDataUrl = '') {
+        this.capturedVoucherDataUrl = capturedDataUrl
+          ? await this.compressImageDataUrl(capturedDataUrl, 640, 0.65)
+          : '';
         this.openModal(
           '🏦 Validar Comprobante Deuna! / Transferencia',
           `<div class="space-y-2.5">
@@ -4071,16 +4120,28 @@
         );
       },
 
-      submitVoucherValidation() {
+      async submitVoucherValidation() {
         const clientName = $('voucherClientSelect').value;
         const amt = Number($('voucherDetectedAmt').value);
         const bank = $('voucherBankSelect').value;
         const fileInput = $('voucherFileInput');
-        const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
-        if (!hasFile && !this.capturedVoucherDataUrl) {
+        const fileObj = fileInput && fileInput.files ? fileInput.files[0] : null;
+        if (!fileObj && !this.capturedVoucherDataUrl) {
           return toast('Toma una foto con cámara o adjunta la imagen/PDF del comprobante primero.');
         }
         if (amt <= 0) return toast('Ingresa un monto válido.');
+
+        if (fileObj && fileObj.type && fileObj.type.startsWith('image/')) {
+          const rawImg = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(fileObj);
+          });
+          if (rawImg) {
+            this.capturedVoucherDataUrl = await this.compressImageDataUrl(rawImg, 640, 0.65);
+          }
+        }
 
         const isOff = appData.offline;
         appData.payments.push({ name: clientName, amount: amt, pendingSync: isOff });
@@ -4640,9 +4701,18 @@
         recognition.start();
       },
 
-      voice() {
-        const text = $('voiceText').value.trim().toLowerCase();
+      async voice() {
+        const rawInput = $('voiceText').value.trim();
+        const text = rawInput.toLowerCase();
         if (!text) return toast('Escribe un dictado de ejemplo.');
+        if (!validarTemaContableVozkora(rawInput)) {
+          if ($('voiceResult')) {
+            $('voiceResult').innerHTML = `<div class="text-rose-700 font-bold">${MENSAJE_BLOQUEO_TEMA_IA}</div>`;
+          }
+          return toast(MENSAJE_BLOQUEO_TEMA_IA);
+        }
+        const quotaIa = await verificarYRegistrarUsoIa();
+        if (!quotaIa.permitido) return;
         if (!configState.activeSVAs.voz && getCurrentPlan().id === 'piloto') {
           if (getPilotVoiceRemaining() <= 0) {
             renderPhone('voice');
@@ -5545,10 +5615,15 @@
       },
 
       saveTraining() {
-        appData.aiTraining.jargon = $('cfgJargon').value;
+        const jargonVal = $('cfgJargon').value.trim();
+        const commDescVal = $('cfgCommDesc').value.trim();
+        if ((jargonVal && !validarTemaContableVozkora(jargonVal)) || (commDescVal && !validarTemaContableVozkora(commDescVal))) {
+          return toast(MENSAJE_BLOQUEO_TEMA_IA);
+        }
+        appData.aiTraining.jargon = jargonVal;
         appData.aiTraining.commissionPct = Number($('cfgCommPct').value) || 0;
         appData.aiTraining.commissionBonusPct = Number($('cfgCommBonusPct').value) || 0;
-        appData.aiTraining.commissionRuleDesc = $('cfgCommDesc').value.trim();
+        appData.aiTraining.commissionRuleDesc = commDescVal;
         appData.aiTraining.maxDiscount = Number($('cfgMaxDto').value) || 10;
         appData.aiTraining.tone = $('cfgTone').value;
         const isOff = appData.offline;
@@ -5563,9 +5638,17 @@
         this.ask();
       },
 
-      ask() {
-        const q = ($('askInput').value || '').trim().toLowerCase();
+      async ask() {
+        const rawQ = ($('askInput').value || '').trim();
+        const q = rawQ.toLowerCase();
         if (!q) return toast('Escribe una consulta.');
+        if (!validarTemaContableVozkora(rawQ)) {
+          appData.aiAnswer = `<span class="text-rose-700 font-bold">${MENSAJE_BLOQUEO_TEMA_IA}</span>`;
+          renderPhone('ai');
+          return toast(MENSAJE_BLOQUEO_TEMA_IA);
+        }
+        const quotaIa = await verificarYRegistrarUsoIa();
+        if (!quotaIa.permitido) return;
         const low = appData.products.filter(p => p.stock <= 15).map(p => `${p.name} (${p.stock} unid.)`).join(', ');
         const pending = Math.max(0, 3840 - appData.payments.reduce((a, x) => a + x.amount, 0));
 
@@ -6078,6 +6161,36 @@
                       <span>· Control corte: <strong>${emp.control_corte === false ? 'Exento' : 'Activo'}</strong>${emp.exento_hasta ? ` (Exento hasta ${esc(emp.exento_hasta)})` : ''}</span>
                     </div>
 
+                    ${(() => {
+                      const iaMax = typeof obtenerUmbralIaPorPlan === 'function' ? obtenerUmbralIaPorPlan(emp.plan_activo) : 5000;
+                      const periodoHoy = new Date().toISOString().slice(0, 7);
+                      const isPilot = String(emp.plan_activo || '').toLowerCase() === 'piloto';
+                      const iaUsed = (isPilot || !emp.consultas_ia_periodo || emp.consultas_ia_periodo === periodoHoy)
+                        ? (Number(emp.consultas_ia_mes) || 0)
+                        : 0;
+                      const pct = iaMax > 0 ? Math.min(100, Number(((iaUsed / iaMax) * 100).toFixed(1))) : 0;
+                      const semCls = pct > 90
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : (pct >= 70 ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-emerald-100 text-emerald-900 border-emerald-300');
+                      const barCls = pct > 90 ? 'bg-rose-600' : (pct >= 70 ? 'bg-amber-500' : 'bg-[#087e70]');
+                      return `
+                        <div class="p-2 rounded-xl bg-white border ${semCls} flex flex-wrap items-center justify-between gap-2 text-[10.5px]">
+                          <div class="flex-1 min-w-[180px] space-y-1">
+                            <div class="flex items-center justify-between font-extrabold">
+                              <span>🤖 Consumo IA mes: ${iaUsed.toLocaleString('es-EC')} / ${iaMax.toLocaleString('es-EC')} (${pct}%)</span>
+                              <span>${pct > 90 ? '🔴 Crítico' : (pct >= 70 ? '🟡 Alto' : '🟢 Normal')}</span>
+                            </div>
+                            <div class="w-full h-1.5 rounded-full bg-black/10 overflow-hidden">
+                              <div class="h-full ${barCls}" style="width: ${pct}%"></div>
+                            </div>
+                          </div>
+                          <button onclick="CRM.resetCompanyIaQuota('${emp.id}', '${esc(emp.ruc)}', '${esc(emp.nombre)}')" class="px-2.5 py-1 rounded-lg bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] font-extrabold text-[10px] cursor-pointer shrink-0">
+                            ↺ Reiniciar a 0
+                          </button>
+                        </div>
+                      `;
+                    })()}
+
                     <!-- Módulos SVA (Módulos Adicionales IA) activos y editables directamente desde el CRM -->
                     <div class="p-2 rounded-xl bg-white border border-slate-200 space-y-1">
                       <div class="text-[10px] font-extrabold text-[#073e3b]">🤖 Módulos SVA (Módulos Adicionales IA) Activos — Toca para activar/quitar:</div>
@@ -6270,6 +6383,12 @@
         const next = curr.includes(packId) ? curr.filter(x => x !== packId) : [...curr, packId];
         await crmActualizarEmpresa(empId, { packs_ia: next, sva_elegidos_fijos: next.length > 0 });
         toast('✓ Módulos Adicionales IA actualizados y sincronizados con la App de ' + emp.nombre);
+        this.loadCompanies();
+      },
+
+      async resetCompanyIaQuota(empId, empRuc, empName) {
+        await crmReiniciarConsumoIaEmpresa(empId, empRuc);
+        toast(`✓ Contador de consumo IA de ${empName} reiniciado a 0.`);
         this.loadCompanies();
       },
 
