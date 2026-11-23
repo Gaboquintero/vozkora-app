@@ -9,15 +9,13 @@ const VOZKORA_CONFIG = {
   SUPABASE_STORAGE_URL: 'https://dgzikmjfozhxdanhnnhx.supabase.co/storage/v1',
   STORAGE_BUCKET: 'vozkora-documentos',
   SUPABASE_KEY: 'sb_publishable_HbDtW4JNH1cTpXkqwNUhwg_UnsBP6og',
-  DEFAULT_PAYMENT_URL: 'https://www.google.com/search?q=Pasarela+de+Pago+Vozkora+dLocal+Go',
-  ASESOR_VIP_WHATSAPP: '593999999999',
+  ASESOR_VIP_WHATSAPP: '573239399953',
   STORAGE_KEYS: {
     SESION: 'vozkora_sesion_activa',
     DEVICE_ID: 'vozkora_device_id_local',
     PRODUCTOS: 'vozkora_cache_productos',
     CLIENTES: 'vozkora_cache_clientes',
-    COLA_OFFLINE: 'vozkora_cola_pendientes',
-    PAYMENT_URL: 'vozkora_crm_payment_url'
+    COLA_OFFLINE: 'vozkora_cola_pendientes'
   }
 };
 
@@ -28,16 +26,6 @@ function supaHeaders(extra = {}) {
     'Content-Type': 'application/json',
     'Prefer': 'return=representation'
   }, extra);
-}
-
-function obtenerUrlPasarela() {
-  return localStorage.getItem(VOZKORA_CONFIG.STORAGE_KEYS.PAYMENT_URL) || VOZKORA_CONFIG.DEFAULT_PAYMENT_URL;
-}
-
-function guardarUrlPasarela(url) {
-  const clean = String(url || '').trim() || VOZKORA_CONFIG.DEFAULT_PAYMENT_URL;
-  localStorage.setItem(VOZKORA_CONFIG.STORAGE_KEYS.PAYMENT_URL, clean);
-  return clean;
 }
 
 function obtenerDeviceIdLocal() {
@@ -541,12 +529,45 @@ async function sincronizarClientePuenteContifico(clientePayload, esEdicion = fal
       body: JSON.stringify(clientePayload)
     });
     const data = await resp.json().catch(() => ({}));
-    return { ok: resp.ok, data };
+    if (!resp.ok || data.ok === false) {
+      const msg = data.error || data.mensaje || data.message || (`Error HTTP ${resp.status} al sincronizar cliente en Contífico`);
+      return { ok: false, status: resp.status, error: msg, data };
+    }
+    return { ok: true, status: resp.status, data };
   } catch (e) {
-    return { ok: false, error: e.message };
+    return { ok: false, status: 0, error: e.message };
   }
 }
 
+
+
+// -------------------------------------------------------------------------
+// G2. EMISIÓN DE DOCUMENTOS AL SERVIDOR PUENTE RENDER / SIIGO CONTÍFICO
+//     CON CONTROL DE ERRORES HTTP (REGLA 7) Y FECHA OFFLINE SRI (REGLA 8)
+// -------------------------------------------------------------------------
+async function emitirDocumentoPuenteContifico(tipoDoc, docPayload) {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  if (!ses || ses.rol === 'DEMO' || ses.entorno === 'DEMO') {
+    return { ok: true, simulated: true, status: 200, data: { mensaje: 'Modo Demo local' } };
+  }
+  const endpoint = `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/documento`;
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ tipo_documento: tipoDoc }, docPayload))
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.ok === false) {
+      const msg = data.error || data.mensaje || data.message || (`Error HTTP ${resp.status} del servidor puente / Siigo Contífico`);
+      return { ok: false, status: resp.status, error: msg, data };
+    }
+    return { ok: true, status: resp.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, error: e.message || 'Error de red con servidor puente' };
+  }
+}
 
 // -------------------------------------------------------------------------
 // H. SUBIDA DE FOTOS DE VISITA RUTA GPS / COMPROBANTES DEUNA A STORAGE
@@ -671,6 +692,9 @@ function guardarColaOfflineLocal(items, empresaRuc = '') {
       ref: it.ref,
       detail: it.detail,
       time: it.time,
+      fecha_operacion_real: it.fecha_operacion_real || null,
+      apiError: it.apiError || null,
+      apiErrorStatus: it.apiErrorStatus || null,
       empresaRuc: it.empresaRuc || empresaRuc || ((obtenerSesionVozkora() || {}).empresa_ruc) || '123456789001',
       repoTable: it.repoTable || null,
       repoRowId: it.repoRowId || null,

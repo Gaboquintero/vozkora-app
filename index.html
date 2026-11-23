@@ -505,9 +505,9 @@
           </div>
         </div>
 
-        <!-- Banner Offline (Visible cuando offline === true) -->
-        <div id="phone-offline-banner" onclick="V.open('sync')" class="hidden px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200/80 border-b border-amber-300 text-[11px] font-bold text-amber-900 flex items-center justify-between shrink-0 cursor-pointer" title="Toca para ver la cola SQLite local">
-          <span>📴 Sin internet: Guardando en SQLite local</span>
+        <!-- Banner Offline y Cola de Recuperación API (Visible cuando offline === true o hay errores API) -->
+        <div id="phone-offline-banner" onclick="V.open('sync')" class="hidden px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200/80 border-b border-amber-300 text-[11px] font-bold text-amber-900 flex items-center justify-between shrink-0 cursor-pointer" title="Toca para ver la cola SQLite local y recuperación API">
+          <span id="phone-offline-banner-label">📴 Sin internet: Guardando en SQLite local</span>
           <span id="phone-offline-queue" class="font-mono bg-amber-200 px-1.5 py-0.5 rounded underline">0 pend.</span>
         </div>
 
@@ -1022,8 +1022,30 @@
 
     function syncOfflineBadgeUI() {
       appData.offlineQueue = appData.offlineQueueItems.length;
+      const apiErrCount = appData.offlineQueueItems.filter(x => !!x.apiError).length;
       const badge = $('phone-offline-queue');
-      if (badge) badge.textContent = `${appData.offlineQueue} pend.`;
+      const banner = $('phone-offline-banner');
+      const label = $('phone-offline-banner-label');
+      if (badge) {
+        badge.textContent = apiErrCount > 0
+          ? `${appData.offlineQueue} pend. (${apiErrCount} 🔴)`
+          : `${appData.offlineQueue} pend.`;
+      }
+      if (banner && label) {
+        if (appData.offline) {
+          banner.classList.remove('hidden');
+          banner.className = 'px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200/80 border-b border-amber-300 text-[11px] font-bold text-amber-900 flex items-center justify-between shrink-0 cursor-pointer';
+          label.textContent = apiErrCount > 0
+            ? `📴 Offline + ${apiErrCount} con Error API (Toca aquí)`
+            : '📴 Sin internet: Guardando en SQLite local';
+        } else if (apiErrCount > 0) {
+          banner.classList.remove('hidden');
+          banner.className = 'px-3.5 py-1.5 bg-rose-100 hover:bg-rose-200/80 border-b border-rose-300 text-[11px] font-extrabold text-rose-900 flex items-center justify-between shrink-0 cursor-pointer';
+          label.textContent = `🔴 ${apiErrCount} operación(es) con Error API — Toca para Reenviar/Corregir`;
+        } else {
+          banner.classList.add('hidden');
+        }
+      }
     }
 
     async function ensureRealtimeOfflineCheck() {
@@ -1038,26 +1060,36 @@
       return false;
     }
 
-    function enqueueOfflineOp(moduleName, refCode, detail, onSyncCallback, repoTable = null, repoRowId = null, payload = null) {
+    function enqueueOfflineOp(moduleName, refCode, detail, onSyncCallback, repoTable = null, repoRowId = null, payload = null, opts = {}) {
       const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
       const empRuc = (ses && ses.empresa_ruc) ? ses.empresa_ruc : '123456789001';
-      appData.offlineQueueItems.unshift({
-        id: 'SQL-' + String(appData.offlineQueueItems.length + 1).padStart(3, '0'),
+      const fechaReal = opts.fecha_operacion_real || nowFormatted();
+      const idxExisting = appData.offlineQueueItems.findIndex(x => x.ref === refCode && x.module === moduleName);
+      const entry = {
+        id: idxExisting >= 0 ? appData.offlineQueueItems[idxExisting].id : ('SQL-' + String(appData.offlineQueueItems.length + 1).padStart(3, '0')),
         module: moduleName,
         ref: refCode,
         detail: detail,
-        time: nowFormatted().split(' ')[1],
+        time: fechaReal.split(' ')[1] || nowFormatted().split(' ')[1],
+        fecha_operacion_real: fechaReal,
+        apiError: opts.apiError || null,
+        apiErrorStatus: opts.apiErrorStatus || null,
         empresaRuc: empRuc,
         onSync: onSyncCallback || null,
         repoTable,
         repoRowId,
         payload
-      });
+      };
+      if (idxExisting >= 0) {
+        appData.offlineQueueItems[idxExisting] = entry;
+      } else {
+        appData.offlineQueueItems.unshift(entry);
+      }
       syncOfflineBadgeUI();
       if (typeof guardarColaOfflineLocal === 'function') {
         guardarColaOfflineLocal(appData.offlineQueueItems, empRuc);
       }
-      return true;
+      return entry;
     }
 
     function hydrateOfflineQueueFromStorage(empresaRuc = '') {
@@ -1700,14 +1732,14 @@
             En <strong>Plan Piloto</strong> no es posible contratar módulos sueltos; debes actualizar a un plan superior.
           </div>
           <button onclick="${isAnualVip ? `V.openVipAdvisorWhatsapp('Actualizar de Plan Piloto a Plan ${targetPlanObj.name}')` : `V.openProratedPlanUpgradeCheckout('${targetPlanObj.id}')`}" class="w-full py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-sm transition cursor-pointer">
-            ${isAnualVip ? `👑 Actualizar a Plan ${targetPlanObj.name} con Asesor VIP` : `💳 Mejorar a Plan ${targetPlanObj.name} ($${targetPlanObj.monthlyPrice.toFixed(2)}/mes)`}
+            ${isAnualVip ? `👑 Actualizar a Plan ${targetPlanObj.name} con Asesor VIP` : `📲 Mejorar a Plan ${targetPlanObj.name} ($${targetPlanObj.monthlyPrice.toFixed(2)}/mes)`}
           </button>`;
       } else if (unlockType === 'sva') {
         const pack = SVA_PACKS.find(p => p.id === unlockId);
         buttonsHtml = `
           <div class="space-y-1.5">
             <button onclick="${isAnualVip ? `V.openVipAdvisorWhatsapp('Contratar ${pack ? pack.name : unlockLabel}')` : `V.openProratedSvaCheckout('${unlockId}')`}" class="w-full py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-sm transition cursor-pointer">
-              ${isAnualVip ? `👑 Contratar ${pack ? pack.name : 'Módulo'} con Asesor VIP` : `💳 Contratar ${pack ? pack.name : 'Módulo'} (Pagar Prorrateo)`}
+              ${isAnualVip ? `👑 Contratar ${pack ? pack.name : 'Módulo'} con Asesor VIP` : `📲 Contratar ${pack ? pack.name : 'Módulo'} (Ver Prorrateo)`}
             </button>
             <button onclick="V.open('plans')" class="w-full py-2 px-3 rounded-xl text-[11px] font-bold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
               🏢 O mejorar de Plan (incluye Módulos Adicionales IA gratis) →
@@ -1717,7 +1749,7 @@
         const targetPlanObj = PLANS.find(p => p.id === unlockId) || PLANS[2];
         buttonsHtml = `
           <button onclick="${isAnualVip ? `V.openVipAdvisorWhatsapp('Upgrade a Plan ${targetPlanObj.name}')` : `V.openProratedPlanUpgradeCheckout('${targetPlanObj.id}')`}" class="w-full py-2.5 px-3 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-sm transition cursor-pointer">
-            ${isAnualVip ? `👑 Subir a Plan ${targetPlanObj.name} con Asesor VIP` : `💳 Subir a Plan ${targetPlanObj.name} (Calcular Prorrateo)`}
+            ${isAnualVip ? `👑 Subir a Plan ${targetPlanObj.name} con Asesor VIP` : `📲 Subir a Plan ${targetPlanObj.name} (Calcular Prorrateo)`}
           </button>`;
       }
 
@@ -2971,7 +3003,7 @@
               </button>`;
             } else {
               btnHtml = `<button onclick="V.openProratedSvaCheckout('${pk.id}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-white cursor-pointer">
-                💳 Contratar Módulo Adicional (Pagar Prorrateo)
+                📲 Contratar Módulo Adicional (Ver Prorrateo)
               </button>`;
             }
 
@@ -3060,7 +3092,7 @@
                   <div class="pt-0.5 text-[10.5px] font-extrabold ${isAnualVip ? 'text-amber-700' : 'text-[#087e70]'}">
                     ${isAnualVip
                       ? '👑 Cliente VIP Anual: Toca para hablar con tu asesor WhatsApp →'
-                      : (pl.rank > currPlan.rank ? '💳 Toca para ver prorrateo exacto e ir a Pasarela de Pago →' : '💬 Contactar asesor para ajuste de ciclo →')
+                      : (pl.rank > currPlan.rank ? '📲 Toca para ver prorrateo exacto y solicitar activación →' : '💬 Contactar asesor para ajuste de ciclo →')
                     }
                   </div>
                 ` : ''}
@@ -3147,16 +3179,17 @@
         `;
       }
 
-      // 16. MODO OFFLINE GLOBAL (SQLITE LOCAL PARA TODAS LAS OPERACIONES)
+      // 16. MODO OFFLINE GLOBAL Y RECUPERACIÓN DE ERRORES API (REGLAS 7 Y 8)
       if (p === 'sync') {
         const qList = appData.offlineQueueItems || [];
+        const errItems = qList.filter(x => !!x.apiError);
         return `
           ${backBtn}
-          <div class="text-base font-extrabold text-[#17343a]">🔄 Sincronización y Modo Offline</div>
+          <div class="text-base font-extrabold text-[#17343a]">🔄 Sincronización y Cola Local</div>
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-4 text-center space-y-2.5 text-xs">
             <div class="text-4xl">${appData.offline ? '📴' : '📶'}</div>
             <b class="text-sm block">${appData.offline ? 'Modo sin conexión activo (SQLite local)' : 'Conectividad activa con Software Contable'}</b>
-            <p class="text-[#71838a]">Sin internet, <strong>todas las operaciones</strong> (facturas, proformas, NC, retenciones, guías, cobros, bancos, clientes, bodega, rutas, órdenes y reglas IA) quedan en pendiente local hasta reconectar.</p>
+            <p class="text-[#71838a]">Sin internet o ante un rechazo API, <strong>ninguna operación se pierde</strong>: quedan guardadas con su fecha real de venta para reenviar o corregir.</p>
             <button onclick="V.toggleOffline()" class="w-full py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
               ${appData.offline ? `Restablecer conexión y sincronizar (${qList.length} pend.)` : 'Simular pérdida de Internet'}
             </button>
@@ -3165,19 +3198,38 @@
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
             <div class="flex items-center justify-between">
               <b>🗄️ Cola Local SQLite (${qList.length} pendiente${qList.length === 1 ? '' : 's'})</b>
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${qList.length ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}">
-                ${qList.length ? 'Esperando señal' : 'Todo sincronizado'}
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${errItems.length ? 'bg-rose-100 text-rose-800' : (qList.length ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800')}">
+                ${errItems.length ? `${errItems.length} con Error API` : (qList.length ? 'Esperando señal' : 'Todo sincronizado')}
               </span>
             </div>
-            ${qList.length ? qList.map(op => `
-              <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-0.5">
-                <div class="flex justify-between font-bold text-[#073e3b]">
-                  <span>${esc(op.module)} · <span class="font-mono">${esc(op.ref)}</span></span>
-                  <span class="font-mono text-[10px] text-amber-900">⏳ ${esc(op.time)}</span>
+            ${qList.length ? qList.map((op, idx) => {
+              const hasErr = !!op.apiError;
+              return `
+                <div class="p-2.5 rounded-xl ${hasErr ? 'bg-rose-50 border-rose-300' : 'bg-amber-50/70 border-amber-200'} border space-y-1.5">
+                  <div class="flex justify-between items-center font-bold text-[#073e3b] gap-1">
+                    <span>${esc(op.module)} · <span class="font-mono">${esc(op.ref)}</span></span>
+                    <span class="font-mono text-[10px] px-1.5 py-0.5 rounded ${hasErr ? 'bg-rose-600 text-white' : 'bg-amber-200 text-amber-900'}">
+                      ${hasErr ? `🔴 Pendiente con Error API${op.apiErrorStatus ? ' (' + op.apiErrorStatus + ')' : ''}` : `⏳ ${esc(op.fecha_operacion_real || op.time)}`}
+                    </span>
+                  </div>
+                  <div class="text-[11px] text-slate-700">${esc(op.detail)}</div>
+                  ${op.fecha_operacion_real ? `<div class="text-[10px] text-slate-500">🕒 Operación real: <strong class="font-mono">${esc(op.fecha_operacion_real)}</strong></div>` : ''}
+                  ${hasErr ? `
+                    <div class="p-2 rounded-lg bg-white border border-rose-200 text-[10.5px] text-rose-800 font-semibold">
+                      Motivo del rechazo: ${esc(op.apiError)}
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+                      <button onclick="V.retryQueuedApiItem(${idx})" class="py-1.5 px-2 rounded-lg text-[10.5px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                        🔄 Reenviar
+                      </button>
+                      <button onclick="V.openEditQueuedApiItem(${idx})" class="py-1.5 px-2 rounded-lg text-[10.5px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] cursor-pointer">
+                        ✏️ Corregir y Reenviar
+                      </button>
+                    </div>
+                  ` : ''}
                 </div>
-                <div class="text-[11px] text-slate-700">${esc(op.detail)}</div>
-              </div>
-            `).join('') : '<p class="text-[11px] text-[#71838a] py-1">No hay operaciones pendientes en SQLite local.</p>'}
+              `;
+            }).join('') : '<p class="text-[11px] text-[#71838a] py-1">No hay operaciones pendientes en SQLite local.</p>'}
           </div>
         `;
       }
@@ -3313,31 +3365,70 @@
         return Math.min(30, rem);
       },
 
-      openExternalPaymentGateway(concepto, montoUsd) {
-        const baseUrl = typeof obtenerUrlPasarela === 'function' ? obtenerUrlPasarela() : 'https://www.google.com';
-        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
-        const sep = baseUrl.includes('?') ? '&' : '?';
-        const finalUrl = `${baseUrl}${sep}empresa=${encodeURIComponent(ses.empresa_ruc || '')}&concepto=${encodeURIComponent(concepto)}&monto=${Number(montoUsd).toFixed(2)}`;
-        // Abre en el navegador externo del dispositivo móvil
-        window.open(finalUrl, '_blank', 'noopener,noreferrer');
-        toast('🌐 Abriendo pasarela de pago en el navegador de tu celular...');
+      // --- CUMPLIMIENTO GOOGLE PLAY (REGLA 9): CERO LINKS DE PAGO EXTERNOS ---
+      // Registra automáticamente Ticket VENTAS_UPGRADE en Supabase y abre WhatsApp con cálculo exacto
+      async requestActivationViaWhatsapp(solicitudLabel, detalleCalculo, montoUsd) {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
+          empresa_nombre: 'Cliente Vozkora', empresa_ruc: 'N/A', email: 'cliente@empresa.com', periodicidad: 'MENSUAL'
+        };
+        const periodicidad = String(ses.periodicidad || 'MENSUAL').toUpperCase();
+        const phone = (typeof VOZKORA_CONFIG !== 'undefined' && VOZKORA_CONFIG.ASESOR_VIP_WHATSAPP)
+          ? VOZKORA_CONFIG.ASESOR_VIP_WHATSAPP
+          : '573239399953';
+
+        const textoResumen = `Solicitud: ${solicitudLabel} | Periodicidad: ${periodicidad} | Cálculo: ${detalleCalculo} | Total: $${Number(montoUsd).toFixed(2)} USD`;
+
+        try {
+          if (typeof crearTicketVozkora === 'function') {
+            await crearTicketVozkora({
+              empresa_ruc: ses.empresa_ruc || 'N/A',
+              empresa_nombre: ses.empresa_nombre || 'Cliente Vozkora',
+              solicitado_por: ses.email || 'cliente@empresa.com',
+              tipo_solicitud: 'VENTAS_UPGRADE',
+              detalle: {
+                categoria: '🚀 ' + solicitudLabel,
+                periodicidad,
+                monto_calculado_usd: Number(montoUsd).toFixed(2),
+                detalle_calculo: detalleCalculo,
+                telefono_contacto: ses.empresa_telefono || 'N/A',
+                descripcion: textoResumen,
+                historial: [
+                  {
+                    fecha: nowFormatted(),
+                    de_estado: 'NUEVO',
+                    a_estado: 'ABIERTO',
+                    motivo: textoResumen,
+                    autor: ses.email || 'cliente'
+                  }
+                ]
+              }
+            });
+          }
+        } catch (e) {}
+
+        const waMsg = encodeURIComponent(
+          `Hola equipo Vozkora, solicito activación en mi cuenta:\n` +
+          `• *Empresa:* ${ses.empresa_nombre || 'N/A'}\n` +
+          `• *RUC:* ${ses.empresa_ruc || 'N/A'}\n` +
+          `• *Usuario:* ${ses.email || 'N/A'}\n` +
+          `• *Solicitud:* ${solicitudLabel}\n` +
+          `• *Periodicidad:* ${periodicidad}\n` +
+          `• *Cálculo exacto:* ${detalleCalculo} (*Total: $${Number(montoUsd).toFixed(2)} USD*)`
+        );
+        window.open(`https://wa.me/${phone}?text=${waMsg}`, '_blank', 'noopener,noreferrer');
+        toast('📲 Ticket VENTAS_UPGRADE registrado y abriendo WhatsApp...');
       },
 
       openVipAdvisorWhatsapp(solicitudTexto) {
-        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
-          empresa_nombre: 'Cliente VIP', empresa_ruc: '', email: ''
-        };
         const currPlan = getCurrentPlan();
-        const phone = (typeof VOZKORA_CONFIG !== 'undefined' && VOZKORA_CONFIG.ASESOR_VIP_WHATSAPP) ? VOZKORA_CONFIG.ASESOR_VIP_WHATSAPP : '593999999999';
-        const msg = encodeURIComponent(
-          `👑 Hola Asesor VIP Vozkora, soy ${ses.email} de la empresa *${ses.empresa_nombre}* (RUC: ${ses.empresa_ruc}). ` +
-          `Tengo suscripción *ANUAL (Plan ${currPlan.name})* y deseo gestionar: *${solicitudTexto}*.`
+        this.requestActivationViaWhatsapp(
+          solicitudTexto,
+          `Suscripción Anual VIP · Plan actual ${currPlan.name}`,
+          0
         );
-        window.open(`https://wa.me/${phone}?text=${msg}`, '_blank', 'noopener,noreferrer');
-        toast('👑 Conectando con tu Asesor VIP en WhatsApp...');
       },
 
-      // --- UPGRADE PRORRATEADO PARA CLIENTE MENSUAL (DIRECTO A PASARELA) ---
+      // --- UPGRADE PRORRATEADO (CÁLCULO EN PANTALLA + TICKET + WHATSAPP) ---
       openProratedPlanUpgradeCheckout(targetPlanId) {
         const currPlan = getCurrentPlan();
         const newPlan = PLANS.find(p => p.id === targetPlanId);
@@ -3346,12 +3437,13 @@
         const saldoAFavor = Number(((currPlan.monthlyPrice / 30) * diasRestantes).toFixed(2));
         const costoNuevoProrrateado = Number(((newPlan.monthlyPrice / 30) * diasRestantes).toFixed(2));
         const totalAPagarHoy = Math.max(0, Number((costoNuevoProrrateado - saldoAFavor).toFixed(2)));
+        const detalleCalc = `Upgrade ${currPlan.name} -> ${newPlan.name} por ${diasRestantes} días restantes (Nuevo $${costoNuevoProrrateado.toFixed(2)} - Saldo favor $${saldoAFavor.toFixed(2)})`;
 
         this.openModal(
-          `💳 Upgrade de Plan · ${currPlan.name} → ${newPlan.name}`,
+          `🚀 Upgrade de Plan · ${currPlan.name} → ${newPlan.name}`,
           `<div class="space-y-2.5">
              <p class="text-[11px] text-slate-600">
-               Como tu corte mensual es el <strong>día 01</strong>, solo pagas la diferencia proporcional por los <strong>${diasRestantes} días restantes</strong> de este mes:
+               Como tu corte mensual es el <strong>día 01</strong>, solo corresponde la diferencia proporcional por los <strong>${diasRestantes} días restantes</strong> de este mes:
              </p>
              <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5 text-[11px]">
                <div class="flex justify-between">
@@ -3363,25 +3455,26 @@
                  <strong class="font-mono">-${appMoney(saldoAFavor)}</strong>
                </div>
                <div class="flex justify-between border-t border-slate-200 pt-1.5 text-sm font-black text-[#073e3b]">
-                 <span>TOTAL A PAGAR HOY (Prorrateo):</span>
+                 <span>TOTAL PRORRATEO HOY:</span>
                  <span class="font-mono">${appMoney(totalAPagarHoy)} USD</span>
                </div>
              </div>
              <div class="text-[10.5px] text-slate-500">
-               * A partir del próximo corte (día 01), tu renovación mensual será de <strong>$${newPlan.monthlyPrice.toFixed(2)} USD + IVA</strong>.
+               * A partir del próximo corte (día 01), tu tarifa mensual será de <strong>$${newPlan.monthlyPrice.toFixed(2)} USD + IVA</strong>.
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.closeModal(); V.openExternalPaymentGateway('Upgrade Plan ${newPlan.name}', ${totalAPagarHoy});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Ir a Pasarela de Pago →</button>`
+           <button onclick="V.closeModal(); V.requestActivationViaWhatsapp('Upgrade Plan ${esc(currPlan.name)} a ${esc(newPlan.name)}', '${esc(detalleCalc)}', ${totalAPagarHoy});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">📲 Solicitar Activación por WhatsApp</button>`
         );
       },
 
-      // --- SVA (PACK IA) PRORRATEADO PARA CLIENTE MENSUAL ---
+      // --- MÓDULO ADICIONAL IA PRORRATEADO (CÁLCULO EN PANTALLA + TICKET + WHATSAPP) ---
       openProratedSvaCheckout(svaId) {
         const pack = SVA_PACKS.find(p => p.id === svaId);
         if (!pack) return;
         const diasRestantes = this.getRemainingCycleDays();
         const totalSvaHoy = Number(((pack.monthlyPrice / 30) * diasRestantes).toFixed(2));
+        const detalleCalc = `Módulo Adicional ${pack.name} ($${pack.monthlyPrice.toFixed(2)}/mes) prorrateado por ${diasRestantes} días restantes`;
 
         this.openModal(
           `🤖 Activar ${pack.name}`,
@@ -3399,17 +3492,17 @@
                  <strong class="font-mono">${appMoney(totalSvaHoy)}</strong>
                </div>
                <div class="flex justify-between border-t border-slate-200 pt-1.5 text-sm font-black text-[#073e3b]">
-                 <span>TOTAL A PAGAR HOY:</span>
+                 <span>TOTAL PRORRATEO HOY:</span>
                  <span class="font-mono">${appMoney(totalSvaHoy)} USD</span>
                </div>
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="V.closeModal(); V.openExternalPaymentGateway('Activar ${pack.name}', ${totalSvaHoy});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Ir a Pasarela de Pago →</button>`
+           <button onclick="V.closeModal(); V.requestActivationViaWhatsapp('Activar ${esc(pack.name)}', '${esc(detalleCalc)}', ${totalSvaHoy});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">📲 Solicitar Activación por WhatsApp</button>`
         );
       },
 
-      // --- USUARIOS ADICIONALES COMPLETOS ($1.00 USD C/U SIN PRORRATEO) ---
+      // --- USUARIOS ADICIONALES COMPLETOS ($1.00 USD C/U SIN PRORRATEO + TICKET + WHATSAPP) ---
       openExtraUsersCheckout() {
         this.openModal(
           '👥 Contratar Usuarios Adicionales',
@@ -3422,16 +3515,16 @@
                <input id="extraUsersQtyInput" type="number" min="1" max="50" value="1" oninput="const q=Math.max(1, parseInt(this.value,10)||1); $('extraUsersTotalLbl').textContent='$'+q.toFixed(2)+' USD';" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono font-bold text-sm" />
              </div>
              <div class="p-3 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] flex justify-between items-center">
-               <span class="font-bold text-[#073e3b]">Total a pagar hoy:</span>
+               <span class="font-bold text-[#073e3b]">Total calculado:</span>
                <strong id="extraUsersTotalLbl" class="font-mono text-base text-[#087e70]">$1.00 USD</strong>
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button onclick="const q=Math.max(1, parseInt($('extraUsersQtyInput')?.value,10)||1); V.closeModal(); V.openExternalPaymentGateway(q + ' Usuario(s) Extra', q * 1.00);" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Ir a Pasarela de Pago →</button>`
+           <button onclick="const q=Math.max(1, parseInt($('extraUsersQtyInput')?.value,10)||1); V.closeModal(); V.requestActivationViaWhatsapp(q + ' Usuario(s) Extra', q + ' usuario(s) adicional(es) x $1.00 USD c/u sin prorrateo', q * 1.00);" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">📲 Solicitar Activación por WhatsApp</button>`
         );
       },
 
-      // --- RENOVACIÓN POR CORTE (REGLA 1 AVISO ROJO / REGLA 2 BLOQUEO +5 DÍAS) ---
+      // --- RENOVACIÓN POR CORTE (CÁLCULO EXACTO + TICKET VENTAS_UPGRADE + WHATSAPP) ---
       openRenewalCheckoutModal() {
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
         const currPlan = getCurrentPlan();
@@ -3440,6 +3533,7 @@
         const extraUsers = Math.max(0, (Number(ses.max_usuarios) || currPlan.includedUsers) - currPlan.includedUsers);
         const extraCost = extraUsers * (isAnual ? currPlan.extraUserAnnual : currPlan.extraUserMonthly);
         const totalRenovacion = Number((basePrice + extraCost).toFixed(2));
+        const detalleCalc = `Renovación ${isAnual ? 'Anual' : 'Mensual'} Plan ${currPlan.name} + ${extraUsers} usuario(s) extra (Corte ${ses.fecha_proximo_corte || 'día 01'})`;
 
         this.openModal(
           '🔄 Renovación de Suscripción Vozkora',
@@ -3453,10 +3547,10 @@
                  <span class="font-mono">${appMoney(totalRenovacion)} USD</span>
                </div>
              </div>
-             <p class="text-[10.5px] text-slate-600">Al tocar continuar se abrirá la pasarela de pago en el navegador de tu teléfono.</p>
+             <p class="text-[10.5px] text-slate-600">Se registrará automáticamente tu solicitud y se abrirá WhatsApp con el resumen exacto.</p>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cerrar</button>
-           <button onclick="V.closeModal(); V.openExternalPaymentGateway('Renovacion ${isAnual ? 'Anual' : 'Mensual'} Plan ${currPlan.name}', ${totalRenovacion});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-rose-600 text-white cursor-pointer">Pagar Renovación en Navegador →</button>`
+           <button onclick="V.closeModal(); V.requestActivationViaWhatsapp('Renovación Plan ${esc(currPlan.name)}', '${esc(detalleCalc)}', ${totalRenovacion});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">📲 Solicitar Activación por WhatsApp</button>`
         );
       },
 
@@ -3465,7 +3559,14 @@
         const currPlan = getCurrentPlan();
         const isAnual = String(ses.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
         const basePrice = isAnual ? currPlan.annualPrice : currPlan.monthlyPrice;
-        this.openExternalPaymentGateway(`Renovacion Urgente Plan ${currPlan.name}`, basePrice);
+        const extraUsers = Math.max(0, (Number(ses.max_usuarios) || currPlan.includedUsers) - currPlan.includedUsers);
+        const extraCost = extraUsers * (isAnual ? currPlan.extraUserAnnual : currPlan.extraUserMonthly);
+        const totalRenovacion = Number((basePrice + extraCost).toFixed(2));
+        this.requestActivationViaWhatsapp(
+          `Renovación Urgente Plan ${currPlan.name}`,
+          `Reactivación por corte vencido (${ses.fecha_proximo_corte || 'día 01'}) · Plan ${currPlan.name} + ${extraUsers} usuario(s) extra`,
+          totalRenovacion
+        );
       },
 
       // --- RECLAMAR SVA GRATIS INCLUIDO EN EL PLAN (Y GUARDAR DIRECTO EN SUPABASE -> CRM) ---
@@ -4595,9 +4696,10 @@
         }
 
         const clientName = $('saleClient').value;
+        const clientObj = appData.clients.find(c => c.name === clientName) || { name: clientName, id: '9999999999999' };
         const method = $('payMethod').value;
+        const fechaOperacionReal = nowFormatted();
 
-        // Comprobar señal real en este preciso instante antes de facturar
         let isOffNow = appData.offline;
         if (!isOffNow && typeof verificarConectividadRealVozkora === 'function') {
           const onlineNow = await verificarConectividadRealVozkora();
@@ -4607,6 +4709,7 @@
           }
         }
 
+        const lineItemsCopy = appData.cart.map(it => ({ ...it }));
         appData.cart.forEach(item => {
           const p = appData.products.find(x => x.id === item.id);
           if (p) p.stock = Math.max(0, p.stock - item.qty);
@@ -4616,11 +4719,15 @@
         const invObj = {
           id: invId,
           client: clientName,
+          clientRuc: clientObj.id || '9999999999999',
           subtotal: fin.netSubtotal,
           ivaRate: appData.selectedIvaRate,
           ivaAmt: fin.ivaAmt,
           total: fin.grandTotal,
           method,
+          itemsList: lineItemsCopy,
+          fecha_operacion_real: fechaOperacionReal,
+          observaciones_sri: isOffNow ? `Venta realizada en ruta el ${fechaOperacionReal}` : '',
           commission: Number(fin.commissionAmt.toFixed(2)),
           status: isOffNow ? 'Pendiente Offline' : 'Autorizada SRI'
         };
@@ -4630,35 +4737,102 @@
         appData.discountPct = 0;
 
         let insertedId = null;
-        if (!isOffNow && typeof registrarEnRepositorio === 'function') {
-          const inserted = await registrarEnRepositorio('repo_facturas', {
+        let apiRejected = null;
+
+        if (!isOffNow && typeof emitirDocumentoPuenteContifico === 'function') {
+          const apiRes = await emitirDocumentoPuenteContifico('FAC', {
             numero_factura: invId,
-            cliente_ruc_ci: '1790012345001',
+            cliente_ruc_ci: invObj.clientRuc,
             cliente_nombre: clientName,
             subtotal: Number(fin.netSubtotal.toFixed(2)),
             iva_porcentaje: appData.selectedIvaRate,
             iva_monto: Number(fin.ivaAmt.toFixed(2)),
             total: Number(fin.grandTotal.toFixed(2)),
             forma_pago: method,
+            items: lineItemsCopy,
+            fecha_operacion_real: fechaOperacionReal
+          });
+          if (!apiRes.ok) {
+            apiRejected = {
+              status: apiRes.status || 422,
+              error: apiRes.error || 'Rechazo del servidor puente / Siigo Contífico'
+            };
+            invObj.status = 'Pendiente con Error API';
+          }
+        }
+
+        if (!isOffNow && typeof registrarEnRepositorio === 'function') {
+          const inserted = await registrarEnRepositorio('repo_facturas', {
+            numero_factura: invId,
+            cliente_ruc_ci: invObj.clientRuc,
+            cliente_nombre: clientName,
+            subtotal: Number(fin.netSubtotal.toFixed(2)),
+            iva_porcentaje: appData.selectedIvaRate,
+            iva_monto: Number(fin.ivaAmt.toFixed(2)),
+            total: Number(fin.grandTotal.toFixed(2)),
+            forma_pago: method,
+            fecha_operacion_real: fechaOperacionReal,
+            observaciones_sri: apiRejected ? `ERROR_API (${apiRejected.status}): ${apiRejected.error}` : '',
             items: invObj,
-            estado_sri: 'AUTORIZADA_SRI'
+            estado_sri: apiRejected ? 'PENDIENTE_ERROR_API' : 'AUTORIZADA_SRI'
           });
           if (inserted && inserted.id) {
             insertedId = inserted.id;
-          } else {
-            // Si falló el envío a Supabase por caída repentina de datos, activar Offline y guardar localmente
+          } else if (!apiRejected) {
             await this.setOfflineState(true, true);
             isOffNow = true;
             invObj.status = 'Pendiente Offline';
+            invObj.observaciones_sri = `Venta realizada en ruta el ${fechaOperacionReal}`;
           }
         }
 
         recordPilotDocumentEmission();
+
+        if (apiRejected) {
+          enqueueOfflineOp(
+            'Facturación SRI',
+            invId,
+            `${clientName} · ${appMoney(fin.grandTotal)} (${method})`,
+            () => {
+              const found = appData.invoices.find(x => x.id === invId);
+              if (found) found.status = 'Autorizada SRI';
+            },
+            'repo_facturas',
+            insertedId,
+            invObj,
+            {
+              fecha_operacion_real: fechaOperacionReal,
+              apiError: apiRejected.error,
+              apiErrorStatus: apiRejected.status
+            }
+          );
+          this.openModal(
+            `🔴 Rechazo API (${apiRejected.status}) · ${invId}`,
+            `<div class="space-y-2">
+               <p class="text-[11px] text-slate-700">La operación <strong>no se ha perdido</strong> y quedó guardada en <strong>Más → Sincronización</strong> como <strong>🔴 Pendiente con Error API</strong>.</p>
+               <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-[11px] text-rose-800 font-bold">
+                 Motivo: ${esc(apiRejected.error)}
+               </div>
+             </div>`,
+            `<button onclick="V.closeModal(); V.open('sync');" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">Ir a Reenviar / Corregir →</button>`
+          );
+          return;
+        }
+
         if (isOffNow) {
-          enqueueOfflineOp('Facturación SRI', invId, `${clientName} · ${appMoney(fin.grandTotal)} (${method})`, () => {
-            const found = appData.invoices.find(x => x.id === invId);
-            if (found) found.status = 'Autorizada SRI';
-          }, 'repo_facturas', insertedId, invObj);
+          enqueueOfflineOp(
+            'Facturación SRI',
+            invId,
+            `${clientName} · ${appMoney(fin.grandTotal)} (${method})`,
+            () => {
+              const found = appData.invoices.find(x => x.id === invId);
+              if (found) found.status = 'Autorizada SRI';
+            },
+            'repo_facturas',
+            insertedId,
+            invObj,
+            { fecha_operacion_real: fechaOperacionReal }
+          );
         }
 
         this.openModal(
@@ -4669,6 +4843,7 @@
              <div class="flex justify-between"><span>IVA (${appData.selectedIvaRate}%):</span><strong>${appMoney(fin.ivaAmt)}</strong></div>
              <div class="flex justify-between"><span>Total Factura:</span><strong class="text-[#073e3b]">${appMoney(fin.grandTotal)}</strong></div>
              <div class="flex justify-between text-[#087e70]"><span>Comisión ganada:</span><strong>+${appMoney(fin.commissionAmt)}</strong></div>
+             ${isOffNow ? `<div class="pt-1 border-t border-slate-200 text-[10px] text-amber-900 font-bold">🕒 Fecha operación real: ${esc(fechaOperacionReal)} (al reconectar se emitirá con fecha SRI del día siguiente y observación automática).</div>` : ''}
            </div>`,
           `<button onclick="V.closeModal(); V.open('home');" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Aceptar</button>`
         );
@@ -5335,13 +5510,243 @@
         toast(isOff ? '💾 Comprobante Deuna! #88412 guardado en cola Offline.' : '✓ Comprobante Deuna! #88412 ($320,00) verificado y conciliado.');
       },
 
+      async processSingleQueuedItem(item) {
+        let itemOk = true;
+        const fechaReal = item.fecha_operacion_real || (item.payload && item.payload.fecha_operacion_real) || null;
+        const obsSriOffline = fechaReal ? `Venta realizada en ruta el ${fechaReal}` : '';
+
+        if (item.module === 'Facturación SRI') {
+          if (item.payload && typeof emitirDocumentoPuenteContifico === 'function') {
+            const bridgeRes = await emitirDocumentoPuenteContifico('FAC', {
+              numero_factura: item.payload.id,
+              cliente_ruc_ci: item.payload.clientRuc || '9999999999999',
+              cliente_nombre: item.payload.client,
+              subtotal: Number(item.payload.subtotal || 0),
+              iva_porcentaje: item.payload.ivaRate || 15,
+              iva_monto: Number(item.payload.ivaAmt || 0),
+              total: Number(item.payload.total || 0),
+              forma_pago: item.payload.method || 'Efectivo',
+              items: item.payload.itemsList || [],
+              fecha_operacion_real: fechaReal,
+              observaciones_sri: obsSriOffline
+            });
+            if (!bridgeRes.ok) {
+              item.apiError = bridgeRes.error || 'Error HTTP al sincronizar factura';
+              item.apiErrorStatus = bridgeRes.status || 422;
+              return false;
+            }
+          }
+          if (item.repoTable && item.repoRowId && typeof actualizarRegistroRepositorio === 'function') {
+            itemOk = await actualizarRegistroRepositorio(item.repoTable, item.repoRowId, {
+              estado_sri: 'AUTORIZADA_SRI',
+              fecha_operacion_real: fechaReal,
+              observaciones_sri: obsSriOffline
+            });
+          } else if (item.payload && typeof registrarEnRepositorio === 'function') {
+            const res = await registrarEnRepositorio('repo_facturas', {
+              numero_factura: item.payload.id,
+              cliente_ruc_ci: item.payload.clientRuc || '9999999999999',
+              cliente_nombre: item.payload.client,
+              subtotal: Number(item.payload.subtotal || 0),
+              iva_porcentaje: item.payload.ivaRate || 15,
+              iva_monto: Number(item.payload.ivaAmt || 0),
+              total: Number(item.payload.total || 0),
+              forma_pago: item.payload.method || 'Efectivo',
+              fecha_operacion_real: fechaReal,
+              observaciones_sri: obsSriOffline,
+              items: item.payload,
+              estado_sri: 'AUTORIZADA_SRI'
+            });
+            itemOk = !!res;
+          }
+          if (itemOk) {
+            const found = appData.invoices.find(x => x.id === item.ref);
+            if (found) found.status = 'Autorizada SRI';
+          }
+        } else if (item.module === 'Proforma (PRO)') {
+          if (item.payload && typeof emitirDocumentoPuenteContifico === 'function') {
+            const bridgeRes = await emitirDocumentoPuenteContifico('PRO', {
+              numero_proforma: item.payload.id,
+              cliente_nombre: item.payload.client,
+              subtotal: Number(item.payload.subtotal || 0),
+              iva_monto: Number(item.payload.ivaAmt || 0),
+              total: Number(item.payload.total || 0),
+              items: item.payload.items || [],
+              fecha_operacion_real: fechaReal,
+              observaciones_sri: obsSriOffline
+            });
+            if (!bridgeRes.ok) {
+              item.apiError = bridgeRes.error || 'Error HTTP al sincronizar proforma';
+              item.apiErrorStatus = bridgeRes.status || 422;
+              return false;
+            }
+          }
+          if (item.payload && typeof registrarEnRepositorio === 'function') {
+            const res = await registrarEnRepositorio('repo_proformas', {
+              numero_proforma: item.payload.id,
+              cliente_nombre: item.payload.client,
+              subtotal: Number(item.payload.subtotal || 0),
+              iva_monto: Number(item.payload.ivaAmt || 0),
+              total: Number(item.payload.total || 0),
+              items: item.payload.items || []
+            });
+            itemOk = !!res;
+          }
+          if (itemOk) {
+            const qFound = appData.quotes.find(x => x.id === item.ref);
+            if (qFound) qFound.contificoSynced = true;
+          }
+        } else if (item.module === 'Nota de Crédito') {
+          if (item.payload && typeof registrarEnRepositorio === 'function') {
+            const res = await registrarEnRepositorio('repo_notas_credito', {
+              numero_nc: item.payload.id,
+              factura_referencia: item.payload.invoiceRef,
+              cliente_nombre: item.payload.client,
+              motivo: item.payload.reason,
+              monto: Number(item.payload.amount || 0)
+            });
+            itemOk = !!res;
+          }
+          if (itemOk) {
+            const ncFound = appData.creditNotes.find(x => x.id === item.ref);
+            if (ncFound) ncFound.syncStatus = 'Autorizada SRI';
+          }
+        } else if (item.module === 'Cliente Nuevo' || item.module === 'Cliente Foto RUC' || item.module === 'Cliente + PDF RUC') {
+          if (item.payload && typeof sincronizarClientePuenteContifico === 'function') {
+            const cliRes = await sincronizarClientePuenteContifico({
+              ruc: item.payload.id,
+              razon_social: item.payload.name,
+              telefonos: item.payload.phone || '',
+              es_cliente: true
+            }, false);
+            if (!cliRes.ok) {
+              item.apiError = cliRes.error || 'Error HTTP al crear cliente en Contífico';
+              item.apiErrorStatus = cliRes.status || 422;
+              return false;
+            }
+          }
+          if (item.payload && typeof registrarEnRepositorio === 'function') {
+            const res = await registrarEnRepositorio('repo_clientes', {
+              cliente_ruc_ci: item.payload.id,
+              cliente_nombre: item.payload.name,
+              cliente_telefono: item.payload.phone || 'N/A',
+              ruc_pdf_url: item.payload.rucPdfUrl || ''
+            });
+            itemOk = !!res;
+          }
+          if (itemOk) {
+            const clFound = appData.clients.find(x => x.id === item.ref);
+            if (clFound) clFound.pendingSync = false;
+          }
+        } else if (item.module === 'Cobro Cartera' && item.payload && typeof registrarEnRepositorio === 'function') {
+          const res = await registrarEnRepositorio('repo_cobros', {
+            cliente_nombre: item.payload.name,
+            monto: Number(item.payload.amount || 0),
+            medio_pago: item.payload.method || 'Efectivo en ruta',
+            referencia_comprobante: item.ref
+          });
+          itemOk = !!res;
+        } else if (item.module === 'Orden de Trabajo') {
+          if (item.payload && typeof registrarEnRepositorio === 'function') {
+            const res = await registrarEnRepositorio('repo_ordenes_trabajo', {
+              codigo_orden: item.payload.id,
+              cliente_nombre: item.payload.client,
+              descripcion: item.payload.desc,
+              estado: item.payload.status || 'Abierta',
+              historial_cambios: item.payload.history || []
+            });
+            itemOk = !!res;
+          }
+          if (itemOk) {
+            const ordFound = appData.orders.find(x => x.id === item.ref);
+            if (ordFound) ordFound.pendingSync = false;
+          }
+        }
+        if (itemOk) {
+          item.apiError = null;
+          item.apiErrorStatus = null;
+          if (typeof item.onSync === 'function') item.onSync();
+        }
+        return itemOk;
+      },
+
+      async retryQueuedApiItem(idx) {
+        const item = appData.offlineQueueItems[idx];
+        if (!item) return;
+        toast(`🔄 Reenviando ${item.ref} al servidor...`);
+        const ok = await this.processSingleQueuedItem(item);
+        if (ok) {
+          appData.offlineQueueItems.splice(idx, 1);
+          toast(`✅ ${item.ref} procesada y autorizada correctamente.`);
+        } else {
+          toast(`🔴 Continúa el rechazo API (${item.apiErrorStatus || 'Error'}): ${item.apiError}`);
+        }
+        syncOfflineBadgeUI();
+        if (typeof guardarColaOfflineLocal === 'function') {
+          guardarColaOfflineLocal(appData.offlineQueueItems);
+        }
+        renderPhone('sync');
+      },
+
+      openEditQueuedApiItem(idx) {
+        const item = appData.offlineQueueItems[idx];
+        if (!item) return;
+        const p = item.payload || {};
+        this.openModal(
+          `✏️ Corregir y Reenviar · ${item.ref}`,
+          `<div class="space-y-2.5">
+             <div class="p-2 rounded-xl bg-rose-50 border border-rose-200 text-[10.5px] text-rose-800 font-bold">
+               Motivo rechazo API: ${esc(item.apiError || 'Error de validación')}
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Cliente / Razón Social</label>
+               <input id="editQueueClientName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" value="${esc(p.client || p.name || '')}" />
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">RUC / Cédula del Cliente (10 o 13 dígitos)</label>
+               <input id="editQueueClientRuc" maxlength="13" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="${esc(p.clientRuc || p.id || '')}" />
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Teléfono WhatsApp</label>
+               <input id="editQueueClientPhone" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="${esc(p.phone || '')}" />
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.saveAndRetryQueuedApiItem(${idx})" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">💾 Guardar y Reenviar</button>`
+        );
+      },
+
+      async saveAndRetryQueuedApiItem(idx) {
+        const item = appData.offlineQueueItems[idx];
+        if (!item) return;
+        const newName = ($('editQueueClientName')?.value || '').trim();
+        const newRuc = ($('editQueueClientRuc')?.value || '').trim();
+        const newPhone = ($('editQueueClientPhone')?.value || '').trim();
+        if (item.payload) {
+          if (newName) {
+            if ('client' in item.payload) item.payload.client = newName;
+            if ('name' in item.payload) item.payload.name = newName;
+          }
+          if (newRuc) {
+            if ('clientRuc' in item.payload) item.payload.clientRuc = newRuc;
+            if (item.module.startsWith('Cliente')) {
+              item.payload.id = newRuc;
+              item.ref = newRuc;
+            }
+          }
+          if (newPhone && 'phone' in item.payload) item.payload.phone = newPhone;
+        }
+        item.detail = `${newName || item.detail} · RUC: ${newRuc || 'N/A'}`;
+        this.closeModal();
+        await this.retryQueuedApiItem(idx);
+      },
+
       async setOfflineState(targetOffline, isAutomatic = false) {
         if (appData.offline === targetOffline) return;
         appData.offline = targetOffline;
         const pill = $('header-sync-pill');
         const dot = $('header-sync-dot');
         const txt = $('header-sync-text');
-        const banner = $('phone-offline-banner');
         const statusNet = $('status-net-badge');
 
         if (appData.offline) {
@@ -5349,7 +5754,6 @@
           dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping';
           txt.textContent = 'Offline';
           statusNet.textContent = 'Sin señal · Offline';
-          banner.classList.remove('hidden');
           syncOfflineBadgeUI();
           toast(isAutomatic
             ? '📴 Sin conexión a Internet: Sync Offline activado automáticamente (SQLite local).'
@@ -5359,100 +5763,8 @@
           const failedItems = [];
           let synced = 0;
           for (const item of itemsToSync) {
-            let itemOk = true;
-            if (item.module === 'Facturación SRI') {
-              if (item.repoTable && item.repoRowId && typeof actualizarRegistroRepositorio === 'function') {
-                itemOk = await actualizarRegistroRepositorio(item.repoTable, item.repoRowId, { estado_sri: 'AUTORIZADA_SRI' });
-              } else if (item.payload && typeof registrarEnRepositorio === 'function') {
-                const res = await registrarEnRepositorio('repo_facturas', {
-                  numero_factura: item.payload.id,
-                  cliente_ruc_ci: '1790012345001',
-                  cliente_nombre: item.payload.client,
-                  subtotal: Number(item.payload.subtotal || 0),
-                  iva_porcentaje: item.payload.ivaRate || 15,
-                  iva_monto: Number(item.payload.ivaAmt || 0),
-                  total: Number(item.payload.total || 0),
-                  forma_pago: item.payload.method || 'Efectivo',
-                  items: item.payload,
-                  estado_sri: 'AUTORIZADA_SRI'
-                });
-                itemOk = !!res;
-              }
-              if (itemOk) {
-                const found = appData.invoices.find(x => x.id === item.ref);
-                if (found) found.status = 'Autorizada SRI';
-              }
-            } else if (item.module === 'Proforma (PRO)') {
-              if (item.payload && typeof registrarEnRepositorio === 'function') {
-                const res = await registrarEnRepositorio('repo_proformas', {
-                  numero_proforma: item.payload.id,
-                  cliente_nombre: item.payload.client,
-                  subtotal: Number(item.payload.subtotal || 0),
-                  iva_monto: Number(item.payload.ivaAmt || 0),
-                  total: Number(item.payload.total || 0),
-                  items: item.payload.items || []
-                });
-                itemOk = !!res;
-              }
-              if (itemOk) {
-                const qFound = appData.quotes.find(x => x.id === item.ref);
-                if (qFound) qFound.contificoSynced = true;
-              }
-            } else if (item.module === 'Nota de Crédito') {
-              if (item.payload && typeof registrarEnRepositorio === 'function') {
-                const res = await registrarEnRepositorio('repo_notas_credito', {
-                  numero_nc: item.payload.id,
-                  factura_referencia: item.payload.invoiceRef,
-                  cliente_nombre: item.payload.client,
-                  motivo: item.payload.reason,
-                  monto: Number(item.payload.amount || 0)
-                });
-                itemOk = !!res;
-              }
-              if (itemOk) {
-                const ncFound = appData.creditNotes.find(x => x.id === item.ref);
-                if (ncFound) ncFound.syncStatus = 'Autorizada SRI';
-              }
-            } else if (item.module === 'Cliente Nuevo' || item.module === 'Cliente Foto RUC' || item.module === 'Cliente + PDF RUC') {
-              if (item.payload && typeof registrarEnRepositorio === 'function') {
-                const res = await registrarEnRepositorio('repo_clientes', {
-                  cliente_ruc_ci: item.payload.id,
-                  cliente_nombre: item.payload.name,
-                  cliente_telefono: item.payload.phone || 'N/A',
-                  ruc_pdf_url: item.payload.rucPdfUrl || ''
-                });
-                itemOk = !!res;
-              }
-              if (itemOk) {
-                const clFound = appData.clients.find(x => x.id === item.ref);
-                if (clFound) clFound.pendingSync = false;
-              }
-            } else if (item.module === 'Cobro Cartera' && item.payload && typeof registrarEnRepositorio === 'function') {
-              const res = await registrarEnRepositorio('repo_cobros', {
-                cliente_nombre: item.payload.name,
-                monto: Number(item.payload.amount || 0),
-                medio_pago: item.payload.method || 'Efectivo en ruta',
-                referencia_comprobante: item.ref
-              });
-              itemOk = !!res;
-            } else if (item.module === 'Orden de Trabajo') {
-              if (item.payload && typeof registrarEnRepositorio === 'function') {
-                const res = await registrarEnRepositorio('repo_ordenes_trabajo', {
-                  codigo_orden: item.payload.id,
-                  cliente_nombre: item.payload.client,
-                  descripcion: item.payload.desc,
-                  estado: item.payload.status || 'Abierta',
-                  historial_cambios: item.payload.history || []
-                });
-                itemOk = !!res;
-              }
-              if (itemOk) {
-                const ordFound = appData.orders.find(x => x.id === item.ref);
-                if (ordFound) ordFound.pendingSync = false;
-              }
-            }
+            const itemOk = await this.processSingleQueuedItem(item);
             if (itemOk) {
-              if (typeof item.onSync === 'function') item.onSync();
               synced++;
             } else {
               failedItems.push(item);
@@ -5467,10 +5779,14 @@
           dot.className = 'w-1.5 h-1.5 rounded-full bg-[#087e70]';
           txt.textContent = 'Online';
           statusNet.textContent = '5G · Online';
-          banner.classList.add('hidden');
-          toast(synced > 0
-            ? `✓ Internet restablecido: ${synced} operación(es) sincronizadas automáticamente.`
-            : (isAutomatic ? '📶 Conexión a Internet restablecida (Online).' : 'Conexión Online restablecida.'));
+          const apiErrs = failedItems.filter(x => !!x.apiError).length;
+          if (apiErrs > 0) {
+            toast(`⚠️ ${apiErrs} operación(es) rechazadas por API. Revisa Más → Sincronización para reenviar.`);
+          } else {
+            toast(synced > 0
+              ? `✓ Internet restablecido: ${synced} operación(es) sincronizadas automáticamente.`
+              : (isAutomatic ? '📶 Conexión a Internet restablecida (Online).' : 'Conexión Online restablecida.'));
+          }
         }
         renderPhone(appData.currentPage);
       },
@@ -6409,7 +6725,6 @@
 
       renderBillingView() {
         const body = $('crm-body');
-        const payUrl = typeof obtenerUrlPasarela === 'function' ? obtenerUrlPasarela() : '';
         const enriched = this.cachedCompanies.map(emp => ({
           emp,
           subStatus: evaluarEstadoSuscripcion(emp)
@@ -6433,15 +6748,9 @@
               <p class="text-[11px] text-slate-500">Regla 1: Días 1–5 tras corte = Aviso rojo en App · Regla 2: +5 días tras corte = Bloqueo total con redirección a pasarela.</p>
             </div>
 
-            <!-- Configuración URL Pasarela de Pago (dLocal Go / Link temporal) -->
-            <div class="p-3 rounded-2xl bg-[#e7f5f1] border border-[#b9d1cd] flex flex-wrap items-center gap-2">
-              <div class="flex-1 min-w-[220px]">
-                <label class="text-[10.5px] font-extrabold text-[#073e3b] block">🔗 URL Pasarela de Pago (Se abre en el navegador del celular del cliente):</label>
-                <input id="crmPaymentGatewayUrl" class="w-full border border-[#b9d1cd] rounded-xl px-2.5 py-1.5 mt-1 font-mono text-[11px] bg-white" value="${esc(payUrl)}" />
-              </div>
-              <button onclick="const u=guardarUrlPasarela($('crmPaymentGatewayUrl').value); toast('✓ URL de Pasarela guardada: '+u);" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer self-end">
-                Guardar Link Pasarela
-              </button>
+            <!-- Canal Oficial Google Play Compliant (Ticket VENTAS_UPGRADE + WhatsApp Directo) -->
+            <div class="p-3 rounded-2xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b] flex items-center justify-between gap-2">
+              <span>📲 <strong>Activaciones y Renovaciones (Cumplimiento Google Play):</strong> Toda solicitud desde la App crea automáticamente un ticket <code>VENTAS_UPGRADE</code> y abre WhatsApp oficial <strong>+57 323 939 9953</strong> con el cálculo exacto.</span>
             </div>
 
             <!-- Filtros Semáforo -->
