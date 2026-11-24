@@ -1231,6 +1231,64 @@
       `;
     }
 
+    // Helper reutilizable: Selector de Cliente con Lupa en Vivo + Lista Desplegable hacia abajo
+    function renderSearchableClientPicker(selectId, opts = {}) {
+      const excludeMostrador = !!opts.excludeMostrador;
+      const allowCustomText = !!opts.allowCustomText;
+      const placeholder = opts.placeholder || '🔍 Buscar cliente por nombre o RUC...';
+      const clientsList = (appData.clients || []).filter(c => !excludeMostrador || c.id !== '9999999999999');
+      const searchInputId = selectId + '_search';
+      const dropdownBoxId = selectId + '_dropdown';
+
+      return `
+        <div class="relative space-y-1" data-client-picker="${selectId}">
+          <div class="relative flex items-center">
+            <input
+              id="${searchInputId}"
+              type="text"
+              autocomplete="off"
+              placeholder="${esc(placeholder)}"
+              onfocus="V.filterClientPicker('${selectId}', this.value, true)"
+              oninput="V.filterClientPicker('${selectId}', this.value, true)"
+              class="w-full border border-[#d7e1e0] focus:border-[#087e70] focus:outline-none rounded-xl pl-3 pr-8 py-2 text-xs bg-white font-medium"
+            />
+            <button
+              type="button"
+              onclick="V.toggleClientPickerDropdown('${selectId}')"
+              class="absolute right-2 text-slate-500 hover:text-[#087e70] text-xs font-bold px-1 cursor-pointer"
+              title="Desplegar lista de clientes"
+            >▾</button>
+          </div>
+
+          <!-- Lista desplegable flotante hacia abajo con resultados filtrados -->
+          <div id="${dropdownBoxId}" class="hidden max-h-44 overflow-y-auto rounded-xl border border-[#b9d1cd] bg-white shadow-lg divide-y divide-slate-100 text-xs z-30">
+            ${clientsList.map(c => `
+              <button
+                type="button"
+                data-name="${esc(c.name)}"
+                data-ruc="${esc(c.id)}"
+                onclick="V.selectClientFromPicker('${selectId}', this.dataset.name)"
+                class="w-full px-3 py-2 text-left hover:bg-[#e7f5f1] flex items-center justify-between gap-2 cursor-pointer"
+              >
+                <span class="font-bold text-[#17343a] truncate">${esc(c.name)}</span>
+                <span class="font-mono text-[10px] text-slate-500 shrink-0">${esc(c.id)}</span>
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- Select nativo sincronizado para compatibilidad con toda la lógica existente -->
+          <select
+            id="${selectId}"
+            onchange="const inp=$('${searchInputId}'); if(inp) inp.value=this.value;"
+            class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-[#f5f8f8] text-xs font-semibold text-[#073e3b]"
+          >
+            ${allowCustomText ? '<option value="">-- Selecciona de la lista o escribe arriba --</option>' : ''}
+            ${clientsList.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(c.id)})</option>`).join('')}
+          </select>
+        </div>
+      `;
+    }
+
     // Helper visual para el bloque compartido de Descuentos (Sin descuento / Mismo descuento en todo / Descuento por producto) según Reglas IA
     function renderDiscountGovernanceBlock(docType, mode, globalPct, fin, returnPage) {
       const marginShieldOn = configState.activeSVAs.ventas;
@@ -1612,9 +1670,7 @@
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
             <div>
               <label class="font-bold text-slate-600">Cliente</label>
-              <select id="saleClient" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
-                ${appData.clients.map(c => `<option>${esc(c.name)}</option>`).join('')}
-              </select>
+${renderSearchableClientPicker('saleClient')}
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div class="col-span-2">
@@ -1805,9 +1861,7 @@
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
             <div>
               <label class="font-bold text-slate-600">Cliente</label>
-              <select id="quoteClient" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
-                ${appData.clients.map(c => `<option>${esc(c.name)}</option>`).join('')}
-              </select>
+${renderSearchableClientPicker('quoteClient')}
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div class="col-span-2">
@@ -2202,7 +2256,7 @@
           <div class="space-y-1.5">
             <div>
               <div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (API Proveedor Software Contable)</div>
-              <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados en Supabase y enviados vía API Proveedor Software Contable</div>
+              <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados en la nube Vozkora y enviados vía API Proveedor Software Contable</div>
             </div>
             <div class="grid ${ocrRucAllowed ? 'grid-cols-3' : 'grid-cols-1'} gap-1.5">
               ${ocrRucAllowed ? `
@@ -2678,8 +2732,33 @@
               <button type="button" onclick="V.setReportFilter('year')" class="py-1.5 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'year' ? 'bg-[#073e3b] text-[#70d2bd] shadow-xs' : 'text-slate-600'}">Por Año</button>
             </div>
             <div class="flex items-center justify-between gap-2 pt-0.5">
-              <span class="text-[11px] text-slate-600 font-semibold">Fecha de corte base:</span>
-              <input type="date" value="${esc(refDate)}" onchange="V.setReportDate(this.value)" class="border border-[#d7e1e0] rounded-lg px-2.5 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]" />
+              <span class="text-[11px] text-slate-600 font-semibold">
+                ${period === 'day' ? 'Selecciona el día:' : (period === 'month' ? 'Selecciona mes y año:' : 'Selecciona el año:')}
+              </span>
+              ${period === 'day' ? `
+                <input type="date" value="${esc(refDate)}" onchange="V.setReportDate(this.value)" class="border border-[#d7e1e0] rounded-lg px-2.5 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]" />
+              ` : (period === 'month' ? `
+                <div class="flex items-center gap-1.5">
+                  <select onchange="V.setReportMonthPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px] font-bold bg-white text-[#073e3b]">
+                    ${[
+                      ['01','Enero'],['02','Febrero'],['03','Marzo'],['04','Abril'],
+                      ['05','Mayo'],['06','Junio'],['07','Julio'],['08','Agosto'],
+                      ['09','Septiembre'],['10','Octubre'],['11','Noviembre'],['12','Diciembre']
+                    ].map(m => `<option value="${m[0]}" ${refDate.slice(5,7) === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}
+                  </select>
+                  <select onchange="V.setReportYearPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]">
+                    ${Array.from({length: 6}, (_, i) => String(new Date().getFullYear() - 3 + i)).map(y => `
+                      <option value="${y}" ${refYear === y ? 'selected' : ''}>${y}</option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : `
+                <select onchange="V.setReportYearPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-3 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]">
+                  ${Array.from({length: 6}, (_, i) => String(new Date().getFullYear() - 3 + i)).map(y => `
+                    <option value="${y}" ${refYear === y ? 'selected' : ''}>Año ${y}</option>
+                  `).join('')}
+                </select>
+              `)}
             </div>
           </div>
 
@@ -3040,7 +3119,10 @@
           </div>
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
-            <input id="woClient" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Cliente / empresa (ACME S.A.)">
+            <div>
+              <label class="font-bold text-slate-600 block mb-1">Cliente / empresa *</label>
+              ${renderSearchableClientPicker('woClient', { allowCustomText: true, placeholder: '🔍 Buscar cliente en lista o escribir nombre...' })}
+            </div>
             <input id="woDesc" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Descripción del servicio técnico">
             <input id="woObs" class="w-full border border-[#d7e1e0] rounded-xl p-2" placeholder="Observación inicial de recepción">
             <button onclick="V.work()" class="w-full py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
@@ -3174,7 +3256,7 @@
           `<div class="space-y-2 max-h-[60vh] overflow-y-auto pr-1 text-[11px] text-slate-700 leading-relaxed">
              <p><strong>Responsable del Tratamiento:</strong> Vozkora Ingeniería Tech S.A.S.</p>
              <p><strong>1. Datos que recopilamos:</strong> Correo corporativo, RUC/cédula, datos de facturación, inventario, fotografías de comprobantes RUC o visitas de ruta capturadas voluntariamente por el usuario, y dictados de voz para transcripción operativa.</p>
-             <p><strong>2. Finalidad y Transferencia Segura:</strong> Toda la información se transmite cifrada mediante HTTPS a nuestra infraestructura en la nube (Supabase) y a servicios de procesamiento inteligente (Google Cloud AI) únicamente para ejecutar las funciones contables y comerciales solicitadas por el usuario.</p>
+             <p><strong>2. Finalidad y Transferencia Segura:</strong> Toda la información se transmite cifrada mediante HTTPS a nuestra infraestructura segura en la nube Vozkora y a nuestro motor de procesamiento inteligente únicamente para ejecutar las funciones contables y comerciales solicitadas por el usuario.</p>
              <p><strong>3. Uso de Cámara y Micrófono:</strong> La cámara se utiliza exclusivamente para escanear códigos de barras y digitalizar certificados RUC o evidencias de entrega. El micrófono se utiliza únicamente cuando el usuario pulsa el botón de dictado por voz.</p>
              <p><strong>4. Derechos y Eliminación de Datos:</strong> Puedes solicitar la eliminación total de tu cuenta y datos asociados en cualquier momento desde el menú <em>Cuenta → Eliminar mi cuenta y datos</em> dentro de esta aplicación.</p>
            </div>`,
@@ -3265,7 +3347,7 @@
                  Estás autorizando a Vozkora a usar la cámara de tu dispositivo.
                </div>
                <p><strong>Finalidad exclusiva:</strong> Escanear códigos de barras de productos, capturar certificados RUC del SRI y registrar evidencias fotográficas de visitas comerciales en ruta.</p>
-               <p class="text-[10.5px] text-slate-500">Las imágenes capturadas se transmiten de forma cifrada (HTTPS) a nuestros servidores en la nube (Supabase / Google Cloud AI) únicamente para digitalizar los datos solicitados.</p>
+               <p class="text-[10.5px] text-slate-500">Las imágenes capturadas se transmiten de forma cifrada (HTTPS) a nuestros servidores seguros en la nube Vozkora únicamente para digitalizar los datos solicitados.</p>
              </div>`,
             `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
              <button onclick="sessionStorage.setItem('vozkora_camera_disclosure_session','1'); V.closeModal(); V.openRealCameraModal('${purpose}', ${extraIdx === null ? 'null' : extraIdx});" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">✓ Autorizo Usar la Cámara</button>`
@@ -3564,9 +3646,7 @@
              </div>
              <div>
                <label class="font-bold text-[11px]">Cliente a Visitar *</label>
-               <select id="schedRouteClient" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
-                 ${appData.clients.filter(c => c.id !== '9999999999999').map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(c.id)})</option>`).join('')}
-               </select>
+${renderSearchableClientPicker('schedRouteClient', { excludeMostrador: true })}
              </div>
              <div>
                <label class="font-bold text-[11px]">Hora Programada de Visita *</label>
@@ -4260,7 +4340,7 @@
         } else if (alreadyCreatedMsg) {
           toast(`ℹ️ Cliente ya creado en el Proveedor Software Contable (${razonSocial}).`);
         } else {
-          toast(`✓ ${razonSocial} registrado en Supabase y sincronizado vía API.`);
+          toast(`✓ ${razonSocial} registrado en la nube Vozkora y sincronizado vía API.`);
         }
       },
 
@@ -4282,9 +4362,7 @@
              ` : ''}
              <div>
                <label class="font-bold text-[11px]">Cliente que realiza el pago</label>
-               <select id="voucherClientSelect" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white">
-                 ${appData.clients.filter(c => c.id !== '9999999999999').map(c => `<option value="${esc(c.name)}">${esc(c.name)} (Saldo: ${appMoney(c.debt)})</option>`).join('')}
-               </select>
+${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true })}
              </div>
              <div>
                <label class="font-bold text-[11px]">${this.capturedVoucherDataUrl ? 'O reemplazar con archivo (Imagen o PDF)' : 'Adjuntar Imagen o PDF del Comprobante *'}</label>
@@ -4639,6 +4717,7 @@
         appData.discountPct = 0;
         renderPhone(returnPage);
         if ($('saleClient') && $('saleClient').options.length > 0) $('saleClient').selectedIndex = 0;
+        if ($('saleClient_search')) $('saleClient_search').value = '';
         if ($('saleQty')) $('saleQty').value = 1;
         if ($('payMethod')) $('payMethod').selectedIndex = 0;
         toast('🗑️ Formulario de facturación restablecido.');
@@ -4745,9 +4824,23 @@
         }
       },
 
+      setReportMonthPart(mm) {
+        const curr = appData.reportFilterDate || new Date().toISOString().slice(0, 10);
+        const yyyy = curr.slice(0, 4);
+        appData.reportFilterDate = `${yyyy}-${mm}-01`;
+        renderPhone('reports');
+      },
+
+      setReportYearPart(yyyy) {
+        const curr = appData.reportFilterDate || new Date().toISOString().slice(0, 10);
+        const mm = curr.slice(5, 7) || '01';
+        appData.reportFilterDate = `${yyyy}-${mm}-01`;
+        renderPhone('reports');
+      },
+
       async refreshReportsFromCloud() {
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
-        toast('🔄 Sincronizando indicadores con Supabase y Proveedor Software Contable...');
+        toast('🔄 Sincronizando indicadores con la nube Vozkora y Proveedor Software Contable...');
         try {
           if (typeof obtenerInformeGerencialVozkora === 'function') {
             const data = await obtenerInformeGerencialVozkora(ses.empresa_ruc);
@@ -4789,6 +4882,45 @@
         a.click();
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
         toast('📥 Informe Contable Enterprise descargado para tu contador.');
+      },
+
+      filterClientPicker(selectId, query, forceOpen = true) {
+        const box = $(selectId + '_dropdown');
+        if (!box) return;
+        const q = String(query || '').trim().toLowerCase();
+        const btns = Array.from(box.querySelectorAll('button[data-name]'));
+        let visibleCount = 0;
+        btns.forEach(btn => {
+          const nom = (btn.dataset.name || '').toLowerCase();
+          const ruc = (btn.dataset.ruc || '').toLowerCase();
+          const match = !q || nom.includes(q) || ruc.includes(q);
+          btn.classList.toggle('hidden', !match);
+          if (match) visibleCount++;
+        });
+        if (forceOpen && visibleCount > 0) {
+          box.classList.remove('hidden');
+        } else if (visibleCount === 0) {
+          box.classList.add('hidden');
+        }
+      },
+
+      toggleClientPickerDropdown(selectId) {
+        const box = $(selectId + '_dropdown');
+        if (!box) return;
+        if (box.classList.contains('hidden')) {
+          this.filterClientPicker(selectId, $(selectId + '_search')?.value || '', true);
+        } else {
+          box.classList.add('hidden');
+        }
+      },
+
+      selectClientFromPicker(selectId, clientName) {
+        const sel = $(selectId);
+        const inp = $(selectId + '_search');
+        const box = $(selectId + '_dropdown');
+        if (sel) sel.value = clientName;
+        if (inp) inp.value = clientName;
+        if (box) box.classList.add('hidden');
       },
 
       openTaxesModal() {
@@ -6459,7 +6591,9 @@
       },
 
       async work() {
-        const client = $('woClient').value.trim();
+        const clientSel = ($('woClient')?.value || '').trim();
+        const clientTyped = ($('woClient_search')?.value || '').trim();
+        const client = clientSel || clientTyped;
         const desc = $('woDesc').value.trim();
         const obs = ($('woObs').value || '').trim() || 'Orden abierta desde aplicación móvil.';
         if (!client || !desc) return toast('Completa cliente y descripción del servicio.');
@@ -6566,7 +6700,7 @@
 
       openWorkOrderRepoModal() {
         this.openModal(
-          '🗄️ Repositorio Completo de Órdenes (Supabase)',
+          '🗄️ Repositorio Completo de Órdenes (Nube Vozkora)',
           `<p class="text-[11px] text-slate-600">Trazabilidad completa de todas las órdenes y cambios de estado listos para entregar al cliente:</p>
            <div class="space-y-2">
              ${appData.orders.map(o => `
