@@ -1219,6 +1219,7 @@
           ['cobranza', 'Cobrar Cartera'],
           ['bancos', 'Ver Bancos'],
           ['programador_ruta', '🗺️ Programador de Ruta GPS'],
+          ['admin_tickets', '🎫 Administrador de Tickets'],
           ['reportes', 'Ver Reportes'],
           ['configuracion', 'Entrenar IA']
         ];
@@ -1243,7 +1244,7 @@
       },
 
       async savePermsAndApi(id) {
-        const keys = ['facturar','proformas','clientes','inventario_ver','inventario_editar','cobranza','bancos','programador_ruta','reportes','configuracion'];
+        const keys = ['facturar','proformas','clientes','inventario_ver','inventario_editar','cobranza','bancos','programador_ruta','admin_tickets','reportes','configuracion'];
         const permisos = {};
         keys.forEach(k => { permisos[k] = !!$('perm_' + k)?.checked; });
         try {
@@ -1285,7 +1286,7 @@
       async assignTicketStaff(ticketId, staffEmail) {
         const tk = this.cachedTickets.find(x => x.id === ticketId);
         if (!tk) return;
-        const staffObj = this.cachedStaff.find(s => s.email === staffEmail);
+        const staffObj = this.cachedStaff.find(s => s.email === staffEmail) || this.cachedUsers.find(u => u.email === staffEmail);
         const staffName = staffObj ? `${staffObj.nombre_completo || staffObj.email} (${staffObj.rol})` : 'Sin asignar';
         try {
           await crmAsignarTicketAColaborador(ticketId, staffEmail, staffName, tk.detalle || {});
@@ -1414,10 +1415,18 @@
                         ${isSuper ? `
                           <select onchange="CRM.assignTicketStaff('${tk.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-[#f5f8f8] font-bold text-[#073e3b]">
                             <option value="">-- Sin asignar --</option>
-                            ${(this.cachedStaff || []).map(st => {
-                              const currAssigned = tk.asignado_a || det.asignado_a_email || '';
-                              return `<option value="${esc(st.email)}" ${currAssigned === st.email ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(st.rol)}]</option>`;
-                            }).join('')}
+                            <optgroup label="👥 Usuarios de ${esc(tk.empresa_nombre)}">
+                              ${(this.cachedUsers || []).filter(u => u.empresa_ruc === tk.empresa_ruc && u.activo).map(u => {
+                                const currAssigned = tk.asignado_a || det.asignado_a_email || '';
+                                return `<option value="${esc(u.email)}" ${currAssigned === u.email ? 'selected' : ''}>${esc(u.nombre_completo || u.email)} [${esc(u.rol)}]</option>`;
+                              }).join('')}
+                            </optgroup>
+                            <optgroup label="🎧 Equipo Central Vozkora">
+                              ${(this.cachedStaff || []).map(st => {
+                                const currAssigned = tk.asignado_a || det.asignado_a_email || '';
+                                return `<option value="${esc(st.email)}" ${currAssigned === st.email ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(st.rol)}]</option>`;
+                              }).join('')}
+                            </optgroup>
                           </select>
                         ` : `<span class="px-2 py-0.5 rounded-lg bg-[#e7f5f1] text-[#073e3b] font-bold">${esc(sesNow?.nombre_completo || myEmail)}</span>`}
                       </div>

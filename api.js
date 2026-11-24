@@ -1220,3 +1220,48 @@ async function obtenerInformeGerencialVozkora(empresaRuc = '') {
 
   return { invoices, creditNotes, quotes, payments, products };
 }
+
+// -------------------------------------------------------------------------
+// N. ADMINISTRADOR DE TICKETS POR EMPRESA (APP + CRM CON PERMISO admin_tickets)
+// -------------------------------------------------------------------------
+async function empresaListarUsuariosCompaneros(empresaRuc = '') {
+  const ses = obtenerSesionVozkora() || {};
+  const ruc = empresaRuc || ses.empresa_ruc || '';
+  if (!ruc) return [];
+  if (ses.rol === 'DEMO' || ses.entorno === 'DEMO') {
+    return [
+      { id: 'u1', email: ses.email || 'admin@demo.com', nombre_completo: 'Administrador Principal', rol: 'ADMIN_EMPRESA', activo: true },
+      { id: 'u2', email: 'vendedor1@demo.com', nombre_completo: 'Carlos Paredes (Vendedor Ruta)', rol: 'OPERADOR', activo: true },
+      { id: 'u3', email: 'bodega@demo.com', nombre_completo: 'María Fernanda Ruiz (Bodega)', rol: 'OPERADOR', activo: true }
+    ];
+  }
+  try {
+    const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/empresa_listar_usuarios_seguro`, {
+      method: 'POST',
+      headers: supaHeaders(),
+      body: JSON.stringify({
+        p_empresa_ruc: ruc,
+        p_solicitante_email: String(ses.email || '').trim().toLowerCase()
+      })
+    });
+    if (!resp.ok) return [];
+    const rows = await resp.json();
+    return Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+async function empresaListarTicketsPropios(empresaRuc = '') {
+  const ses = obtenerSesionVozkora() || {};
+  const ruc = empresaRuc || ses.empresa_ruc || '';
+  if (!ruc) return [];
+  try {
+    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_tickets?empresa_ruc=eq.${encodeURIComponent(ruc)}&select=*&order=creado_en.desc`;
+    const resp = await fetch(url, { headers: supaHeaders() });
+    if (!resp.ok) return [];
+    return await resp.json();
+  } catch (e) {
+    return [];
+  }
+}

@@ -531,6 +531,9 @@
           { id: 'MOV-990', bank: 'Cuenta Corriente Principal', date: 'Ayer 16:40', ref: 'DEP-44109', concept: 'Pago Factura Comercial Andina', type: 'Crédito (+)', amount: 762.80, reconciled: true },
           { id: 'MOV-989', bank: 'Cuenta Corriente Principal', date: 'Ayer 11:20', ref: 'TRF-33018', concept: 'Abono cliente por identificar', type: 'Crédito (+)', amount: 185.00, reconciled: false }
         ],
+        companyTickets: [],
+        companyUsers: [],
+        companyTicketFilter: 'ABIERTOS',
         reportFilterPeriod: 'month',
         reportFilterDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)),
         routeFilterDate: '',
@@ -1369,7 +1372,12 @@
       else if (page === 'inventory') screen.innerHTML = viewInventory();
       else if (page === 'more') screen.innerHTML = viewMore();
       else if (page === 'helpcenter') { screen.innerHTML = viewMore(); V.openHelpCenterModal(); }
-      else screen.innerHTML = viewModule(page);
+      else {
+        screen.innerHTML = viewModule(page);
+        if (page === 'admintickets' && (!appData.companyTickets.length || !appData.companyUsers.length) && !appData._loadingTk) {
+          V.loadCompanyTicketsModule(true);
+        }
+      }
     }
 
     // VISTA: INICIO
@@ -1610,6 +1618,11 @@
             ['🏢', 'Planes y precios', 'plans'],
             ['⚙️', 'Configuración IA', 'settings'],
             ['🔄', 'Sincronización', 'sync'],
+            ...((() => {
+              const s = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+              const canAdminTk = s.rol === 'ADMIN_EMPRESA' || s.rol === 'DEMO' || !!(s.permisos && s.permisos.admin_tickets);
+              return canAdminTk ? [['🎫', 'Admin. Tickets', 'admintickets']] : [];
+            })()),
             ['🛟', 'Ayuda y Tickets', 'helpcenter']
           ].map(x => `
             <button onclick="V.open('${x[2]}')" class="bg-white hover:bg-[#f4fbf9] border border-[#e3ebea] rounded-2xl p-3 text-left transition cursor-pointer">
@@ -3196,6 +3209,92 @@ ${renderSearchableClientPicker('quoteClient')}
             <button onclick="V.ask()" class="w-full py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Consultar IA</button>
             ${appData.aiAnswer ? `<div class="p-3 rounded-xl bg-[#f5f8f8] border border-[#b9d1cd] text-[11px] leading-relaxed text-[#17343a]">${appData.aiAnswer}</div>` : ''}
           </div>
+        `;
+      }
+
+      // 19. ADMINISTRADOR DE TICKETS DE LA EMPRESA (ADMIN_EMPRESA O PERMISO admin_tickets)
+      if (p === 'admintickets') {
+        const sesTk = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const canAdminTk = sesTk.rol === 'ADMIN_EMPRESA' || sesTk.rol === 'DEMO' || !!(sesTk.permisos && sesTk.permisos.admin_tickets);
+        if (!canAdminTk) {
+          return backBtn + `<div class="bg-white border border-rose-200 rounded-2xl p-4 text-xs text-rose-800 font-bold">⛔ No tienes habilitado el permiso de Administrador de Tickets. Solicítalo a tu administrador.</div>`;
+        }
+
+        const tks = Array.isArray(appData.companyTickets) ? appData.companyTickets : [];
+        const usrs = Array.isArray(appData.companyUsers) ? appData.companyUsers : [];
+        const flt = appData.companyTicketFilter || 'ABIERTOS';
+
+        const abiertos = tks.filter(t => t.estado === 'PENDIENTE' || t.estado === 'ABIERTO');
+        const enProc = tks.filter(t => t.estado === 'EN_PROCESO');
+        const cerrados = tks.filter(t => t.estado === 'APROBADO' || t.estado === 'RECHAZADO');
+        const list = flt === 'EN_PROCESO' ? enProc : (flt === 'CERRADOS' ? cerrados : (flt === 'TODOS' ? tks : abiertos));
+
+        return `
+          ${backBtn}
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <div class="text-base font-extrabold text-[#17343a]">🎫 Administrador de Tickets</div>
+              <div class="text-[10.5px] text-[#087e70] font-semibold">Asigna tickets a los usuarios de ${esc(sesTk.empresa_nombre || 'tu empresa')}</div>
+            </div>
+            <button onclick="V.loadCompanyTicketsModule()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">
+              🔄 Actualizar
+            </button>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5">
+            <button onclick="appData.companyTicketFilter='ABIERTOS'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'ABIERTOS' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">🟡 Abiertos (${abiertos.length})</button>
+            <button onclick="appData.companyTicketFilter='EN_PROCESO'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'EN_PROCESO' ? 'bg-cyan-700 text-white' : 'bg-cyan-50 text-cyan-900 border border-cyan-200'}">🔵 En Proceso (${enProc.length})</button>
+            <button onclick="appData.companyTicketFilter='CERRADOS'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'CERRADOS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">🟢 Cerrados (${cerrados.length})</button>
+          </div>
+
+          ${list.length === 0 ? `
+            <div class="bg-white border border-[#e3ebea] rounded-2xl p-4 text-center text-xs text-slate-500 space-y-2">
+              <div>No hay tickets en esta bandeja todavía.</div>
+              <button onclick="V.loadCompanyTicketsModule()" class="px-3 py-1.5 rounded-xl bg-[#e7f5f1] text-[#073e3b] font-bold text-[11px] cursor-pointer">Consultar tickets ahora</button>
+            </div>
+          ` : `
+            <div class="space-y-2.5 text-xs">
+              ${list.map((tk) => {
+                const det = tk.detalle || {};
+                const currAssigned = tk.asignado_a || det.asignado_a_email || '';
+                const badgeCls = tk.estado === 'PENDIENTE' ? 'bg-amber-100 text-amber-900' : (tk.estado === 'EN_PROCESO' ? 'bg-cyan-100 text-cyan-900' : 'bg-emerald-100 text-emerald-800');
+                const badgeTxt = tk.estado === 'PENDIENTE' ? '🟡 Abierto' : (tk.estado === 'EN_PROCESO' ? '🔵 En Proceso' : (tk.estado === 'RECHAZADO' ? '🔴 Rechazado' : '🟢 Cerrado'));
+                return `
+                  <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <strong class="text-[#073e3b]">${esc(det.categoria || tk.tipo_solicitud)}</strong>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${badgeCls}">${badgeTxt}</span>
+                    </div>
+                    <div class="text-[10.5px] text-slate-500">Solicitado por: <strong>${esc(tk.solicitado_por)}</strong> · ${esc((tk.creado_en || '').slice(0, 16).replace('T', ' '))}</div>
+                    <div class="p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] text-slate-800">
+                      ${esc(det.descripcion || det.motivo || 'Solicitud de soporte / gestión')}
+                    </div>
+                    <div class="space-y-1 pt-0.5">
+                      <label class="font-bold text-[10.5px] text-[#073e3b] block">👤 Asignar ticket a usuario de la empresa:</label>
+                      <select onchange="V.assignCompanyTicketToUser('${esc(tk.id)}', this.value)" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white text-[11px] font-bold text-[#073e3b]">
+                        <option value="">-- Sin asignar --</option>
+                        ${usrs.filter(u => u.activo !== false).map(u => `
+                          <option value="${esc(u.email)}" ${currAssigned === u.email ? 'selected' : ''}>
+                            ${esc(u.nombre_completo || u.email)} (${esc(u.email)})
+                          </option>
+                        `).join('')}
+                      </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5 pt-1">
+                      ${tk.estado !== 'EN_PROCESO' ? `
+                        <button onclick="V.changeCompanyTicketStatus('${esc(tk.id)}', 'EN_PROCESO')" class="py-1.5 px-2 rounded-xl text-[10.5px] font-bold bg-cyan-100 text-cyan-900 cursor-pointer">🔵 Pasar a En Proceso</button>
+                      ` : '<div></div>'}
+                      ${tk.estado !== 'APROBADO' ? `
+                        <button onclick="V.changeCompanyTicketStatus('${esc(tk.id)}', 'APROBADO')" class="py-1.5 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#087e70] text-white cursor-pointer">🟢 Marcar Resuelto</button>
+                      ` : `
+                        <button onclick="V.changeCompanyTicketStatus('${esc(tk.id)}', 'PENDIENTE')" class="py-1.5 px-2 rounded-xl text-[10.5px] font-bold bg-amber-100 text-amber-900 cursor-pointer">🟡 Reabrir Ticket</button>
+                      `}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
         `;
       }
 
@@ -4921,6 +5020,85 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         if (sel) sel.value = clientName;
         if (inp) inp.value = clientName;
         if (box) box.classList.add('hidden');
+      },
+
+      async loadCompanyTicketsModule(silent = false) {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        appData._loadingTk = true;
+        if (!silent) toast('🔄 Cargando tickets y usuarios de la empresa...');
+        try {
+          const [tks, usrs] = await Promise.all([
+            typeof empresaListarTicketsPropios === 'function' ? empresaListarTicketsPropios(ses.empresa_ruc) : Promise.resolve([]),
+            typeof empresaListarUsuariosCompaneros === 'function' ? empresaListarUsuariosCompaneros(ses.empresa_ruc) : Promise.resolve([])
+          ]);
+          appData.companyTickets = Array.isArray(tks) ? tks : [];
+          appData.companyUsers = Array.isArray(usrs) ? usrs : [];
+          if (!silent) toast(`✓ ${appData.companyTickets.length} ticket(s) cargados.`);
+        } catch (e) {
+          if (!silent) toast('⚠️ Error cargando tickets: ' + e.message);
+        } finally {
+          appData._loadingTk = false;
+          if (appData.currentPage === 'admintickets') renderPhone('admintickets');
+        }
+      },
+
+      async assignCompanyTicketToUser(ticketId, userEmail) {
+        const tk = (appData.companyTickets || []).find(x => x.id === ticketId);
+        if (!tk) return;
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const usr = (appData.companyUsers || []).find(u => u.email === userEmail);
+        const usrName = usr ? `${usr.nombre_completo || usr.email} (${usr.email})` : 'Sin asignar';
+        const det = Object.assign({}, tk.detalle || {}, {
+          asignado_a_email: userEmail || '',
+          asignado_a_nombre: usrName
+        });
+        const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
+        hist.push({
+          fecha: nowFormatted(),
+          de_estado: '👤 Asignación',
+          a_estado: usrName,
+          motivo: userEmail ? `Asignado a ${usrName}` : 'Ticket liberado sin asignar',
+          autor: ses.email || 'admin@empresa.com'
+        });
+        det.historial = hist;
+        tk.asignado_a = userEmail || null;
+        tk.detalle = det;
+        try {
+          if (typeof crmAsignarTicketAColaborador === 'function') {
+            await crmAsignarTicketAColaborador(ticketId, userEmail, usrName, det);
+          }
+          toast(userEmail ? `✅ Ticket asignado a ${usrName}` : 'Ticket dejado sin asignar');
+          renderPhone('admintickets');
+        } catch (e) {
+          toast('⚠️ Error asignando ticket: ' + e.message);
+        }
+      },
+
+      async changeCompanyTicketStatus(ticketId, newStatus) {
+        const tk = (appData.companyTickets || []).find(x => x.id === ticketId);
+        if (!tk) return;
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const det = Object.assign({}, tk.detalle || {});
+        const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
+        hist.push({
+          fecha: nowFormatted(),
+          de_estado: tk.estado,
+          a_estado: newStatus,
+          motivo: `Actualizado desde Administrador de Tickets App por ${ses.email || 'Administrador'}`,
+          autor: ses.email || 'admin@empresa.com'
+        });
+        det.historial = hist;
+        tk.estado = newStatus;
+        tk.detalle = det;
+        try {
+          if (typeof crmActualizarTicket === 'function') {
+            await crmActualizarTicket(ticketId, newStatus, det);
+          }
+          toast('✓ Estado de ticket actualizado.');
+          renderPhone('admintickets');
+        } catch (e) {
+          toast('⚠️ Error actualizando estado: ' + e.message);
+        }
       },
 
       openTaxesModal() {
