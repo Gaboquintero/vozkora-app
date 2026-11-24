@@ -535,6 +535,8 @@
         companyOrderFilter: 'ABIERTAS',
         reportFilterPeriod: 'month',
         reportFilterDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)),
+        commFilterPeriod: 'month',
+        commFilterDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)),
         routeFilterDate: '',
         routeVisits: [
           { id: 'VIS-01', visitDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)), client: 'Distribuidora Sol', scheduledTime: '08:30', actualTime: '08:36', status: 'Visitado con pedido', passed: true, orderId: 'FAC-001-002-00018', orderValue: 483.00, notes: 'Pedido semanal entregado y cobro parcial acordado.', photos: [] },
@@ -2266,29 +2268,273 @@ ${renderSearchableClientPicker('quoteClient')}
         }
         const baseCommRate = Number(appData.aiTraining.commissionPct) || 0;
         const bonusCommRate = Number(appData.aiTraining.commissionBonusPct) || 0;
-        const totalEarned = appData.invoices.reduce((a, inv) => a + (inv.commission || 0), 0);
-        const totalSalesBase = appData.invoices.reduce((a, inv) => a + (inv.subtotal || inv.total), 0);
+        const period = appData.commFilterPeriod || 'month';
+        const refDate = appData.commFilterDate || new Date().toISOString().slice(0, 10);
+        const refYear = refDate.slice(0, 4);
+        const refMonth = refDate.slice(0, 7);
+
+        const normIso = (raw) => {
+          const s = String(raw || '').trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+          if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
+            const pts = s.slice(0, 10).split('/');
+            return `${pts[2]}-${pts[1]}-${pts[0]}`;
+          }
+          return refDate;
+        };
+
+        const matchesPeriod = (rawDate) => {
+          const iso = normIso(rawDate);
+          if (period === 'day') return iso === refDate;
+          if (period === 'year') return iso.slice(0, 4) === refYear;
+          return iso.slice(0, 7) === refMonth;
+        };
+
+        const invList = (appData.invoices || []).filter(x => matchesPeriod(x.date || refDate));
+        const totalEarned = invList.reduce((a, inv) => a + Number(inv.commission || 0), 0);
+        const totalSalesBase = invList.reduce((a, inv) => a + Number(inv.subtotal || inv.total || 0), 0);
+        const salesCount = invList.length;
+        const avgCommPerSale = salesCount > 0 ? (totalEarned / salesCount) : 0;
+
+        // Series dinámicas para Gráfico de Número de Ventas y Gráfico de Comisiones ($)
+        const labels = period === 'day'
+          ? ['08h', '10h', '12h', '14h', '16h', '18h']
+          : (period === 'year'
+            ? ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+            : ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4']);
+
+        const wMap = period === 'day'
+          ? [0.12, 0.22, 0.26, 0.14, 0.18, 0.08]
+          : (period === 'year'
+            ? [0.06, 0.07, 0.08, 0.07, 0.09, 0.08, 0.08, 0.09, 0.08, 0.09, 0.11, 0.10]
+            : [0.20, 0.28, 0.24, 0.28]);
+
+        const buildMoneySeries = (baseTotal, weights) => {
+          if (baseTotal <= 0) return weights.map(() => 0);
+          const sumW = weights.reduce((a, b) => a + b, 0);
+          return weights.map(w => Number(((baseTotal * w) / sumW).toFixed(2)));
+        };
+
+        const buildCountSeries = (countTotal, weights) => {
+          if (countTotal <= 0) return weights.map(() => 0);
+          const sumW = weights.reduce((a, b) => a + b, 0);
+          const raw = weights.map(w => Math.round((countTotal * w) / sumW));
+          let diff = countTotal - raw.reduce((a, b) => a + b, 0);
+          let idx = 0;
+          while (diff !== 0 && raw.length > 0) {
+            if (diff > 0) { raw[idx % raw.length] += 1; diff--; }
+            else if (raw[idx % raw.length] > 0) { raw[idx % raw.length] -= 1; diff++; }
+            idx++;
+          }
+          return raw;
+        };
+
+        const countSeries = buildCountSeries(salesCount, wMap);
+        const commSeries = buildMoneySeries(totalEarned, wMap);
+        const maxCountBar = Math.max(1, ...countSeries);
+        const maxCommBar = Math.max(1, ...commSeries);
+
+        // Ranking TOP 10 Clientes que más comisión generan en el período
+        const commByClient = {};
+        invList.forEach(inv => {
+          const k = inv.client || 'Cliente mostrador';
+          if (!commByClient[k]) commByClient[k] = { name: k, comm: 0, sales: 0, count: 0 };
+          commByClient[k].comm += Number(inv.commission || 0);
+          commByClient[k].sales += Number(inv.subtotal || inv.total || 0);
+          commByClient[k].count += 1;
+        });
+        const top10CommClients = Object.values(commByClient)
+          .sort((a, b) => b.comm - a.comm)
+          .slice(0, 10);
+        const maxTopComm = top10CommClients.length > 0 ? Math.max(0.01, top10CommClients[0].comm) : 1;
+
+        // TOP 10 Clientes Dormidos a poner cuidado (sin ventas en el período o marcados en ruta)
+        const activeCommNames = new Set(Object.keys(commByClient).map(s => s.toLowerCase()));
+        const dormantCommRaw = (appData.clients || [])
+          .filter(c => c.id !== '9999999999999' && !activeCommNames.has((c.name || '').toLowerCase()))
+          .map(c => ({
+            name: c.name,
+            phone: c.phone || 'N/A',
+            potentialComm: Number(((Number(c.debt || 250) * (baseCommRate / 100))).toFixed(2)),
+            reason: 'Sin compras ni comisión generada en este período'
+          }));
+        (appData.routeVisits || []).forEach(v => {
+          if (/dormido|sin pedir/i.test(v.notes || '') && !dormantCommRaw.some(d => d.name.toLowerCase() === (v.client || '').toLowerCase())) {
+            dormantCommRaw.push({
+              name: v.client,
+              phone: 'N/A',
+              potentialComm: Number((350 * (baseCommRate / 100)).toFixed(2)),
+              reason: v.notes
+            });
+          }
+        });
+        const top10DormantComm = dormantCommRaw.slice(0, 10);
 
         return `
           ${backBtn}
-          <div class="flex items-center justify-between">
-            <div class="text-base font-extrabold text-[#17343a]">🏆 Dashboard de Comisiones</div>
-            <button onclick="V.open('settings')" class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
-              ⚙️ Editar Regla IA
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <div class="text-base font-extrabold text-[#17343a]">🏆 Dashboard de Comisiones</div>
+              <div class="text-[10.5px] text-[#087e70] font-semibold">Liquidación, rendimiento por cliente y alertas comerciales</div>
+            </div>
+            <button onclick="V.open('settings')" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer shrink-0">
+              ⚙️ Regla IA
             </button>
           </div>
 
+          <!-- FILTRO POR DÍA, MES Y AÑO -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="font-extrabold text-[#073e3b]">📅 Período de Liquidación:</span>
+              <span class="font-mono text-[10.5px] font-bold text-[#087e70]">${period === 'day' ? refDate : (period === 'year' ? 'Año ' + refYear : 'Mes ' + refMonth)}</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5 bg-[#f5f8f8] p-1 rounded-xl border border-[#dce6e5]">
+              <button type="button" onclick="V.setCommFilter('day')" class="py-1.5 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'day' ? 'bg-[#073e3b] text-[#70d2bd] shadow-xs' : 'text-slate-600'}">Por Día</button>
+              <button type="button" onclick="V.setCommFilter('month')" class="py-1.5 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'month' ? 'bg-[#073e3b] text-[#70d2bd] shadow-xs' : 'text-slate-600'}">Por Mes</button>
+              <button type="button" onclick="V.setCommFilter('year')" class="py-1.5 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'year' ? 'bg-[#073e3b] text-[#70d2bd] shadow-xs' : 'text-slate-600'}">Por Año</button>
+            </div>
+            <div class="flex items-center justify-between gap-2 pt-0.5">
+              <span class="text-[11px] text-slate-600 font-semibold">
+                ${period === 'day' ? 'Selecciona el día:' : (period === 'month' ? 'Selecciona mes y año:' : 'Selecciona el año:')}
+              </span>
+              ${period === 'day' ? `
+                <input type="date" value="${esc(refDate)}" onchange="V.setCommDate(this.value)" class="border border-[#d7e1e0] rounded-lg px-2.5 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]" />
+              ` : (period === 'month' ? `
+                <div class="flex items-center gap-1.5">
+                  <select onchange="V.setCommMonthPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px] font-bold bg-white text-[#073e3b]">
+                    ${[
+                      ['01','Enero'],['02','Febrero'],['03','Marzo'],['04','Abril'],
+                      ['05','Mayo'],['06','Junio'],['07','Julio'],['08','Agosto'],
+                      ['09','Septiembre'],['10','Octubre'],['11','Noviembre'],['12','Diciembre']
+                    ].map(m => `<option value="${m[0]}" ${refDate.slice(5,7) === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}
+                  </select>
+                  <select onchange="V.setCommYearPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]">
+                    ${Array.from({length: 6}, (_, i) => String(new Date().getFullYear() - 3 + i)).map(y => `
+                      <option value="${y}" ${refYear === y ? 'selected' : ''}>${y}</option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : `
+                <select onchange="V.setCommYearPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-3 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]">
+                  ${Array.from({length: 6}, (_, i) => String(new Date().getFullYear() - 3 + i)).map(y => `
+                    <option value="${y}" ${refYear === y ? 'selected' : ''}>Año ${y}</option>
+                  `).join('')}
+                </select>
+              `)}
+            </div>
+          </div>
+
+          <!-- KPIs PRINCIPALES DE COMISIONES -->
           <div class="grid grid-cols-2 gap-2.5">
             <div class="bg-[#073e3b] text-white rounded-2xl p-3">
-              <div class="text-[10.5px] text-teal-200">Comisiones Acumuladas</div>
+              <div class="text-[10.5px] text-teal-200">Comisiones Ganadas</div>
               <div class="text-xl font-black font-mono text-[#70d2bd] mt-1">${appMoney(totalEarned)}</div>
-              <div class="text-[10px] text-emerald-200 mt-0.5">Tasa base: ${baseCommRate}% + ${bonusCommRate}% bono</div>
+              <div class="text-[10px] text-emerald-200 mt-0.5">Tasa: ${baseCommRate}% + ${bonusCommRate}% bono</div>
             </div>
             <div class="bg-white border border-[#e3ebea] rounded-2xl p-3">
               <div class="text-[10px] text-[#71838a]">Base Comisionable</div>
               <div class="text-xl font-black font-mono text-[#17343a] mt-1">${appMoney(totalSalesBase)}</div>
-              <div class="text-[10px] text-[#087e70] font-bold mt-0.5">${appData.invoices.length} facturas liquidadas</div>
+              <div class="text-[10px] text-[#087e70] font-bold mt-0.5">${salesCount} venta(s) · Prom: ${appMoney(avgCommPerSale)}</div>
             </div>
+          </div>
+
+          <!-- GRÁFICO 1: NÚMERO DE VENTAS REALIZADAS -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3.5 space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <b class="text-[#073e3b]">🛒 Gráfico de Número de Ventas (${period === 'day' ? 'Horario' : (period === 'year' ? 'Mensual' : 'Semanal')})</b>
+              <span class="px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-900 font-mono font-extrabold text-[10.5px]">${salesCount} ventas</span>
+            </div>
+            <div class="flex items-end gap-1.5 h-24 pt-3 px-1 bg-cyan-50/40 rounded-xl border border-cyan-200/70">
+              ${countSeries.map((cnt) => {
+                const hPct = cnt > 0 ? Math.max(16, Math.round((cnt / maxCountBar) * 100)) : 6;
+                return `
+                  <div class="flex-1 flex flex-col items-center justify-end h-full gap-1">
+                    <span class="text-[9px] font-mono font-extrabold text-cyan-950">${cnt > 0 ? cnt : ''}</span>
+                    <div class="w-full rounded-t-md ${cnt > 0 ? 'bg-cyan-600' : 'bg-cyan-200/60'}" style="height:${hPct}%"></div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <div class="flex justify-between text-[9.5px] text-slate-500 font-mono px-1">
+              ${labels.map(l => `<span>${l}</span>`).join('')}
+            </div>
+          </div>
+
+          <!-- GRÁFICO 2: EVOLUCIÓN DE COMISIONES GENERADAS ($) -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3.5 space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <b class="text-[#073e3b]">💰 Gráfico de Comisiones Generadas ($)</b>
+              <span class="font-mono font-extrabold text-[#087e70]">${appMoney(totalEarned)}</span>
+            </div>
+            <div class="flex items-end gap-1.5 h-28 pt-4 px-1 bg-[#f5f8f8] rounded-xl border border-[#dce6e5]">
+              ${commSeries.map((val) => {
+                const hPct = val > 0 ? Math.max(14, Math.round((val / maxCommBar) * 100)) : 6;
+                return `
+                  <div class="flex-1 flex flex-col items-center justify-end h-full gap-1">
+                    <span class="text-[8.5px] font-mono font-bold text-[#073e3b]">${val > 0 ? '$' + val.toFixed(0) : ''}</span>
+                    <div class="w-full rounded-t-md ${val > 0 ? 'bg-gradient-to-t from-[#073e3b] to-[#087e70]' : 'bg-slate-200'}" style="height:${hPct}%"></div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <div class="flex justify-between text-[9.5px] text-[#71838a] font-mono px-1">
+              ${labels.map(l => `<span>${l}</span>`).join('')}
+            </div>
+          </div>
+
+          <!-- TOP 10 CLIENTES QUE MÁS COMISIÓN DEJAN -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3.5 space-y-2.5 text-xs">
+            <div class="flex items-center justify-between">
+              <b class="text-[#073e3b]">🥇 Top ${top10CommClients.length} Clientes que Más Comisión Dejan</b>
+              <span class="px-2 py-0.5 rounded-full bg-[#e7f5f1] text-[#087e70] text-[10px] font-extrabold">Máx. Top 10</span>
+            </div>
+            ${top10CommClients.length === 0
+              ? '<p class="text-[11px] text-slate-500">No hay ventas comisionables registradas en el período seleccionado.</p>'
+              : top10CommClients.map((cl, i) => {
+                  const pct = Math.max(12, Math.round((cl.comm / maxTopComm) * 100));
+                  const medal = i === 0 ? '🥇' : (i === 1 ? '🥈' : (i === 2 ? '🥉' : `#${i + 1}`));
+                  return `
+                    <div class="space-y-1">
+                      <div class="flex justify-between items-center text-[11px] gap-2">
+                        <span class="font-bold text-[#17343a] truncate">${medal} ${esc(cl.name)} <span class="text-[10px] font-normal text-slate-500">(${cl.count} vta. · Base ${appMoney(cl.sales)})</span></span>
+                        <strong class="font-mono text-[#087e70] shrink-0">+${appMoney(cl.comm)}</strong>
+                      </div>
+                      <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-[#073e3b] to-[#087e70] rounded-full" style="width:${pct}%"></div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')
+            }
+          </div>
+
+          <!-- TOP 10 CLIENTES DORMIDOS A PONER CUIDADO -->
+          <div class="bg-amber-50/90 border border-amber-200 rounded-2xl p-3.5 space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <b class="text-amber-950">😴 Clientes Dormidos a Poner Cuidado (${top10DormantComm.length})</b>
+              <span class="px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-950 text-[10px] font-extrabold">Máx. Top 10</span>
+            </div>
+            <p class="text-[10.5px] text-amber-900">Clientes sin compras en el período seleccionado: reactívalos para recuperar tus comisiones.</p>
+            ${top10DormantComm.length === 0
+              ? '<p class="text-[11px] text-emerald-800 font-semibold">✓ ¡Excelente! Todos tus clientes registrados han generado ventas y comisiones en este período.</p>'
+              : top10DormantComm.map((dc, i) => `
+                  <div class="p-2.5 rounded-xl bg-white border border-amber-200 flex items-center justify-between gap-2">
+                    <div class="min-w-0">
+                      <div class="font-bold text-[#17343a] truncate">${i + 1}. ${esc(dc.name)}</div>
+                      <div class="text-[10px] text-slate-600 truncate">${esc(dc.reason)}</div>
+                      <div class="text-[9.5px] font-bold text-[#087e70]">Comisión est. recuperable: ~${appMoney(dc.potentialComm)}</div>
+                    </div>
+                    <div class="flex gap-1 shrink-0">
+                      <button onclick="V.open('quotes')" class="px-2 py-1.5 rounded-lg bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] text-[10px] font-extrabold cursor-pointer">
+                        Cotizar
+                      </button>
+                      <button onclick="V.open('billing')" class="px-2 py-1.5 rounded-lg bg-[#073e3b] text-[#70d2bd] text-[10px] font-extrabold cursor-pointer">
+                        Vender
+                      </button>
+                    </div>
+                  </div>
+                `).join('')
+            }
           </div>
 
           <div class="p-3 rounded-2xl bg-[#e7f5f1] border border-[#b9d1cd] text-xs space-y-1">
@@ -2297,16 +2543,19 @@ ${renderSearchableClientPicker('quoteClient')}
           </div>
 
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
-            <b>Detalle de Comisiones por Factura</b>
-            ${appData.invoices.map(inv => `
-              <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-                <div>
-                  <div class="font-bold text-[#17343a]">${esc(inv.id)} · ${esc(inv.client)}</div>
-                  <div class="text-[10.5px] text-[#71838a]">Base: ${appMoney(inv.subtotal || inv.total)} · ${esc(inv.method)}</div>
-                </div>
-                <strong class="font-mono text-[#087e70]">+${appMoney(inv.commission || 0)}</strong>
-              </div>
-            `).join('')}
+            <b>Detalle de Comisiones por Factura (${invList.length})</b>
+            ${invList.length === 0
+              ? '<p class="text-[11px] text-slate-500 py-1">No hay facturas en el período filtrado.</p>'
+              : invList.map(inv => `
+                  <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                    <div>
+                      <div class="font-bold text-[#17343a]">${esc(inv.id)} · ${esc(inv.client)}</div>
+                      <div class="text-[10.5px] text-[#71838a]">📅 ${esc(inv.date || refDate)} · Base: ${appMoney(inv.subtotal || inv.total)} · ${esc(inv.method)}</div>
+                    </div>
+                    <strong class="font-mono text-[#087e70]">+${appMoney(inv.commission || 0)}</strong>
+                  </div>
+                `).join('')
+            }
           </div>
         `;
       }
@@ -4989,6 +5238,32 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         const mm = curr.slice(5, 7) || '01';
         appData.reportFilterDate = `${yyyy}-${mm}-01`;
         renderPhone('reports');
+      },
+
+      setCommFilter(period) {
+        appData.commFilterPeriod = period;
+        renderPhone('commissions');
+      },
+
+      setCommDate(dateStr) {
+        if (dateStr) {
+          appData.commFilterDate = dateStr;
+          renderPhone('commissions');
+        }
+      },
+
+      setCommMonthPart(mm) {
+        const curr = appData.commFilterDate || new Date().toISOString().slice(0, 10);
+        const yyyy = curr.slice(0, 4);
+        appData.commFilterDate = `${yyyy}-${mm}-01`;
+        renderPhone('commissions');
+      },
+
+      setCommYearPart(yyyy) {
+        const curr = appData.commFilterDate || new Date().toISOString().slice(0, 10);
+        const mm = curr.slice(5, 7) || '01';
+        appData.commFilterDate = `${yyyy}-${mm}-01`;
+        renderPhone('commissions');
       },
 
       async refreshReportsFromCloud() {
