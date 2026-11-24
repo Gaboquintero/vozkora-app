@@ -106,43 +106,23 @@ function evaluarEstadoSuscripcion(emp) {
 async function refrescarSesionDesdeSupabase(sesionActual) {
   if (!sesionActual || !sesionActual.email) return sesionActual;
   try {
-    const uResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?email=eq.${encodeURIComponent(sesionActual.email)}&select=*`, { headers: supaHeaders() });
-    if (!uResp.ok) return sesionActual;
-    const uRows = await uResp.json();
-    if (!uRows || uRows.length === 0) return sesionActual;
-    const user = uRows[0];
+    const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/refrescar_sesion_vozkora_seguro`, {
+      method: 'POST',
+      headers: supaHeaders(),
+      body: JSON.stringify({ p_email: String(sesionActual.email).trim().toLowerCase() })
+    });
+    if (!resp.ok) return sesionActual;
+    const data = await resp.json();
+    if (!data || !data.ok || !data.user) return sesionActual;
 
-    let empresa = null;
-    if (user.empresa_id) {
-      const eResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?id=eq.${encodeURIComponent(user.empresa_id)}&select=*`, { headers: supaHeaders() });
-      if (eResp.ok) {
-        const eRows = await eResp.json();
-        if (eRows && eRows.length > 0) empresa = eRows[0];
-      }
-    } else if (user.empresa_ruc) {
-      const eResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_empresas?ruc=eq.${encodeURIComponent(user.empresa_ruc)}&select=*`, { headers: supaHeaders() });
-      if (eResp.ok) {
-        const eRows = await eResp.json();
-        if (eRows && eRows.length > 0) empresa = eRows[0];
-      }
-    }
-
-    const sesionFresca = Object.assign({}, sesionActual, user, {
-      empresa_id: empresa ? empresa.id : user.empresa_id,
-      empresa_nombre: empresa ? empresa.nombre : user.empresa_nombre,
-      empresa_ruc: empresa ? empresa.ruc : user.empresa_ruc,
-      empresa_telefono: empresa ? empresa.telefono : user.empresa_telefono,
-      plan_activo: empresa ? empresa.plan_activo : user.plan_activo,
-      periodicidad: empresa ? (empresa.periodicidad || 'MENSUAL') : 'MENSUAL',
-      fecha_proximo_corte: empresa ? (empresa.fecha_proximo_corte || calcularProximoCorte('MENSUAL')) : calcularProximoCorte('MENSUAL'),
-      control_corte: empresa ? (empresa.control_corte !== false) : true,
-      exento_hasta: empresa ? (empresa.exento_hasta || null) : null,
-      max_usuarios: empresa ? empresa.max_usuarios : 5,
-      sva_elegidos_fijos: empresa ? !!empresa.sva_elegidos_fijos : false,
-      packs_ia: empresa ? empresa.packs_ia : user.packs_ia,
-      entorno: empresa ? empresa.entorno : user.entorno,
-      contifico_api_key: empresa ? empresa.contifico_api_key : user.contifico_api_key,
-      contifico_pos_token: empresa ? empresa.contifico_pos_token : user.contifico_pos_token
+    const u = data.user;
+    const sesionFresca = Object.assign({}, sesionActual, u, {
+      periodicidad: u.periodicidad || 'MENSUAL',
+      fecha_proximo_corte: u.fecha_proximo_corte || calcularProximoCorte('MENSUAL'),
+      control_corte: u.control_corte !== false,
+      exento_hasta: u.exento_hasta || null,
+      max_usuarios: Number(u.max_usuarios) || 5,
+      sva_elegidos_fijos: !!u.sva_elegidos_fijos
     });
     localStorage.setItem(VOZKORA_CONFIG.STORAGE_KEYS.SESION, JSON.stringify(sesionFresca));
     return sesionFresca;
@@ -273,10 +253,8 @@ async function registrarInteresModuloVozkora(moduloNombre) {
 // L. FUNCIONES CRM PARA COLABORADORES (SOPORTE / VENTAS) Y HOJA DE VIDA 360°
 // -------------------------------------------------------------------------
 async function crmListarColaboradoresInternos() {
-  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?rol=in.(SUPERADMIN,SOPORTE,VENTAS)&select=*&order=creado_en.desc`;
-  const resp = await fetch(url, { headers: supaHeaders() });
-  if (!resp.ok) throw new Error('Error listando equipo interno');
-  return await resp.json();
+  const all = await crmListarUsuarios();
+  return all.filter(u => ['SUPERADMIN', 'SOPORTE', 'VENTAS'].includes(String(u.rol || '').toUpperCase()));
 }
 
 async function crmAsignarTicketAColaborador(ticketId, colaboradorEmail, colaboradorNombre, detalleActual = {}) {
@@ -379,49 +357,66 @@ async function crmActualizarEmpresa(id, campos) {
 }
 
 // -------------------------------------------------------------------------
-// C. VOZKORA CONTROL CRM — GESTIÓN DE USUARIOS POR EMPRESA Y CUPO DE PLAN
+// C. VOZKORA CONTROL CRM — GESTIÓN BLINDADA DE USUARIOS POR RPC SEGURO
 // -------------------------------------------------------------------------
+function obtenerCredencialesAdminCrm() {
+  const ses = obtenerSesionVozkora() || {};
+  return {
+    p_admin_email: String(ses.email || '').trim().toLowerCase(),
+    p_admin_rol: String(ses.rol || '').trim().toUpperCase()
+  };
+}
+
 async function crmListarUsuarios() {
-  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?select=*&order=creado_en.desc`;
-  const resp = await fetch(url, { headers: supaHeaders() });
+  const auth = obtenerCredencialesAdminCrm();
+  const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/crm_listar_usuarios_seguro`, {
+    method: 'POST',
+    headers: supaHeaders(),
+    body: JSON.stringify(auth)
+  });
   if (!resp.ok) throw new Error('Error listando usuarios');
-  return await resp.json();
+  const rows = await resp.json();
+  return Array.isArray(rows) ? rows : [];
 }
 
 async function crmCrearUsuario(payload) {
-  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios`;
-  const resp = await fetch(url, {
+  const auth = obtenerCredencialesAdminCrm();
+  const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/crm_crear_usuario_seguro`, {
     method: 'POST',
     headers: supaHeaders(),
-    body: JSON.stringify(payload)
+    body: JSON.stringify(Object.assign({}, auth, { p_payload: payload }))
   });
   const data = await resp.json();
-  if (!resp.ok) throw new Error(data.message || 'Error creando usuario');
-  return Array.isArray(data) ? data[0] : data;
+  if (!resp.ok || (data && data.ok === false)) {
+    throw new Error((data && (data.error || data.message)) || 'Error creando usuario');
+  }
+  return data && data.user ? data.user : data;
 }
 
 async function crmActualizarUsuario(id, campos) {
-  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?id=eq.${encodeURIComponent(id)}`;
-  const resp = await fetch(url, {
-    method: 'PATCH',
+  const auth = obtenerCredencialesAdminCrm();
+  const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/crm_actualizar_usuario_seguro`, {
+    method: 'POST',
     headers: supaHeaders(),
-    body: JSON.stringify(campos)
+    body: JSON.stringify(Object.assign({}, auth, { p_user_id: id, p_campos: campos }))
   });
   const data = await resp.json();
-  if (!resp.ok) throw new Error(data.message || 'Error actualizando usuario');
-  return Array.isArray(data) ? data[0] : data;
+  if (!resp.ok || (data && data.ok === false)) {
+    throw new Error((data && (data.error || data.message)) || 'Error actualizando usuario');
+  }
+  return data && data.user ? data.user : data;
 }
 
-
 async function crmEliminarUsuario(id) {
-  const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_usuarios?id=eq.${encodeURIComponent(id)}`;
-  const resp = await fetch(url, {
-    method: 'DELETE',
-    headers: supaHeaders()
+  const auth = obtenerCredencialesAdminCrm();
+  const resp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/crm_eliminar_usuario_seguro`, {
+    method: 'POST',
+    headers: supaHeaders(),
+    body: JSON.stringify(Object.assign({}, auth, { p_user_id: id }))
   });
-  if (!resp.ok) {
-    const data = await resp.json().catch(() => ({}));
-    throw new Error(data.message || 'Error eliminando usuario');
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || (data && data.ok === false)) {
+    throw new Error((data && (data.error || data.message)) || 'Error eliminando usuario');
   }
   return true;
 }
