@@ -510,8 +510,8 @@
           { name: 'Cliente mostrador', id: '9999999999999', phone: 'N/A', debt: 0 }
         ],
         invoices: [
-          { id: 'FAC-001-002-00018', client: 'Distribuidora Sol', subtotal: 420.00, ivaRate: 15, ivaAmt: 63.00, total: 483.00, method: 'Crédito', commission: 14.49, status: 'Autorizada SRI' },
-          { id: 'FAC-001-002-00019', client: 'Comercial Andina', subtotal: 663.30, ivaRate: 15, ivaAmt: 99.50, total: 762.80, method: 'Transferencia Bancaria', commission: 22.88, status: 'Autorizada SRI' }
+          { id: 'FAC-001-002-00018', date: '2026-11-24', client: 'Distribuidora Sol', subtotal: 420.00, ivaRate: 15, ivaAmt: 63.00, total: 483.00, method: 'Crédito', commission: 14.49, status: 'Autorizada SRI' },
+          { id: 'FAC-001-002-00019', date: '2026-11-24', client: 'Comercial Andina', subtotal: 663.30, ivaRate: 15, ivaAmt: 99.50, total: 762.80, method: 'Transferencia Bancaria', commission: 22.88, status: 'Autorizada SRI' }
         ],
         creditNotes: [
           { id: 'NC-001-002-00004', invoiceRef: 'FAC-001-002-00018', client: 'Distribuidora Sol', reason: 'Devolución 2 cajas en mal estado', amount: 24.50, date: '18/11/2026' }
@@ -2393,8 +2393,8 @@
                       <strong class="text-[#073e3b]">${idx + 1}. ${esc(v.client)}</strong>
                       <span class="ml-1 px-1.5 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] font-mono text-[9.5px] font-bold">📅 ${esc(v.visitDate || todayIso)}</span>
                     </div>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${v.passed ? (v.orderValue > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800') : 'bg-slate-100 text-slate-600'}">
-                      ${v.passed ? '✓ Sí pasó' : '⏳ No ha pasado'}
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${v.passed ? (v.visitEffective === false || v.status === 'Visita sin Venta' ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200') : 'bg-slate-100 text-slate-600'}">
+                      ${v.passed ? (v.visitEffective === false || v.status === 'Visita sin Venta' ? '✕ Visita sin Venta' : '✓ Visita Efectiva') : '⏳ No ha pasado'}
                     </span>
                   </div>
                   <div class="grid grid-cols-2 gap-1 text-[10.5px] text-slate-600 bg-[#f5f8f8] p-2 rounded-xl">
@@ -4459,6 +4459,7 @@
         const invId = 'FAC-001-002-' + String(20 + appData.invoices.length).padStart(5, '0');
         const invObj = {
           id: invId,
+          date: fechaOperacionReal.split(' ')[0] || nowFormatted().split(' ')[0],
           client: clientName,
           clientRuc: clientObj.id || '9999999999999',
           subtotal: fin.netSubtotal,
@@ -4907,25 +4908,137 @@
         toast(isOff ? `💾 Cruce bancario ${mov.ref} guardado en cola Offline.` : `✓ Movimiento ${mov.ref} (${appMoney(mov.amount)}) conciliado.`);
       },
 
-      async checkInRouteVisit(idx) {
+      routeCheckinOutcome: 'efectiva',
+
+      selectRouteCheckinOutcome(outcome) {
+        this.routeCheckinOutcome = outcome;
+        const btnEf = $('btnRouteOutcomeEfectiva');
+        const btnSv = $('btnRouteOutcomeSinVenta');
+        if (btnEf && btnSv) {
+          if (outcome === 'efectiva') {
+            btnEf.className = 'py-2.5 px-2 rounded-xl text-xs font-extrabold bg-emerald-600 text-white border-2 border-emerald-700 shadow-sm cursor-pointer';
+            btnSv.className = 'py-2.5 px-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 cursor-pointer';
+          } else {
+            btnEf.className = 'py-2.5 px-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 cursor-pointer';
+            btnSv.className = 'py-2.5 px-2 rounded-xl text-xs font-extrabold bg-rose-600 text-white border-2 border-rose-700 shadow-sm cursor-pointer';
+          }
+        }
+      },
+
+      recalcRouteSelectedInvoices() {
+        const checks = Array.from(document.querySelectorAll('.route-inv-chk:checked'));
+        let sum = 0;
+        checks.forEach(ch => { sum += Number(ch.dataset.amount || 0); });
+        const lblCount = $('routeSelInvCount');
+        const lblTotal = $('routeSelInvTotal');
+        if (lblCount) lblCount.textContent = String(checks.length);
+        if (lblTotal) lblTotal.textContent = appMoney(sum);
+      },
+
+      checkInRouteVisit(idx) {
         const vis = appData.routeVisits[idx];
         if (!vis) return;
-        const isOff = appData.offline;
+        this.routeCheckinOutcome = 'efectiva';
+
+        const normCli = s => String(s || '').trim().toLowerCase();
+        const clientInvoices = (appData.invoices || []).filter(inv => normCli(inv.client) === normCli(vis.client));
+        const otherInvoices = (appData.invoices || []).filter(inv => normCli(inv.client) !== normCli(vis.client));
+        const orderedInvoices = [...clientInvoices, ...otherInvoices];
+
+        this.openModal(
+          `📍 Check-in de Visita · ${vis.client}`,
+          `<div class="space-y-3">
+             <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] flex items-center justify-between">
+               <span>📅 Fecha: <strong>${esc(vis.visitDate || nowFormatted().split(' ')[0])}</strong></span>
+               <span>🕒 Hora Check-in: <strong class="font-mono text-[#087e70]">${nowFormatted().split(' ')[1]}</strong></span>
+             </div>
+
+             <div>
+               <label class="font-bold text-[11px] text-[#073e3b] block mb-1">Resultado de la Visita *</label>
+               <div class="grid grid-cols-2 gap-2">
+                 <button type="button" id="btnRouteOutcomeEfectiva" onclick="V.selectRouteCheckinOutcome('efectiva')" class="py-2.5 px-2 rounded-xl text-xs font-extrabold bg-emerald-600 text-white border-2 border-emerald-700 shadow-sm cursor-pointer">
+                   ✓ Visita Efectiva
+                 </button>
+                 <button type="button" id="btnRouteOutcomeSinVenta" onclick="V.selectRouteCheckinOutcome('sin_venta')" class="py-2.5 px-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 cursor-pointer">
+                   ✕ Visita sin Venta
+                 </button>
+               </div>
+             </div>
+
+             <div>
+               <label class="font-bold text-[11px] text-[#073e3b] block">Observación de la Visita (Obligatorio) *</label>
+               <textarea id="routeCheckinObs" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 text-xs focus:outline-none focus:border-[#087e70]" placeholder="Ej. Se levantó pedido semanal / Cliente pidió proforma / Local cerrado..."></textarea>
+             </div>
+
+             <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+               <div class="flex items-center justify-between">
+                 <label class="font-bold text-[11px] text-[#073e3b]">🧾 Facturas del Cliente (Opcional)</label>
+                 <span class="text-[10px] font-bold text-[#087e70]">Sel.: <span id="routeSelInvCount">0</span> · Total: <span id="routeSelInvTotal" class="font-mono">$0,00</span></span>
+               </div>
+               <p class="text-[10px] text-slate-500">Marca 1, 2, 3 o más facturas reales para sumarlas en pantalla, o déjalo sin marcar si no hubo venta o solo pidió proforma:</p>
+               <div class="max-h-36 overflow-y-auto space-y-1 pr-1">
+                 ${orderedInvoices.length === 0
+                   ? '<div class="text-[10.5px] text-slate-500 italic py-1">No hay facturas emitidas registradas aún.</div>'
+                   : orderedInvoices.map(inv => {
+                       const isSameClient = normCli(inv.client) === normCli(vis.client);
+                       const invDate = inv.date || nowFormatted().split(' ')[0];
+                       return `
+                         <label class="flex items-center justify-between gap-2 p-2 rounded-lg bg-white border ${isSameClient ? 'border-[#087e70]/40' : 'border-slate-200'} text-[10.5px] cursor-pointer hover:bg-[#e7f5f1]/50">
+                           <div class="flex items-center gap-2 min-w-0">
+                             <input type="checkbox" class="route-inv-chk w-4 h-4 accent-[#087e70] shrink-0 cursor-pointer" value="${esc(inv.id)}" data-amount="${Number(inv.total || 0)}" onchange="V.recalcRouteSelectedInvoices()" />
+                             <div class="min-w-0">
+                               <div class="font-mono font-bold text-[#073e3b] truncate">${esc(inv.id)}</div>
+                               <div class="text-[9.5px] text-slate-500 truncate">📅 ${esc(invDate)} · ${esc(inv.client)}</div>
+                             </div>
+                           </div>
+                           <strong class="font-mono text-[#087e70] shrink-0">${appMoney(inv.total || 0)}</strong>
+                         </label>
+                       `;
+                     }).join('')
+                 }
+               </div>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.submitRouteCheckin(${idx})" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Confirmar Check-in</button>`
+        );
+      },
+
+      async submitRouteCheckin(idx) {
+        const vis = appData.routeVisits[idx];
+        if (!vis) return;
+        const obs = ($('routeCheckinObs')?.value || '').trim();
+        if (!obs) {
+          return toast('⚠️ La observación de la visita es obligatoria.');
+        }
+
+        const checks = Array.from(document.querySelectorAll('.route-inv-chk:checked'));
+        const selectedIds = checks.map(ch => ch.value);
+        const totalSum = checks.reduce((acc, ch) => acc + Number(ch.dataset.amount || 0), 0);
+
+        const isEffective = (this.routeCheckinOutcome === 'efectiva');
+        const isOff = await ensureRealtimeOfflineCheck();
+
         vis.passed = true;
+        vis.visitEffective = isEffective;
         vis.pendingSync = isOff;
         vis.actualTime = nowFormatted().split(' ')[1];
-        vis.status = 'Visitado con pedido';
-        vis.orderId = 'FAC-001-002-00020';
-        vis.orderValue = 215.50;
-        vis.notes = 'Check-in GPS verificado en sitio; pedido levantado.';
+        vis.status = isEffective ? 'Visita Efectiva' : 'Visita sin Venta';
+        vis.orderId = selectedIds.length > 0 ? selectedIds.join(', ') : (isEffective ? 'Sin factura / Proforma' : 'Sin venta');
+        vis.orderValue = Number(totalSum.toFixed(2));
+        vis.notes = obs;
+
         if (isOff) {
-          enqueueOfflineOp('Visita Ruta GPS', vis.id, `${vis.client} (${vis.actualTime}) · ${appMoney(vis.orderValue)}`, () => {
+          enqueueOfflineOp('Visita Ruta GPS', vis.id, `${vis.client} (${vis.status}) · ${appMoney(vis.orderValue)}`, () => {
             vis.pendingSync = false;
           });
         }
         await this.persistRouteVisitState(vis);
+        this.closeModal();
         renderPhone('routes');
-        toast(isOff ? `💾 Check-in GPS en ${vis.client} guardado en cola Offline.` : `📍 Check-in registrado en ${vis.client} (${vis.actualTime}).`);
+        toast(isOff
+          ? `💾 ${vis.status} en ${vis.client} guardada en cola Offline.`
+          : `📍 ${vis.status} registrada en ${vis.client} (${appMoney(vis.orderValue)}).`);
       },
 
       async quote() {
@@ -6348,6 +6461,7 @@
             if (Array.isArray(dbInvoices) && dbInvoices.length > 0) {
               appData.invoices = dbInvoices.map(f => ({
                 id: f.numero_factura,
+                date: (f.fecha_operacion_real || f.creado_en || '').slice(0, 10) || nowFormatted().split(' ')[0],
                 client: f.cliente_nombre,
                 subtotal: Number(f.subtotal || 0),
                 ivaRate: Number(f.iva_porcentaje || 15),
