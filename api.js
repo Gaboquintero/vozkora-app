@@ -1222,7 +1222,7 @@ async function obtenerInformeGerencialVozkora(empresaRuc = '') {
 }
 
 // -------------------------------------------------------------------------
-// N. ADMINISTRADOR DE TICKETS POR EMPRESA (APP + CRM CON PERMISO admin_tickets)
+// N. ADMINISTRADOR DE ÓRDENES DE TRABAJO (TALLER) POR EMPRESA (repo_ordenes_trabajo)
 // -------------------------------------------------------------------------
 async function empresaListarUsuariosCompaneros(empresaRuc = '') {
   const ses = obtenerSesionVozkora() || {};
@@ -1231,8 +1231,8 @@ async function empresaListarUsuariosCompaneros(empresaRuc = '') {
   if (ses.rol === 'DEMO' || ses.entorno === 'DEMO') {
     return [
       { id: 'u1', email: ses.email || 'admin@demo.com', nombre_completo: 'Administrador Principal', rol: 'ADMIN_EMPRESA', activo: true },
-      { id: 'u2', email: 'vendedor1@demo.com', nombre_completo: 'Carlos Paredes (Vendedor Ruta)', rol: 'OPERADOR', activo: true },
-      { id: 'u3', email: 'bodega@demo.com', nombre_completo: 'María Fernanda Ruiz (Bodega)', rol: 'OPERADOR', activo: true }
+      { id: 'u2', email: 'tecnico1@demo.com', nombre_completo: 'Carlos Paredes (Técnico Taller)', rol: 'OPERADOR', activo: true },
+      { id: 'u3', email: 'tecnico2@demo.com', nombre_completo: 'María Fernanda Ruiz (Soporte Campo)', rol: 'OPERADOR', activo: true }
     ];
   }
   try {
@@ -1252,16 +1252,17 @@ async function empresaListarUsuariosCompaneros(empresaRuc = '') {
   }
 }
 
-async function empresaListarTicketsPropios(empresaRuc = '') {
-  const ses = obtenerSesionVozkora() || {};
-  const ruc = empresaRuc || ses.empresa_ruc || '';
-  if (!ruc) return [];
+async function empresaActualizarOrdenTrabajoRepositorio(empresaRuc, codigoOrden, campos) {
+  if (!empresaRuc || !codigoOrden) return false;
   try {
-    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_tickets?empresa_ruc=eq.${encodeURIComponent(ruc)}&select=*&order=creado_en.desc`;
-    const resp = await fetch(url, { headers: supaHeaders() });
-    if (!resp.ok) return [];
-    return await resp.json();
+    const url = `${VOZKORA_CONFIG.SUPABASE_URL}/repo_ordenes_trabajo?empresa_ruc=eq.${encodeURIComponent(empresaRuc)}&codigo_orden=eq.${encodeURIComponent(codigoOrden)}`;
+    const resp = await fetch(url, {
+      method: 'PATCH',
+      headers: supaHeaders(),
+      body: JSON.stringify(campos)
+    });
+    return resp.ok;
   } catch (e) {
-    return [];
+    return false;
   }
 }

@@ -531,9 +531,8 @@
           { id: 'MOV-990', bank: 'Cuenta Corriente Principal', date: 'Ayer 16:40', ref: 'DEP-44109', concept: 'Pago Factura Comercial Andina', type: 'Crédito (+)', amount: 762.80, reconciled: true },
           { id: 'MOV-989', bank: 'Cuenta Corriente Principal', date: 'Ayer 11:20', ref: 'TRF-33018', concept: 'Abono cliente por identificar', type: 'Crédito (+)', amount: 185.00, reconciled: false }
         ],
-        companyTickets: [],
         companyUsers: [],
-        companyTicketFilter: 'ABIERTOS',
+        companyOrderFilter: 'ABIERTAS',
         reportFilterPeriod: 'month',
         reportFilterDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)),
         routeFilterDate: '',
@@ -1374,8 +1373,8 @@
       else if (page === 'helpcenter') { screen.innerHTML = viewMore(); V.openHelpCenterModal(); }
       else {
         screen.innerHTML = viewModule(page);
-        if (page === 'admintickets' && (!appData.companyTickets.length || !appData.companyUsers.length) && !appData._loadingTk) {
-          V.loadCompanyTicketsModule(true);
+        if (page === 'admintickets' && !appData.companyUsers.length && !appData._loadingTk) {
+          V.loadCompanyWorkOrdersAdmin(true);
         }
       }
     }
@@ -3158,6 +3157,7 @@ ${renderSearchableClientPicker('quoteClient')}
                   <div class="p-2 rounded-xl bg-[#f5f8f8] text-[10.5px] text-slate-600 space-y-0.5">
                     <div>📅 Creada: <strong>${esc(o.createdDateStr)}</strong></div>
                     <div>⏱️ Tiempo transcurrido: <strong class="text-[#073e3b]">${formatElapsedBreakdown(o.createdAt)}</strong></div>
+                    ${o.assignedName ? `<div>👤 Asignada a: <strong class="text-[#087e70]">${esc(o.assignedName)}</strong></div>` : ''}
                     <div>📝 Última obs.: <span class="italic">${esc(o.lastObservation)}</span></div>
                   </div>
                   <div class="grid grid-cols-2 gap-1.5 pt-1">
@@ -3212,66 +3212,70 @@ ${renderSearchableClientPicker('quoteClient')}
         `;
       }
 
-      // 19. ADMINISTRADOR DE TICKETS DE LA EMPRESA (ADMIN_EMPRESA O PERMISO admin_tickets)
+      // 19. ADMINISTRADOR DE ÓRDENES DE TRABAJO / TICKETS INTERNOS DE TALLER (repo_ordenes_trabajo)
       if (p === 'admintickets') {
         const sesTk = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
         const canAdminTk = sesTk.rol === 'ADMIN_EMPRESA' || sesTk.rol === 'DEMO' || !!(sesTk.permisos && sesTk.permisos.admin_tickets);
         if (!canAdminTk) {
-          return backBtn + `<div class="bg-white border border-rose-200 rounded-2xl p-4 text-xs text-rose-800 font-bold">⛔ No tienes habilitado el permiso de Administrador de Tickets. Solicítalo a tu administrador.</div>`;
+          return backBtn + `<div class="bg-white border border-rose-200 rounded-2xl p-4 text-xs text-rose-800 font-bold">⛔ No tienes habilitado el permiso de Administrador de Órdenes / Tickets. Solicítalo a tu administrador.</div>`;
         }
 
-        const tks = Array.isArray(appData.companyTickets) ? appData.companyTickets : [];
+        const ords = Array.isArray(appData.orders) ? appData.orders : [];
         const usrs = Array.isArray(appData.companyUsers) ? appData.companyUsers : [];
-        const flt = appData.companyTicketFilter || 'ABIERTOS';
+        const flt = appData.companyOrderFilter || 'ABIERTAS';
 
-        const abiertos = tks.filter(t => t.estado === 'PENDIENTE' || t.estado === 'ABIERTO');
-        const enProc = tks.filter(t => t.estado === 'EN_PROCESO');
-        const cerrados = tks.filter(t => t.estado === 'APROBADO' || t.estado === 'RECHAZADO');
-        const list = flt === 'EN_PROCESO' ? enProc : (flt === 'CERRADOS' ? cerrados : (flt === 'TODOS' ? tks : abiertos));
+        const abiertas = ords.filter(o => (o.status || 'Abierta') === 'Abierta');
+        const enProc = ords.filter(o => o.status === 'En proceso');
+        const cerradas = ords.filter(o => o.status === 'Cerrada');
+        const list = flt === 'EN_PROCESO' ? enProc : (flt === 'CERRADAS' ? cerradas : (flt === 'TODAS' ? ords : abiertas));
 
         return `
           ${backBtn}
           <div class="flex items-center justify-between gap-2">
             <div>
-              <div class="text-base font-extrabold text-[#17343a]">🎫 Administrador de Tickets</div>
-              <div class="text-[10.5px] text-[#087e70] font-semibold">Asigna tickets a los usuarios de ${esc(sesTk.empresa_nombre || 'tu empresa')}</div>
+              <div class="text-base font-extrabold text-[#17343a]">🎫 Administrador de Órdenes / Tickets</div>
+              <div class="text-[10.5px] text-[#087e70] font-semibold">Asigna órdenes de trabajo a los usuarios de ${esc(sesTk.empresa_nombre || 'tu empresa')}</div>
             </div>
-            <button onclick="V.loadCompanyTicketsModule()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">
+            <button onclick="V.loadCompanyWorkOrdersAdmin()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">
               🔄 Actualizar
             </button>
           </div>
 
           <div class="flex flex-wrap gap-1.5">
-            <button onclick="appData.companyTicketFilter='ABIERTOS'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'ABIERTOS' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">🟡 Abiertos (${abiertos.length})</button>
-            <button onclick="appData.companyTicketFilter='EN_PROCESO'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'EN_PROCESO' ? 'bg-cyan-700 text-white' : 'bg-cyan-50 text-cyan-900 border border-cyan-200'}">🔵 En Proceso (${enProc.length})</button>
-            <button onclick="appData.companyTicketFilter='CERRADOS'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'CERRADOS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">🟢 Cerrados (${cerrados.length})</button>
+            <button onclick="appData.companyOrderFilter='ABIERTAS'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'ABIERTAS' ? 'bg-cyan-700 text-white' : 'bg-cyan-50 text-cyan-900 border border-cyan-200'}">🔵 Abiertas (${abiertas.length})</button>
+            <button onclick="appData.companyOrderFilter='EN_PROCESO'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'EN_PROCESO' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">🟡 En Proceso (${enProc.length})</button>
+            <button onclick="appData.companyOrderFilter='CERRADAS'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold cursor-pointer ${flt === 'CERRADAS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">🟢 Cerradas (${cerradas.length})</button>
+            <button onclick="appData.companyOrderFilter='TODAS'; renderPhone('admintickets');" class="px-2.5 py-1 rounded-xl text-[10.5px] font-bold cursor-pointer ${flt === 'TODAS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-white text-slate-600 border border-slate-200'}">Todas (${ords.length})</button>
           </div>
 
           ${list.length === 0 ? `
             <div class="bg-white border border-[#e3ebea] rounded-2xl p-4 text-center text-xs text-slate-500 space-y-2">
-              <div>No hay tickets en esta bandeja todavía.</div>
-              <button onclick="V.loadCompanyTicketsModule()" class="px-3 py-1.5 rounded-xl bg-[#e7f5f1] text-[#073e3b] font-bold text-[11px] cursor-pointer">Consultar tickets ahora</button>
+              <div>No hay órdenes de trabajo en esta bandeja.</div>
+              <button onclick="V.open('workorders')" class="px-3 py-1.5 rounded-xl bg-[#087e70] text-white font-bold text-[11px] cursor-pointer">+ Crear Orden de Trabajo</button>
             </div>
           ` : `
             <div class="space-y-2.5 text-xs">
-              ${list.map((tk) => {
-                const det = tk.detalle || {};
-                const currAssigned = tk.asignado_a || det.asignado_a_email || '';
-                const badgeCls = tk.estado === 'PENDIENTE' ? 'bg-amber-100 text-amber-900' : (tk.estado === 'EN_PROCESO' ? 'bg-cyan-100 text-cyan-900' : 'bg-emerald-100 text-emerald-800');
-                const badgeTxt = tk.estado === 'PENDIENTE' ? '🟡 Abierto' : (tk.estado === 'EN_PROCESO' ? '🔵 En Proceso' : (tk.estado === 'RECHAZADO' ? '🔴 Rechazado' : '🟢 Cerrado'));
+              ${list.map((ord) => {
+                const realIdx = appData.orders.findIndex(x => x.id === ord.id);
+                const currAssigned = ord.assignedEmail || '';
+                const badgeCls = ord.status === 'Cerrada'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : (ord.status === 'En proceso' ? 'bg-amber-100 text-amber-900' : 'bg-cyan-100 text-cyan-900');
                 return `
                   <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2">
                     <div class="flex items-center justify-between gap-2">
-                      <strong class="text-[#073e3b]">${esc(det.categoria || tk.tipo_solicitud)}</strong>
-                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${badgeCls}">${badgeTxt}</span>
+                      <div>
+                        <strong class="text-[#073e3b]">${esc(ord.id)}</strong> · <strong>${esc(ord.client)}</strong>
+                      </div>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${badgeCls}">${esc(ord.status)}</span>
                     </div>
-                    <div class="text-[10.5px] text-slate-500">Solicitado por: <strong>${esc(tk.solicitado_por)}</strong> · ${esc((tk.creado_en || '').slice(0, 16).replace('T', ' '))}</div>
-                    <div class="p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11px] text-slate-800">
-                      ${esc(det.descripcion || det.motivo || 'Solicitud de soporte / gestión')}
-                    </div>
+                    <div class="text-[11px] font-semibold text-slate-800">${esc(ord.desc)}</div>
+                    <div class="text-[10px] text-slate-500">📅 Creada: ${esc(ord.createdDateStr)} · ⏱️ ${formatElapsedBreakdown(ord.createdAt)}</div>
+                    ${ord.lastObservation ? `<div class="p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[10.5px] text-slate-700 italic">📝 ${esc(ord.lastObservation)}</div>` : ''}
+
                     <div class="space-y-1 pt-0.5">
-                      <label class="font-bold text-[10.5px] text-[#073e3b] block">👤 Asignar ticket a usuario de la empresa:</label>
-                      <select onchange="V.assignCompanyTicketToUser('${esc(tk.id)}', this.value)" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white text-[11px] font-bold text-[#073e3b]">
+                      <label class="font-bold text-[10.5px] text-[#073e3b] block">👤 Asignar orden a usuario de la empresa:</label>
+                      <select onchange="V.assignCompanyWorkOrderToUser('${esc(ord.id)}', this.value)" class="w-full border border-[#d7e1e0] rounded-xl p-2 bg-white text-[11px] font-bold text-[#073e3b]">
                         <option value="">-- Sin asignar --</option>
                         ${usrs.filter(u => u.activo !== false).map(u => `
                           <option value="${esc(u.email)}" ${currAssigned === u.email ? 'selected' : ''}>
@@ -3280,15 +3284,14 @@ ${renderSearchableClientPicker('quoteClient')}
                         `).join('')}
                       </select>
                     </div>
+
                     <div class="grid grid-cols-2 gap-1.5 pt-1">
-                      ${tk.estado !== 'EN_PROCESO' ? `
-                        <button onclick="V.changeCompanyTicketStatus('${esc(tk.id)}', 'EN_PROCESO')" class="py-1.5 px-2 rounded-xl text-[10.5px] font-bold bg-cyan-100 text-cyan-900 cursor-pointer">🔵 Pasar a En Proceso</button>
-                      ` : '<div></div>'}
-                      ${tk.estado !== 'APROBADO' ? `
-                        <button onclick="V.changeCompanyTicketStatus('${esc(tk.id)}', 'APROBADO')" class="py-1.5 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#087e70] text-white cursor-pointer">🟢 Marcar Resuelto</button>
-                      ` : `
-                        <button onclick="V.changeCompanyTicketStatus('${esc(tk.id)}', 'PENDIENTE')" class="py-1.5 px-2 rounded-xl text-[10.5px] font-bold bg-amber-100 text-amber-900 cursor-pointer">🟡 Reabrir Ticket</button>
-                      `}
+                      <button onclick="V.openEditWorkOrderModal(${realIdx})" class="py-1.5 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#087e70] text-white cursor-pointer">
+                        ✏️ Cambiar Estado + Obs.
+                      </button>
+                      <button onclick="V.openWorkOrderHistoryModal(${realIdx})" class="py-1.5 px-2 rounded-xl text-[10.5px] font-extrabold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
+                        📜 Bitácora (${(ord.history || []).length})
+                      </button>
                     </div>
                   </div>
                 `;
@@ -5022,82 +5025,80 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         if (box) box.classList.add('hidden');
       },
 
-      async loadCompanyTicketsModule(silent = false) {
+      async loadCompanyWorkOrdersAdmin(silent = false) {
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
         appData._loadingTk = true;
-        if (!silent) toast('🔄 Cargando tickets y usuarios de la empresa...');
+        if (!silent) toast('🔄 Sincronizando órdenes de trabajo y usuarios de la empresa...');
         try {
-          const [tks, usrs] = await Promise.all([
-            typeof empresaListarTicketsPropios === 'function' ? empresaListarTicketsPropios(ses.empresa_ruc) : Promise.resolve([]),
-            typeof empresaListarUsuariosCompaneros === 'function' ? empresaListarUsuariosCompaneros(ses.empresa_ruc) : Promise.resolve([])
+          const [dbOrders, usrs] = await Promise.all([
+            (ses.empresa_ruc && typeof consultarRepositorio === 'function')
+              ? consultarRepositorio('repo_ordenes_trabajo', ses.empresa_ruc).catch(() => null)
+              : Promise.resolve(null),
+            typeof empresaListarUsuariosCompaneros === 'function'
+              ? empresaListarUsuariosCompaneros(ses.empresa_ruc)
+              : Promise.resolve([])
           ]);
-          appData.companyTickets = Array.isArray(tks) ? tks : [];
+          if (Array.isArray(dbOrders) && dbOrders.length > 0) {
+            appData.orders = dbOrders.map(o => {
+              const hist = Array.isArray(o.historial_cambios) ? o.historial_cambios : [];
+              const lastAssignedEntry = hist.slice().reverse().find(h => h && h.asignado_a_email !== undefined);
+              return {
+                id: o.codigo_orden,
+                client: o.cliente_nombre,
+                desc: o.descripcion,
+                status: o.estado || 'Abierta',
+                assignedEmail: lastAssignedEntry ? lastAssignedEntry.asignado_a_email : '',
+                assignedName: lastAssignedEntry ? lastAssignedEntry.asignado_a_nombre : '',
+                createdAt: o.creado_en ? new Date(o.creado_en).getTime() : Date.now(),
+                createdDateStr: (o.creado_en || '').slice(0, 16).replace('T', ' '),
+                lastObservation: hist.length ? hist[hist.length - 1].obs : 'Registrada',
+                history: hist
+              };
+            });
+          }
           appData.companyUsers = Array.isArray(usrs) ? usrs : [];
-          if (!silent) toast(`✓ ${appData.companyTickets.length} ticket(s) cargados.`);
+          if (!silent) toast(`✓ ${appData.orders.length} orden(es) cargadas.`);
         } catch (e) {
-          if (!silent) toast('⚠️ Error cargando tickets: ' + e.message);
+          if (!silent) toast('⚠️ Error cargando órdenes: ' + e.message);
         } finally {
           appData._loadingTk = false;
           if (appData.currentPage === 'admintickets') renderPhone('admintickets');
         }
       },
 
-      async assignCompanyTicketToUser(ticketId, userEmail) {
-        const tk = (appData.companyTickets || []).find(x => x.id === ticketId);
-        if (!tk) return;
+      async assignCompanyWorkOrderToUser(orderId, userEmail) {
+        const ord = (appData.orders || []).find(x => x.id === orderId);
+        if (!ord) return;
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
         const usr = (appData.companyUsers || []).find(u => u.email === userEmail);
         const usrName = usr ? `${usr.nombre_completo || usr.email} (${usr.email})` : 'Sin asignar';
-        const det = Object.assign({}, tk.detalle || {}, {
+        const dateStr = nowFormatted();
+        const obsMsg = userEmail
+          ? `Orden asignada a ${usrName} por ${ses.email || 'Administrador'}`
+          : `Orden liberada (sin asignar) por ${ses.email || 'Administrador'}`;
+
+        ord.assignedEmail = userEmail || '';
+        ord.assignedName = usrName;
+        ord.lastObservation = obsMsg;
+        if (!Array.isArray(ord.history)) ord.history = [];
+        ord.history.push({
+          date: dateStr,
+          status: ord.status,
+          obs: obsMsg,
           asignado_a_email: userEmail || '',
           asignado_a_nombre: usrName
         });
-        const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
-        hist.push({
-          fecha: nowFormatted(),
-          de_estado: '👤 Asignación',
-          a_estado: usrName,
-          motivo: userEmail ? `Asignado a ${usrName}` : 'Ticket liberado sin asignar',
-          autor: ses.email || 'admin@empresa.com'
-        });
-        det.historial = hist;
-        tk.asignado_a = userEmail || null;
-        tk.detalle = det;
-        try {
-          if (typeof crmAsignarTicketAColaborador === 'function') {
-            await crmAsignarTicketAColaborador(ticketId, userEmail, usrName, det);
-          }
-          toast(userEmail ? `✅ Ticket asignado a ${usrName}` : 'Ticket dejado sin asignar');
-          renderPhone('admintickets');
-        } catch (e) {
-          toast('⚠️ Error asignando ticket: ' + e.message);
-        }
-      },
 
-      async changeCompanyTicketStatus(ticketId, newStatus) {
-        const tk = (appData.companyTickets || []).find(x => x.id === ticketId);
-        if (!tk) return;
-        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
-        const det = Object.assign({}, tk.detalle || {});
-        const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
-        hist.push({
-          fecha: nowFormatted(),
-          de_estado: tk.estado,
-          a_estado: newStatus,
-          motivo: `Actualizado desde Administrador de Tickets App por ${ses.email || 'Administrador'}`,
-          autor: ses.email || 'admin@empresa.com'
-        });
-        det.historial = hist;
-        tk.estado = newStatus;
-        tk.detalle = det;
         try {
-          if (typeof crmActualizarTicket === 'function') {
-            await crmActualizarTicket(ticketId, newStatus, det);
+          if (ses.empresa_ruc && typeof empresaActualizarOrdenTrabajoRepositorio === 'function') {
+            await empresaActualizarOrdenTrabajoRepositorio(ses.empresa_ruc, orderId, {
+              historial_cambios: ord.history
+            });
           }
-          toast('✓ Estado de ticket actualizado.');
+          toast(userEmail ? `✅ Orden ${orderId} asignada a ${usrName}` : `Orden ${orderId} dejada sin asignar`);
           renderPhone('admintickets');
         } catch (e) {
-          toast('⚠️ Error actualizando estado: ' + e.message);
+          toast('⚠️ Error guardando asignación: ' + e.message);
         }
       },
 
@@ -6847,8 +6848,16 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
             ord.pendingSync = false;
           });
         }
+        const sesWo = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        if (!isOff && sesWo.empresa_ruc && typeof empresaActualizarOrdenTrabajoRepositorio === 'function') {
+          empresaActualizarOrdenTrabajoRepositorio(sesWo.empresa_ruc, ord.id, {
+            estado: newStatus,
+            historial_cambios: ord.history
+          });
+        }
         this.closeModal();
-        renderPhone('workorders');
+        if (appData.currentPage === 'admintickets') renderPhone('admintickets');
+        else renderPhone('workorders');
         toast(isOff ? `💾 Cambio en ${ord.id} guardado en cola Offline.` : `✓ Orden ${ord.id} actualizada a "${newStatus}" en el repositorio.`);
       },
 
@@ -7203,16 +7212,22 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
               }));
             }
             if (Array.isArray(dbOrders) && dbOrders.length > 0) {
-              appData.orders = dbOrders.map(o => ({
-                id: o.codigo_orden,
-                client: o.cliente_nombre,
-                desc: o.descripcion,
-                status: o.estado || 'Abierta',
-                createdAt: o.creado_en ? new Date(o.creado_en).getTime() : Date.now(),
-                createdDateStr: (o.creado_en || '').slice(0, 16).replace('T', ' '),
-                lastObservation: Array.isArray(o.historial_cambios) && o.historial_cambios.length ? o.historial_cambios[o.historial_cambios.length - 1].obs : 'Registrada',
-                history: Array.isArray(o.historial_cambios) ? o.historial_cambios : []
-              }));
+              appData.orders = dbOrders.map(o => {
+                const hist = Array.isArray(o.historial_cambios) ? o.historial_cambios : [];
+                const lastAsg = hist.slice().reverse().find(h => h && h.asignado_a_email !== undefined);
+                return {
+                  id: o.codigo_orden,
+                  client: o.cliente_nombre,
+                  desc: o.descripcion,
+                  status: o.estado || 'Abierta',
+                  assignedEmail: lastAsg ? lastAsg.asignado_a_email : '',
+                  assignedName: lastAsg ? lastAsg.asignado_a_nombre : '',
+                  createdAt: o.creado_en ? new Date(o.creado_en).getTime() : Date.now(),
+                  createdDateStr: (o.creado_en || '').slice(0, 16).replace('T', ' '),
+                  lastObservation: hist.length ? hist[hist.length - 1].obs : 'Registrada',
+                  history: hist
+                };
+              });
             }
             const localVisitas = typeof leerRutasLocalStorage === 'function' ? leerRutasLocalStorage(user.empresa_ruc) : null;
             if (Array.isArray(localVisitas) && localVisitas.length > 0) {
