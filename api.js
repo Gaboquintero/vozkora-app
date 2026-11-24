@@ -1143,3 +1143,80 @@ async function crmReiniciarConsumoIaEmpresa(empresaId, empresaRuc = '') {
     consultas_ia_periodo: periodoActual
   });
 }
+
+// -------------------------------------------------------------------------
+// M. INFORME GERENCIAL MULTI-SUCURSAL Y CONTABLE ENTERPRISE (SUPABASE + API)
+// -------------------------------------------------------------------------
+async function obtenerInformeGerencialVozkora(empresaRuc = '') {
+  const ses = obtenerSesionVozkora() || {};
+  const ruc = empresaRuc || ses.empresa_ruc || '';
+  if (!ruc || ses.rol === 'DEMO' || ses.entorno === 'DEMO') return null;
+
+  const [dbInvoices, dbNC, dbQuotes, dbPayments, prodRes] = await Promise.all([
+    consultarRepositorio('repo_facturas', ruc).catch(() => []),
+    consultarRepositorio('repo_notas_credito', ruc).catch(() => []),
+    consultarRepositorio('repo_proformas', ruc).catch(() => []),
+    consultarRepositorio('repo_cobros', ruc).catch(() => []),
+    obtenerProductosVozkora().catch(() => null)
+  ]);
+
+  const invoices = Array.isArray(dbInvoices) ? dbInvoices.map(f => ({
+    id: f.numero_factura,
+    date: (f.fecha_operacion_real || f.creado_en || '').slice(0, 10),
+    client: f.cliente_nombre,
+    subtotal: Number(f.subtotal || 0),
+    ivaRate: Number(f.iva_porcentaje || 15),
+    ivaAmt: Number(f.iva_monto || 0),
+    total: Number(f.total || 0),
+    method: f.forma_pago || 'Efectivo',
+    commission: Number(((Number(f.subtotal || 0)) * 0.03).toFixed(2)),
+    status: f.estado_sri === 'PENDIENTE_OFFLINE' ? 'Pendiente Offline' : 'Autorizada SRI'
+  })) : [];
+
+  const creditNotes = Array.isArray(dbNC) ? dbNC.map(n => ({
+    id: n.numero_nc,
+    invoiceRef: n.factura_referencia,
+    client: n.cliente_nombre,
+    reason: n.motivo,
+    amount: Number(n.monto || 0),
+    date: (n.creado_en || '').slice(0, 10)
+  })) : [];
+
+  const quotes = Array.isArray(dbQuotes) ? dbQuotes.map(q => ({
+    id: q.numero_proforma,
+    client: q.cliente_nombre,
+    contableSynced: true,
+    items: Array.isArray(q.items) ? q.items : [],
+    subtotal: Number(q.subtotal || 0),
+    discountTotal: 0,
+    ivaRate: 15,
+    ivaAmt: Number(q.iva_monto || 0),
+    total: Number(q.total || 0),
+    discountModeLabel: 'Sincronizada',
+    converted: false,
+    date: (q.creado_en || '').slice(0, 10)
+  })) : [];
+
+  const payments = Array.isArray(dbPayments) ? dbPayments.map(p => ({
+    name: p.cliente_nombre,
+    amount: Number(p.monto || 0),
+    method: p.medio_pago || 'Transferencia',
+    date: (p.creado_en || '').slice(0, 10)
+  })) : [];
+
+  const products = (prodRes && Array.isArray(prodRes.productos) && prodRes.productos.length > 0)
+    ? prodRes.productos.map((p, idx) => ({
+        id: p.codigo || ('P' + String(idx + 1).padStart(3, '0')),
+        barcode: (p.codigo_barra || p.codigo_barras || '').trim(),
+        name: p.nombre || 'Producto',
+        price: Number(p.pvp1 || 0) || 1.00,
+        cost: Number(p.costo_promedio || ((Number(p.pvp1 || 0) || 1.00) * 0.72)).toFixed(2) * 1,
+        stock: Number(p.cantidad_stock ?? 0),
+        warehouse: 'Bodega Principal',
+        ivaRate: Number(p.porcentaje_iva ?? 15),
+        keywords: [(p.nombre || 'producto').toLowerCase().split(' ')[0]]
+      }))
+    : [];
+
+  return { invoices, creditNotes, quotes, payments, products };
+}
