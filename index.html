@@ -498,11 +498,11 @@
           { id: 'BOD-02', nombre: 'Bodega Norte' }
         ],
         products: [
-          { id: 'P001', name: 'Arroz premium 5 kg', price: 5.50, cost: 4.10, stock: 40, warehouse: 'Bodega Principal', ivaRate: 0, keywords: ['arroz', 'arroces', 'grande'] },
-          { id: 'P002', name: 'Aceite vegetal 1 L', price: 2.80, cost: 2.05, stock: 25, warehouse: 'Bodega Principal', ivaRate: 15, keywords: ['aceite', 'aceites', 'paca'] },
-          { id: 'P003', name: 'Azúcar blanca 2 kg', price: 2.20, cost: 1.65, stock: 35, warehouse: 'Bodega Norte', ivaRate: 0, keywords: ['azucar', 'azúcar', 'azucares'] },
-          { id: 'P004', name: 'Leche entera 1 L', price: 1.25, cost: 0.92, stock: 50, warehouse: 'Bodega Norte', ivaRate: 0, keywords: ['leche', 'leches'] },
-          { id: 'P005', name: 'Atún en lata', price: 1.75, cost: 1.30, stock: 12, warehouse: 'Bodega Principal', ivaRate: 15, keywords: ['atun', 'atún', 'atunes'] }
+          { id: 'P001', name: 'Arroz premium 5 kg', price: 5.50, cost: 4.10, stock: 40, warehouse: 'Bodega Principal', ivaRate: 0, lotNumber: 'LOT-2026-A01', expiryDate: '2027-06-15', warrantyMonths: 0, keywords: ['arroz', 'arroces', 'grande'] },
+          { id: 'P002', name: 'Aceite vegetal 1 L', price: 2.80, cost: 2.05, stock: 25, warehouse: 'Bodega Principal', ivaRate: 15, lotNumber: 'LOT-2026-B14', expiryDate: '2027-03-20', warrantyMonths: 0, keywords: ['aceite', 'aceites', 'paca'] },
+          { id: 'P003', name: 'Azúcar blanca 2 kg', price: 2.20, cost: 1.65, stock: 35, warehouse: 'Bodega Norte', ivaRate: 0, lotNumber: 'LOT-2026-C08', expiryDate: '2027-09-10', warrantyMonths: 0, keywords: ['azucar', 'azúcar', 'azucares'] },
+          { id: 'P004', name: 'Leche entera 1 L', price: 1.25, cost: 0.92, stock: 50, warehouse: 'Bodega Norte', ivaRate: 0, lotNumber: 'LOT-2026-L19', expiryDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(12) : '2026-12-06'), warrantyMonths: 0, keywords: ['leche', 'leches'] },
+          { id: 'P005', name: 'Atún en lata', price: 1.75, cost: 1.30, stock: 12, warehouse: 'Bodega Principal', ivaRate: 15, lotNumber: 'LOT-2026-T04', expiryDate: '2027-08-30', warrantyMonths: 0, keywords: ['atun', 'atún', 'atunes'] }
         ],
         clients: [
           { name: 'Distribuidora Sol', id: '1790012345001', phone: '0991234567', debt: 2150.00 },
@@ -1201,6 +1201,26 @@
     function hasMinPlan(minRank) {
       return getCurrentPlan().rank >= minRank;
     }
+    function hasLotsModule() {
+      return !!(configState.activeSVAs && configState.activeSVAs.operaciones) || hasMinPlan(6);
+    }
+
+    function getLotExpiryBadge(expiryDateStr) {
+      if (!expiryDateStr) return null;
+      const exp = new Date(expiryDateStr + 'T00:00:00');
+      if (isNaN(exp.getTime())) return null;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const today = new Date(todayStr + 'T00:00:00');
+      const diffDays = Math.floor((exp - today) / 86400000);
+      if (diffDays < 0) {
+        return { status: 'EXPIRED', days: Math.abs(diffDays), cls: 'bg-rose-100 text-rose-800 border-rose-300', label: `🚨 VENCIDO (${expiryDateStr})` };
+      }
+      if (diffDays <= 30) {
+        return { status: 'SOON', days: diffDays, cls: 'bg-amber-100 text-amber-900 border-amber-300', label: `⏳ Vence en ${diffDays}d (${expiryDateStr})` };
+      }
+      return { status: 'OK', days: diffDays, cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', label: `📅 Vence: ${expiryDateStr}` };
+    }
+
     function hasMultiWarehouse() {
       // Multi-Bodega + Alertas de Stock aplican desde Plan 4 (Expansión) en adelante
       return hasMinPlan(4);
@@ -1564,11 +1584,20 @@
                     ${p.id} · ${multiBodegaOn ? esc(p.warehouse) : 'Bodega Principal'} · IVA ${p.ivaRate}% ·
                     <span class="${multiBodegaOn && p.stock <= 15 ? 'text-rose-600 font-bold' : 'font-semibold'}">${p.stock} unid.</span>
                   </div>
-                  <div>
+                  <div class="flex flex-wrap items-center gap-1 pt-0.5">
                     ${bcode
                       ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[9.5px] font-bold">📊 Cód. Barras: ${esc(bcode)}</span>`
                       : `<button type="button" onclick="V.openEditProductModal(${idx})" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[9.5px] font-bold cursor-pointer">⚠️ Sin cód. barras (Asignar)</button>`
                     }
+                    ${(() => {
+                      if (!hasLotsModule()) return '';
+                      const parts = [];
+                      if (p.lotNumber) parts.push(`<span class="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200 font-mono text-[9.5px] font-bold">🏷️ Lote: ${esc(p.lotNumber)}</span>`);
+                      const expB = getLotExpiryBadge(p.expiryDate);
+                      if (expB) parts.push(`<span class="inline-flex items-center px-2 py-0.5 rounded-md border text-[9.5px] font-bold ${expB.cls}">${esc(expB.label)}</span>`);
+                      if (Number(p.warrantyMonths) > 0) parts.push(`<span class="inline-flex items-center px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-800 border border-cyan-200 text-[9.5px] font-bold">🛡️ Garantía: ${Number(p.warrantyMonths)}m</span>`);
+                      return parts.join('');
+                    })()}
                   </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
@@ -1582,6 +1611,25 @@
             }).join('')}
           </div>
         </div>
+
+        ${hasLotsModule() ? (() => {
+          const lotAlerts = appData.products.filter(p => {
+            const b = getLotExpiryBadge(p.expiryDate);
+            return b && (b.status === 'EXPIRED' || b.status === 'SOON');
+          });
+          return `
+            <div class="bg-indigo-50/80 border border-indigo-200 rounded-2xl p-3 space-y-1">
+              <div class="text-xs font-extrabold text-indigo-950">🏷️ Control de Lotes, Vencimientos y Garantías (Pack Operaciones IA)</div>
+              ${lotAlerts.length
+                ? lotAlerts.map(p => {
+                    const b = getLotExpiryBadge(p.expiryDate);
+                    return `<p class="text-[11px] ${b.status === 'EXPIRED' ? 'text-rose-700 font-bold' : 'text-amber-900'}">• <strong>${esc(p.name)}</strong> ${p.lotNumber ? `(Lote ${esc(p.lotNumber)})` : ''}: ${esc(b.label)}</p>`;
+                  }).join('')
+                : '<p class="text-[11px] text-emerald-800">✓ Todos los lotes registrados tienen fechas de vencimiento vigentes.</p>'
+              }
+            </div>
+          `;
+        })() : ''}
 
         ${multiBodegaOn ? `
           <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-1">
@@ -2118,8 +2166,11 @@ ${renderSearchableClientPicker('quoteClient')}
               <input id="guideRoute" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Bodega Principal → Local ACME">
             </div>
             <div>
-              <label class="font-bold text-slate-600">Detalle de Mercadería a Trasladar</label>
-              <input id="guideItems" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. 20x Aceite vegetal 1 L, 10x Arroz 5 kg">
+              <div class="flex items-center justify-between">
+                <label class="font-bold text-slate-600">Detalle de Mercadería a Trasladar (con Trazabilidad de Lotes)</label>
+                <button type="button" onclick="const sample = appData.products.slice(0,2).map(x => '5x ' + x.name + (x.lotNumber ? ' [Lote: ' + x.lotNumber + ']' : '')).join(', '); $('guideItems').value = sample;" class="text-[10px] font-extrabold text-[#087e70] underline cursor-pointer">+ Cargar con Lotes</button>
+              </div>
+              <input id="guideItems" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. 10x Arroz 5 kg [Lote: LOT-2026-A01]">
             </div>
             <button onclick="V.createDispatchGuide()" class="w-full py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
               ${appData.offline ? '💾 Guardar Guía en cola Offline' : '⚡ Emitir Guía de Remisión'}
@@ -6176,6 +6227,30 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
                 ⚡ Al guardar con stock mayor a 0, se crea el producto y se registra automáticamente el <strong>Movimiento de Ingreso (ING)</strong> en la bodega elegida vía API.
               </div>
             </div>
+
+            ${hasLotsModule() ? `
+              <div class="p-2 rounded-xl bg-indigo-50/80 border border-indigo-200 space-y-1.5">
+                <div class="font-extrabold text-indigo-950">🏷️ Lote, Vencimiento y Garantía (Operaciones IA)</div>
+                <div class="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <label class="font-bold text-[10px]">N° Lote / Serie</label>
+                    <input id="prFormLotNumber" autocomplete="off" class="w-full border border-indigo-200 rounded-xl p-1.5 mt-0.5 bg-white font-mono text-[10.5px]" value="${esc(prod.lotNumber || '')}" placeholder="LOT-2026-01" />
+                  </div>
+                  <div>
+                    <label class="font-bold text-[10px]">Vencimiento</label>
+                    <input id="prFormExpiryDate" type="date" class="w-full border border-indigo-200 rounded-xl p-1.5 mt-0.5 bg-white font-mono text-[10.5px]" value="${esc(prod.expiryDate || '')}" />
+                  </div>
+                  <div>
+                    <label class="font-bold text-[10px]">Garantía (meses)</label>
+                    <input id="prFormWarrantyMonths" type="number" min="0" max="120" class="w-full border border-indigo-200 rounded-xl p-1.5 mt-0.5 bg-white font-mono text-[10.5px]" value="${Number(prod.warrantyMonths || 0)}" placeholder="0" />
+                  </div>
+                </div>
+              </div>
+            ` : `
+              <div class="p-2 rounded-xl bg-slate-100 border border-slate-200 text-[10px] text-slate-600">
+                🔒 <strong>Control de Lotes, Vencimientos y Garantías:</strong> Disponible al activar el <em>Pack Operaciones y Taller IA</em> o <em>Plan Enterprise</em>.
+              </div>
+            `}
           </form>
         `;
       },
@@ -6271,6 +6346,9 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           warehouseId,
           ivaRate,
           iceRule,
+          lotNumber: ($('prFormLotNumber')?.value || '').trim(),
+          expiryDate: ($('prFormExpiryDate')?.value || '').trim(),
+          warrantyMonths: Math.max(0, Number($('prFormWarrantyMonths')?.value) || 0),
           pendingSync: isOff,
           keywords: [name.toLowerCase().split(' ')[0]]
         };
