@@ -552,6 +552,23 @@
         quoteDiscountPct: 0,
         payments: [],
         paymentsLoadedFromCloud: false,
+        purchases: [
+          {
+            id: 'COMP-001',
+            supplierRuc: '1790016919001',
+            supplierName: 'Corporación Favorita C.A.',
+            invoiceNum: '001-002-0048912',
+            date: '2026-11-24',
+            category: 'Inventario / Mercadería',
+            subtotal0: 45.00,
+            subtotal15: 120.00,
+            ivaAmt: 18.00,
+            total: 183.00,
+            deductible: true,
+            addStock: true,
+            status: 'Validado SRI'
+          }
+        ],
         quotes: [
           {
             id: 'PROF-001',
@@ -1692,6 +1709,7 @@
         <div class="grid grid-cols-2 gap-2.5">
           ${[
             ['💰', 'Cartera y cobros', 'receivables'],
+            ['🧾', 'Compras / Gastos OCR', 'purchases'],
             ['📋', 'Retenciones SRI', 'retentions'],
             ['🏦', 'Módulo Bancario', 'banking'],
             ['🏆', 'Dashboard Comisiones', 'commissions'],
@@ -3122,7 +3140,8 @@ ${renderSearchableClientPicker('quoteClient')}
         const utilidadBrutaEst = Math.max(0, ventasSub - totalNC - costoVentasEst);
         const margenBrutoPct = ventasSub > 0 ? ((utilidadBrutaEst / ventasSub) * 100) : 0;
         const retencionesMes = (appData.retentions || []).reduce((a, r) => a + Number(r.totalRetained || 0), 0);
-        const ivaNetoSri = Math.max(0, ventasIva - (totalNC * 0.15) - retencionesMes);
+        const ivaComprasMes = (appData.purchases || []).filter(c => c.deductible !== false).reduce((a, c) => a + Number(c.ivaAmt || 0), 0);
+        const ivaNetoSri = Math.max(0, ventasIva - (totalNC * 0.15) - ivaComprasMes - retencionesMes);
         const liquidezBancos = (appData.bankAccounts || []).reduce((a, b) => a + Number(b.balance || 0), 0);
 
         return `
@@ -3366,7 +3385,7 @@ ${renderSearchableClientPicker('quoteClient')}
                 <div class="p-2.5 rounded-xl bg-white/10 border border-white/15">
                   <div class="text-teal-200 text-[10px]">Proyección Pago IVA SRI</div>
                   <div class="text-sm font-black font-mono text-amber-300">${appMoney(ivaNetoSri)}</div>
-                  <div class="text-[9.5px] text-teal-100">Formulario 104 est.</div>
+                  <div class="text-[9.5px] text-teal-100">Crédito IVA Compras: -${appMoney(ivaComprasMes)}</div>
                 </div>
               </div>
 
@@ -3584,6 +3603,106 @@ ${renderSearchableClientPicker('quoteClient')}
                 </div>
               `;
             }).join('')}
+          </div>
+        `;
+      }
+
+      // 17B. COMPRAS Y GASTOS CON OCR IA + ESCUDO DEDUCIBLE SRI (PACK FINANZAS Y PRE-CIERRE SRI)
+      if (p === 'purchases') {
+        if (!configState.activeSVAs.finanzas) {
+          return backBtn + renderLockBanner(
+            'OCR de Facturas de Proveedores, Gastos y Pre-Cierre SRI',
+            'Toma foto o sube el PDF RIDE de tus facturas de compras y gastos: la IA extrae RUC, fecha, subtotal e IVA, alerta si es Consumidor Final y descuenta el IVA en vivo para tu Formulario 104.',
+            'sva', 'finanzas', 'Pack Finanzas y Pre-Cierre SRI', 'purchases'
+          );
+        }
+
+        const list = Array.isArray(appData.purchases) ? appData.purchases : [];
+        const ventasIvaTot = (appData.invoices || []).reduce((a, x) => a + Number(x.ivaAmt || 0), 0);
+        const totalCreditoIva = list.filter(x => x.deductible !== false).reduce((a, x) => a + Number(x.ivaAmt || 0), 0);
+        const totalGastosMes = list.reduce((a, x) => a + Number(x.total || 0), 0);
+        const ivaEstimadoPagar = Math.max(0, ventasIvaTot - totalCreditoIva);
+
+        return `
+          ${backBtn}
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <div class="text-base font-extrabold text-[#17343a]">🧾 Compras y Gastos OCR IA</div>
+              <div class="text-[10.5px] text-[#087e70] font-semibold">Escudo Deducible SRI + Crédito Tributario Formulario 104</div>
+            </div>
+            <button onclick="V.exportPurchasesCsv()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">
+              📥 Excel Contador
+            </button>
+          </div>
+
+          <!-- Termómetro en Vivo del Formulario 104 SRI -->
+          <div class="bg-[#073e3b] text-white rounded-2xl p-3.5 space-y-2 text-xs shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="font-extrabold text-[#70d2bd]">🏛️ Simulador Pre-Cierre IVA (Form. 104)</span>
+              <span class="px-2 py-0.5 rounded-full bg-white/15 text-[10px] font-mono">En Vivo</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5 text-center pt-0.5">
+              <div class="p-2 rounded-xl bg-white/10">
+                <div class="text-[9.5px] text-teal-200">IVA Ventas</div>
+                <div class="font-mono font-black text-xs text-white mt-0.5">${appMoney(ventasIvaTot)}</div>
+              </div>
+              <div class="p-2 rounded-xl bg-emerald-500/25 border border-emerald-400/40">
+                <div class="text-[9.5px] text-emerald-200">(-) IVA Compras</div>
+                <div class="font-mono font-black text-xs text-[#70d2bd] mt-0.5">-${appMoney(totalCreditoIva)}</div>
+              </div>
+              <div class="p-2 rounded-xl bg-amber-400/20 border border-amber-300/40">
+                <div class="text-[9.5px] text-amber-200">(=) IVA a Pagar</div>
+                <div class="font-mono font-black text-xs text-amber-300 mt-0.5">${appMoney(ivaEstimadoPagar)}</div>
+              </div>
+            </div>
+            <div class="text-[10.5px] text-teal-100 flex justify-between pt-1 border-t border-white/15">
+              <span>Total compras/gastos registrados (${list.length}):</span>
+              <strong class="font-mono text-white">${appMoney(totalGastosMes)}</strong>
+            </div>
+          </div>
+
+          <!-- Escáner OCR IA (Cámara o PDF RIDE) -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2.5 text-xs">
+            <div class="font-extrabold text-[#073e3b]">📸 Escanear Factura de Proveedor o Gasto</div>
+            <p class="text-[11px] text-slate-600 leading-snug">
+              Toma foto al recibo físico o sube el <strong>PDF RIDE</strong>: la IA extrae RUC, fecha, subtotal e IVA, verifica que no sea <em>Consumidor Final</em> y permite sumar stock si es mercadería.
+            </p>
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="V.openRealCameraModal('purchase')" class="py-2.5 px-2 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-xs cursor-pointer">
+                📷 Foto Factura / Recibo
+              </button>
+              <button onclick="V.openPurchaseOcrModal()" class="py-2.5 px-2 rounded-xl text-[11px] font-extrabold bg-[#e7f5f1] hover:bg-[#d5ede6] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
+                📄 Subir PDF RIDE / Manual
+              </button>
+            </div>
+          </div>
+
+          <!-- Historial de Compras y Gastos Auditados -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
+            <b>Comprobantes de Compra Auditados (${list.length})</b>
+            ${list.length === 0 ? '<p class="text-[11px] text-slate-500">Aún no has registrado facturas de proveedores o gastos.</p>' : list.map((c, idx) => `
+              <div class="p-2.5 rounded-xl bg-[#f5f8f8] border ${c.deductible === false ? 'border-rose-300 bg-rose-50/40' : 'border-[#dce6e5]'} space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                  <strong class="text-[#073e3b] truncate">${esc(c.supplierName)}</strong>
+                  <strong class="font-mono text-[#087e70] shrink-0">${appMoney(c.total)}</strong>
+                </div>
+                <div class="text-[10.5px] font-mono text-slate-600">
+                  RUC: ${esc(c.supplierRuc)} · Fact: ${esc(c.invoiceNum)} · 📅 ${esc(c.date)}
+                </div>
+                <div class="flex flex-wrap items-center justify-between gap-1 pt-0.5 text-[10px]">
+                  <span class="px-2 py-0.5 rounded bg-white border border-slate-200 font-bold text-slate-700">${esc(c.category)}</span>
+                  <span class="font-mono text-slate-600">Sub: ${appMoney((c.subtotal0 || 0) + (c.subtotal15 || 0))} · <strong>IVA: ${appMoney(c.ivaAmt)}</strong></span>
+                </div>
+                <div class="flex flex-wrap items-center gap-1 pt-0.5">
+                  ${c.deductible === false
+                    ? '<span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-extrabold text-[9.5px]">⚠️ No Deducible (Consumidor Final)</span>'
+                    : '<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-extrabold text-[9.5px]">✓ Deducible SRI (Suma Crédito IVA)</span>'
+                  }
+                  ${c.addStock ? '<span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-900 font-bold text-[9.5px]">📦 Ingresó a Inventario</span>' : ''}
+                  ${c.evidenceUrl ? `<button type="button" onclick="V.openVoucherEvidenceModal('${esc(c.evidenceUrl)}', '${esc(c.supplierName)}')" class="ml-auto px-2 py-0.5 rounded bg-[#073e3b] text-[#70d2bd] font-bold text-[9.5px] cursor-pointer">🖼️ Ver Respaldo</button>` : ''}
+                </div>
+              </div>
+            `).join('')}
           </div>
         `;
       }
@@ -3890,14 +4009,16 @@ ${renderSearchableClientPicker('quoteClient')}
           prod_barcode: '📷 Escanear Código de Barras del Producto',
           ruc: '📷 Capturar Foto RUC del Cliente',
           voucher: '📷 Fotografiar Comprobante Pago Digital / Transferencia',
-          route: '📷 Foto Evidencia de Visita en Punto'
+          route: '📷 Foto Evidencia de Visita en Punto',
+          purchase: '📷 Escanear Factura de Proveedor / Gasto (OCR IA)'
         };
         const btnLabelMap = {
           pos: '✓ Buscar / Agregar',
           prod_barcode: '✓ Usar Código',
           ruc: '📸 Capturar RUC',
           voucher: '📸 Usar Foto Voucher',
-          route: '📸 Guardar Foto Visita'
+          route: '📸 Guardar Foto Visita',
+          purchase: '📸 Extraer Datos con OCR IA'
         };
         const title = titleMap[purpose] || '📷 Cámara Vozkora';
         this.openModal(
@@ -3914,7 +4035,7 @@ ${renderSearchableClientPicker('quoteClient')}
                  <input id="manualBarcodeInput" autocomplete="off" class="w-full border border-[#d7e1e0] rounded-xl p-2 text-xs font-mono text-center" placeholder="O escribe / pistolea código (ej. 7860000000001)" />
                </div>
              ` : ''}
-             ${(purpose === 'voucher' || purpose === 'route' || purpose === 'ruc') ? `
+             ${(purpose === 'voucher' || purpose === 'route' || purpose === 'ruc' || purpose === 'purchase') ? `
                <div class="pt-1">
                  <label class="block text-[10.5px] font-bold text-[#087e70] mb-1">O sube una foto / captura del certificado desde tu galería:</label>
                  <input id="cameraFallbackFileInput" type="file" accept="image/*" capture="environment" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 text-[11px] bg-[#f5f8f8]" />
@@ -4097,7 +4218,7 @@ ${renderSearchableClientPicker('quoteClient')}
 
       async captureFromCamera(purpose) {
         const manualCode = ($('manualBarcodeInput')?.value || '').trim();
-        const dataUrl = (purpose === 'voucher' || purpose === 'route' || purpose === 'ruc') ? await this.captureVideoFrameDataUrl() : '';
+        const dataUrl = (purpose === 'voucher' || purpose === 'route' || purpose === 'ruc' || purpose === 'purchase') ? await this.captureVideoFrameDataUrl() : '';
         this.stopCameraStream();
         if (purpose === 'prod_barcode') {
           if (manualCode) this.applyScannedBarcodeToProductInput(manualCode);
@@ -4112,6 +4233,8 @@ ${renderSearchableClientPicker('quoteClient')}
           this.openVoucherValidationModal(dataUrl);
         } else if (purpose === 'route') {
           await this.saveCapturedRoutePhoto(this.activeRoutePhotoIdx, dataUrl);
+        } else if (purpose === 'purchase') {
+          await this.openPurchaseOcrModal(dataUrl);
         } else {
           await this.processCapturedRucPhoto(dataUrl);
         }
@@ -4992,6 +5115,332 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
             renderPhone(appData.currentPage);
           }
         }
+      },
+
+      capturedPurchaseEvidenceUrl: '',
+      parsePurchaseInvoiceTextLocal(rawText) {
+        const txt = String(rawText || '');
+        const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        let supplierRuc = '';
+        const mRuc = txt.match(/\b(\d{10}001)\b/);
+        if (mRuc) supplierRuc = mRuc[1];
+
+        let supplierName = '';
+        for (let i = 0; i < Math.min(lines.length, 8); i++) {
+          if (lines[i].length >= 4 && !/RUC|FACTURA|AUTORIZACI|FECHA|DIRECCI|AMBIENTE|EMISI/i.test(lines[i])) {
+            supplierName = lines[i];
+            break;
+          }
+        }
+
+        let invoiceNum = '';
+        const mFac = txt.match(/\b(\d{3}-\d{3}-\d{6,9})\b/);
+        if (mFac) invoiceNum = mFac[1];
+
+        let dateIso = new Date().toISOString().slice(0, 10);
+        const mDateSlash = txt.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+        const mDateDash = txt.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+        if (mDateDash) dateIso = `${mDateDash[1]}-${mDateDash[2]}-${mDateDash[3]}`;
+        else if (mDateSlash) dateIso = `${mDateSlash[3]}-${mDateSlash[2]}-${mDateSlash[1]}`;
+
+        const isConsumidorFinal = /CONSUMIDOR\s+FINAL|9999999999999/i.test(txt);
+
+        const grabMoney = (rx) => {
+          const m = txt.match(rx);
+          if (!m) return 0;
+          return parseFloat(String(m[1]).replace(',', '.')) || 0;
+        };
+        const subtotal15 = grabMoney(/SUBTOTAL\s*(?:15%|12%|IVA)[^\d]{0,12}(\d+[.,]\d{2})/i);
+        const subtotal0 = grabMoney(/SUBTOTAL\s*0%[^\d]{0,12}(\d+[.,]\d{2})/i);
+        const ivaAmt = grabMoney(/\bIVA\s*(?:15%|12%)?[^\d]{0,12}(\d+[.,]\d{2})/i);
+        const total = grabMoney(/(?:VALOR\s+TOTAL|TOTAL\s+A\s+PAGAR|TOTAL)[^\d]{0,12}(\d+[.,]\d{2})/i);
+
+        let category = 'Gastos Operativos / Generales';
+        if (/GASOLINA|COMBUSTIBLE|ESTACI[OÓ]N|DIESEL|PETRO|PRIMAX|TERPEL/i.test(txt)) category = 'Combustible y Transporte';
+        else if (/RESTAURANTE|ALIMENT|COMIDA|CAFETER/i.test(txt)) category = 'Alimentación / Viáticos';
+        else if (/FERRETER|DISTRIBUIDOR|MAYORISTA|BODEGA|MERCADER/i.test(txt)) category = 'Inventario / Mercadería';
+        else if (/ARRIENDO|LUZ|AGUA|INTERNET|TELEFON/i.test(txt)) category = 'Servicios Básicos y Arriendos';
+
+        return {
+          supplierRuc,
+          supplierName,
+          invoiceNum,
+          date: dateIso,
+          subtotal0,
+          subtotal15,
+          ivaAmt,
+          total,
+          isConsumidorFinal,
+          category
+        };
+      },
+
+      async openPurchaseOcrModal(capturedDataUrl = '') {
+        if (!configState.activeSVAs.finanzas) {
+          return toast('🔒 Este módulo requiere el Pack Finanzas y Pre-Cierre SRI.');
+        }
+        this.capturedPurchaseEvidenceUrl = capturedDataUrl
+          ? await this.compressImageDataUrl(capturedDataUrl, 640, 0.65)
+          : '';
+        const todayIso = new Date().toISOString().slice(0, 10);
+
+        this.openModal(
+          '🧾 Registrar Compra / Gasto con OCR IA',
+          `<div class="space-y-2 max-h-[66vh] overflow-y-auto pr-1 text-[11px]">
+             <div class="p-2 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-semibold">
+               ${this.capturedPurchaseEvidenceUrl ? '⏳ Leyendo datos de la factura capturada con OCR IA...' : 'Sube un PDF RIDE / imagen de la factura o ingresa los datos para calcular tu crédito IVA.'}
+             </div>
+
+             ${this.capturedPurchaseEvidenceUrl ? `
+               <div class="rounded-xl overflow-hidden border border-[#b9d1cd] bg-black">
+                 <img src="${esc(this.capturedPurchaseEvidenceUrl)}" alt="Factura Compra" class="w-full max-h-28 object-contain" />
+               </div>
+             ` : ''}
+
+             <div>
+               <label class="font-bold text-[#073e3b]">Adjuntar PDF RIDE o Imagen de Factura (Opcional)</label>
+               <input id="purOcrFileInput" type="file" accept="image/*,application/pdf,.pdf" onchange="V.onPurchaseFileSelected(this)" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-[#f5f8f8]" />
+               <div id="purOcrStatusLbl" class="text-[10px] text-[#087e70] font-semibold mt-0.5">Soporta PDF RIDE del SRI o fotos de recibos físicos.</div>
+             </div>
+
+             <div id="purConsumidorFinalAlert" class="hidden p-2 rounded-xl bg-rose-100 border border-rose-300 text-rose-900 font-bold">
+               🚨 ALERTA ESCUDO SRI: Esta factura está emitida a CONSUMIDOR FINAL. En Ecuador NO es deducible de IVA ni Impuesto a la Renta.
+             </div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">RUC Proveedor *</label>
+                 <input id="purRuc" maxlength="13" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono font-bold" placeholder="1790000000001" />
+               </div>
+               <div>
+                 <label class="font-bold">Fecha Emisión *</label>
+                 <input id="purDate" type="date" value="${todayIso}" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" />
+               </div>
+             </div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">Razón Social Proveedor *</label>
+                 <input id="purSupplierName" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-bold" placeholder="Proveedor S.A." />
+               </div>
+               <div>
+                 <label class="font-bold">N° Factura SRI</label>
+                 <input id="purInvoiceNum" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono" placeholder="001-001-0000123" />
+               </div>
+             </div>
+
+             <div>
+               <label class="font-bold">Clasificación Contable IA</label>
+               <select id="purCategory" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-white font-semibold">
+                 <option value="Inventario / Mercadería">Inventario / Mercadería (Reventa)</option>
+                 <option value="Combustible y Transporte">Combustible y Transporte</option>
+                 <option value="Servicios Básicos y Arriendos">Servicios Básicos y Arriendos</option>
+                 <option value="Alimentación / Viáticos">Alimentación / Viáticos</option>
+                 <option value="Gastos Operativos / Generales">Gastos Operativos / Generales</option>
+               </select>
+             </div>
+
+             <div class="grid grid-cols-3 gap-1.5 bg-[#f5f8f8] p-2 rounded-xl border border-[#dce6e5]">
+               <div>
+                 <label class="font-bold text-[10px]">Subtotal 0%</label>
+                 <input id="purSub0" type="number" step="0.01" value="0.00" oninput="V.recalcPurchaseTotals()" class="w-full border border-[#d7e1e0] rounded-lg p-1 mt-0.5 font-mono bg-white" />
+               </div>
+               <div>
+                 <label class="font-bold text-[10px]">Subtotal 15%</label>
+                 <input id="purSub15" type="number" step="0.01" value="100.00" oninput="V.recalcPurchaseTotals(true)" class="w-full border border-[#d7e1e0] rounded-lg p-1 mt-0.5 font-mono bg-white" />
+               </div>
+               <div>
+                 <label class="font-bold text-[10px] text-[#087e70]">IVA 15% ($)</label>
+                 <input id="purIva" type="number" step="0.01" value="15.00" oninput="V.recalcPurchaseTotals(false)" class="w-full border border-[#087e70] rounded-lg p-1 mt-0.5 font-mono font-bold bg-white" />
+               </div>
+             </div>
+
+             <div class="flex items-center justify-between px-2 py-1.5 rounded-xl bg-[#073e3b] text-white font-bold">
+               <span>Total Factura Compra:</span>
+               <span id="purTotalDisplay" class="font-mono text-sm text-[#70d2bd]">$115,00</span>
+             </div>
+
+             <label class="flex items-center gap-2 p-2 rounded-xl bg-amber-50 border border-amber-200 font-bold text-amber-950 cursor-pointer">
+               <input id="purDeductible" type="checkbox" checked onchange="$('purConsumidorFinalAlert').classList.toggle('hidden', this.checked);" class="w-4 h-4 accent-[#087e70]" />
+               <span>✓ Factura a nombre de mi empresa (Deducible IVA SRI)</span>
+             </label>
+
+             <div class="p-2 rounded-xl bg-cyan-50/70 border border-cyan-200 space-y-1.5">
+               <label class="flex items-center gap-2 font-bold text-cyan-950 cursor-pointer">
+                 <input id="purAddStockChk" type="checkbox" onchange="$('purStockBox').classList.toggle('hidden', !this.checked);" class="w-4 h-4 accent-[#087e70]" />
+                 <span>📦 Es compra de mercadería: sumar unidades a Bodega</span>
+               </label>
+               <div id="purStockBox" class="hidden grid grid-cols-3 gap-1.5 pt-1">
+                 <select id="purStockProdId" class="col-span-2 border border-[#d7e1e0] rounded-lg p-1.5 bg-white text-[10.5px]">
+                   ${(appData.products || []).map(pr => `<option value="${esc(pr.id)}">${esc(pr.name)} (Act: ${pr.stock})</option>`).join('')}
+                 </select>
+                 <input id="purStockQty" type="number" min="1" value="10" class="border border-[#d7e1e0] rounded-lg p-1.5 font-mono font-bold bg-white text-center" placeholder="Cant." />
+               </div>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.submitPurchaseOcr()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">💾 Guardar y Sumar Crédito IVA</button>`
+        );
+
+        if (this.capturedPurchaseEvidenceUrl) {
+          const ocrTxt = await this.runOcrOnImageSource(this.capturedPurchaseEvidenceUrl);
+          if (ocrTxt) {
+            const parsed = this.parsePurchaseInvoiceTextLocal(ocrTxt);
+            this.applyParsedPurchaseFields(parsed);
+            toast('✅ OCR IA completado sobre la fotografía.');
+          } else {
+            toast('⚠️ Foto capturada; verifica o completa los valores.');
+          }
+        }
+      },
+
+      applyParsedPurchaseFields(p) {
+        if (!p) return;
+        if ($('purRuc') && p.supplierRuc) $('purRuc').value = p.supplierRuc;
+        if ($('purSupplierName') && p.supplierName) $('purSupplierName').value = p.supplierName;
+        if ($('purInvoiceNum') && p.invoiceNum) $('purInvoiceNum').value = p.invoiceNum;
+        if ($('purDate') && p.date) $('purDate').value = p.date;
+        if ($('purCategory') && p.category) $('purCategory').value = p.category;
+        if ($('purSub0') && p.subtotal0 > 0) $('purSub0').value = p.subtotal0.toFixed(2);
+        if ($('purSub15') && p.subtotal15 > 0) $('purSub15').value = p.subtotal15.toFixed(2);
+        if ($('purIva') && p.ivaAmt > 0) $('purIva').value = p.ivaAmt.toFixed(2);
+        if (p.isConsumidorFinal && $('purDeductible')) {
+          $('purDeductible').checked = false;
+          if ($('purConsumidorFinalAlert')) $('purConsumidorFinalAlert').classList.remove('hidden');
+        }
+        this.recalcPurchaseTotals(false);
+      },
+
+      async onPurchaseFileSelected(inputEl) {
+        const file = inputEl && inputEl.files ? inputEl.files[0] : null;
+        if (!file) return;
+        const lbl = $('purOcrStatusLbl');
+        if (lbl) lbl.textContent = '⏳ Analizando comprobante con motor OCR IA...';
+
+        let extractedText = '';
+        if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
+          try {
+            const buf = await file.arrayBuffer();
+            if (window.pdfjsLib) {
+              const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+              const page = await pdf.getPage(1);
+              const content = await page.getTextContent();
+              extractedText = content.items.map(it => it.str || '').join(' ');
+            }
+          } catch (e) {}
+        } else if (file.type && file.type.startsWith('image/')) {
+          const rawImg = await new Promise((resolve) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = () => resolve('');
+            r.readAsDataURL(file);
+          });
+          if (rawImg) {
+            this.capturedPurchaseEvidenceUrl = await this.compressImageDataUrl(rawImg, 640, 0.65);
+            extractedText = await this.runOcrOnImageSource(this.capturedPurchaseEvidenceUrl);
+          }
+        }
+
+        const parsed = this.parsePurchaseInvoiceTextLocal(extractedText);
+        this.applyParsedPurchaseFields(parsed);
+        if (lbl) {
+          lbl.textContent = (parsed.supplierRuc || parsed.total > 0)
+            ? '✅ Datos extraídos automáticamente. Revisa los importes antes de guardar.'
+            : '⚠️ Archivo adjuntado; completa los campos numéricos manualmente.';
+        }
+      },
+
+      recalcPurchaseTotals(autoIva = false) {
+        const s0 = parseFloat($('purSub0')?.value) || 0;
+        const s15 = parseFloat($('purSub15')?.value) || 0;
+        if (autoIva && $('purIva')) {
+          $('purIva').value = (s15 * 0.15).toFixed(2);
+        }
+        const iva = parseFloat($('purIva')?.value) || 0;
+        const tot = s0 + s15 + iva;
+        if ($('purTotalDisplay')) $('purTotalDisplay').textContent = appMoney(tot);
+      },
+
+      async submitPurchaseOcr() {
+        const ruc = ($('purRuc')?.value || '').trim();
+        const name = ($('purSupplierName')?.value || '').trim();
+        const invNum = ($('purInvoiceNum')?.value || '').trim() || ('001-001-' + String(Math.floor(100000 + Math.random() * 899999)));
+        const date = $('purDate')?.value || new Date().toISOString().slice(0, 10);
+        const category = $('purCategory')?.value || 'Gastos Operativos / Generales';
+        const sub0 = parseFloat($('purSub0')?.value) || 0;
+        const sub15 = parseFloat($('purSub15')?.value) || 0;
+        const ivaAmt = parseFloat($('purIva')?.value) || 0;
+        const total = Number((sub0 + sub15 + ivaAmt).toFixed(2));
+        const deductible = !!$('purDeductible')?.checked;
+        const addStock = !!$('purAddStockChk')?.checked;
+
+        if (!ruc || !name) return toast('Ingresa el RUC y Razón Social del proveedor.');
+        if (total <= 0) return toast('El total de la factura debe ser mayor a $0,00.');
+
+        const quotaIa = await verificarYRegistrarUsoIa();
+        if (!quotaIa.permitido) return;
+
+        let evidenceUrl = this.capturedPurchaseEvidenceUrl || '';
+        const compId = 'COMP-' + String((appData.purchases || []).length + 1).padStart(3, '0');
+        if (evidenceUrl && evidenceUrl.startsWith('data:') && typeof subirEvidenciaFotoSupabase === 'function') {
+          try {
+            const blob = await (await fetch(evidenceUrl)).blob();
+            const up = await subirEvidenciaFotoSupabase(blob, 'compras', compId);
+            if (up && up.url) evidenceUrl = up.url;
+          } catch (e) {}
+        }
+
+        if (addStock) {
+          const prodId = $('purStockProdId')?.value;
+          const addQty = Math.max(1, parseInt($('purStockQty')?.value, 10) || 0);
+          const prObj = (appData.products || []).find(x => x.id === prodId);
+          if (prObj) {
+            prObj.stock = Number(prObj.stock || 0) + addQty;
+          }
+        }
+
+        if (!Array.isArray(appData.purchases)) appData.purchases = [];
+        appData.purchases.unshift({
+          id: compId,
+          supplierRuc: ruc,
+          supplierName: name,
+          invoiceNum: invNum,
+          date,
+          category,
+          subtotal0: sub0,
+          subtotal15: sub15,
+          ivaAmt,
+          total,
+          deductible,
+          addStock,
+          evidenceUrl,
+          status: deductible ? 'Deducible SRI' : 'No Deducible'
+        });
+
+        this.closeModal();
+        renderPhone('purchases');
+        toast(deductible
+          ? `✅ Compra registrada: +${appMoney(ivaAmt)} sumados a tu Crédito Tributario IVA.`
+          : `⚠️ Compra guardada como No Deducible (no suma crédito IVA).`);
+      },
+
+      exportPurchasesCsv() {
+        const list = appData.purchases || [];
+        if (!list.length) return toast('No hay compras registradas para exportar.');
+        const rows = [
+          ['Codigo', 'Fecha', 'RUC Proveedor', 'Razon Social', 'Factura SRI', 'Categoria', 'Subtotal 0%', 'Subtotal 15%', 'IVA', 'Total', 'Deducible SRI'],
+          ...list.map(c => [c.id, c.date, c.supplierRuc, c.supplierName, c.invoiceNum, c.category, c.subtotal0, c.subtotal15, c.ivaAmt, c.total, c.deductible ? 'SI' : 'NO'])
+        ];
+        const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Compras_Gastos_SRI_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
+        toast('📥 Reporte de Compras y Crédito IVA descargado para tu contador.');
       },
 
       openVoucherEvidenceModal(url, clientName) {
