@@ -1393,7 +1393,7 @@
       else if (page === 'helpcenter') { screen.innerHTML = viewMore(); V.openHelpCenterModal(); }
       else {
         screen.innerHTML = viewModule(page);
-        if (page === 'admintickets' && !appData.companyUsers.length && !appData._loadingTk) {
+        if (page === 'admintickets' && configState.activeSVAs.operaciones && !appData.companyUsers.length && !appData._loadingTk) {
           V.loadCompanyWorkOrdersAdmin(true);
         }
       }
@@ -1706,7 +1706,7 @@
             ...((() => {
               const s = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
               const canAdminTk = s.rol === 'ADMIN_EMPRESA' || s.rol === 'DEMO' || !!(s.permisos && s.permisos.admin_tickets);
-              return canAdminTk ? [['🎫', 'Admin. OT', 'admintickets']] : [];
+              return (canAdminTk && configState.activeSVAs.operaciones) ? [['🎫', 'Admin. OT', 'admintickets']] : [];
             })()),
             ['🛟', 'Ayuda y Tickets', 'helpcenter']
           ].map(x => `
@@ -3627,6 +3627,13 @@ ${renderSearchableClientPicker('quoteClient')}
 
       // 19. ADMINISTRADOR DE ÓRDENES DE TRABAJO / TICKETS INTERNOS DE TALLER (repo_ordenes_trabajo)
       if (p === 'admintickets') {
+        if (!configState.activeSVAs.operaciones) {
+          return backBtn + renderLockBanner(
+            'Administrador de Órdenes de Trabajo (Admin. OT)',
+            'Asigna órdenes de trabajo entre técnicos y usuarios de la empresa, controla tiempos y audita cambios de estado.',
+            'sva', 'operaciones', 'Pack Operaciones y Taller IA', 'admintickets'
+          );
+        }
         const sesTk = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
         const canAdminTk = sesTk.rol === 'ADMIN_EMPRESA' || sesTk.rol === 'DEMO' || !!(sesTk.permisos && sesTk.permisos.admin_tickets);
         if (!canAdminTk) {
