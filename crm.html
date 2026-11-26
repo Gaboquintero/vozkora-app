@@ -524,18 +524,34 @@
                     })()}
 
                     <!-- Módulos SVA (Módulos Adicionales IA) activos y editables directamente desde el CRM -->
-                    <div class="p-2 rounded-xl bg-white border border-slate-200 space-y-1">
-                      <div class="text-[10px] font-extrabold text-[#073e3b]">🤖 Módulos SVA (Módulos Adicionales IA) Activos — Toca para activar/quitar:</div>
-                      <div class="flex flex-wrap gap-1">
-                        ${SVA_PACKS.map(pk => {
-                          const empPacks = Array.isArray(emp.packs_ia) ? emp.packs_ia : [];
-                          const active = empPacks.includes(pk.id);
-                          return `<button onclick="CRM.toggleCompanySvaPack('${emp.id}', '${pk.id}')" class="px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer ${active ? 'bg-[#087e70] text-white' : 'bg-slate-100 text-slate-500'}">
-                            ${active ? '✓' : '+'} ${pk.icon} ${pk.name.replace('Pack ', '').replace(' IA', '')}
-                          </button>`;
-                        }).join('')}
-                      </div>
-                    </div>
+                    ${(() => {
+                      const plObj = PLANS.find(p => p.id === emp.plan_activo) || PLANS[0];
+                      const isEnt = emp.plan_activo === 'enterprise' || plObj.includesComboFull;
+                      const freeQuota = isEnt ? 6 : (Number(plObj.includedSVACount) || 0);
+                      const empPacks = isEnt ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : (Array.isArray(emp.packs_ia) ? emp.packs_ia : []);
+                      return `
+                        <div class="p-2 rounded-xl bg-white border border-slate-200 space-y-1.5">
+                          <div class="flex flex-wrap items-center justify-between gap-1 text-[10px]">
+                            <span class="font-extrabold text-[#073e3b]">
+                              🤖 Módulos IA (${empPacks.length}/6) · ${isEnt ? '⚡ Enterprise Full IA (6/6 automáticos)' : `Cupo gratis Plan ${plObj.name}: ${Math.min(empPacks.length, freeQuota)}/${freeQuota} ${emp.sva_elegidos_fijos ? '🔒 Fijado' : '🟢 Libre en App'}`}
+                            </span>
+                            ${!isEnt && freeQuota > 0 && emp.sva_elegidos_fijos ? `
+                              <button onclick="CRM.unlockCompanyFreeSvaQuota('${emp.id}', '${esc(emp.nombre)}')" class="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold cursor-pointer">
+                                🔓 Liberar cupo para que elija en App
+                              </button>
+                            ` : ''}
+                          </div>
+                          <div class="flex flex-wrap gap-1">
+                            ${SVA_PACKS.map(pk => {
+                              const active = empPacks.includes(pk.id);
+                              return `<button onclick="CRM.toggleCompanySvaPack('${emp.id}', '${pk.id}')" class="px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer ${active ? 'bg-[#087e70] text-white' : 'bg-slate-100 text-slate-500'}">
+                                ${active ? '✓' : '+'} ${pk.icon} ${pk.name.replace('Pack ', '').replace(' IA', '')}
+                              </button>`;
+                            }).join('')}
+                          </div>
+                        </div>
+                      `;
+                    })()}
 
                     <div class="flex flex-wrap items-center gap-2 pt-1">
                       <select onchange="CRM.changeCompanyPlan('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
@@ -629,10 +645,23 @@
         const max_usuarios = Math.max(1, parseInt($('empNewQuota').value, 10) || 1);
         const entorno = $('empNewEnv').value;
         if (!nombre || !ruc) return toast('Ingresa nombre y RUC de la empresa.');
+        const allPackIds = ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'];
+        const isEnt = plan_activo === 'enterprise';
         try {
-          await crmCrearEmpresa({ nombre, ruc, telefono, email_contacto, plan_activo, max_usuarios, entorno, activa: true });
+          await crmCrearEmpresa({
+            nombre,
+            ruc,
+            telefono,
+            email_contacto,
+            plan_activo,
+            max_usuarios,
+            entorno,
+            activa: true,
+            packs_ia: isEnt ? allPackIds : [],
+            sva_elegidos_fijos: isEnt
+          });
           V.closeModal();
-          toast(`✓ Empresa ${nombre} registrada con cupo de ${max_usuarios} usuario(s).`);
+          toast(`✓ Empresa ${nombre} registrada con cupo de ${max_usuarios} usuario(s)${isEnt ? ' y Full IA activo' : ''}.`);
           this.loadCompanies();
         } catch (e) {
           toast('Error creando empresa: ' + e.message);
@@ -642,8 +671,21 @@
       async changeCompanyPlan(id, plan_activo) {
         const pl = PLANS.find(x => x.id === plan_activo);
         const max_usuarios = pl ? pl.includedUsers : 5;
-        await crmActualizarEmpresa(id, { plan_activo, max_usuarios });
-        toast(`✓ Plan actualizado a ${pl ? pl.name : plan_activo} (Cupo base: ${max_usuarios} usuarios).`);
+        const allPackIds = ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'];
+        const patch = { plan_activo, max_usuarios };
+        if (plan_activo === 'enterprise' || (pl && pl.includesComboFull)) {
+          patch.packs_ia = allPackIds;
+          patch.sva_elegidos_fijos = true;
+        } else {
+          // Liberar selección para que el cliente elija en la App los módulos gratis de su nuevo plan
+          patch.packs_ia = [];
+          patch.sva_elegidos_fijos = false;
+        }
+        await crmActualizarEmpresa(id, patch);
+        const svaMsg = plan_activo === 'enterprise'
+          ? ' + 6 Módulos IA activados automáticamente'
+          : (pl && pl.includedSVACount > 0 ? ` + ${pl.includedSVACount} módulo(s) IA gratis disponibles para elegir en App` : '');
+        toast(`✓ Plan actualizado a ${pl ? pl.name : plan_activo} (Cupo: ${max_usuarios} usu.${svaMsg}).`);
         this.loadCompanies();
       },
 
@@ -711,20 +753,31 @@
       async toggleCompanySvaPack(empId, packId) {
         const emp = this.cachedCompanies.find(x => x.id === empId);
         if (!emp) return;
+        const plObj = PLANS.find(p => p.id === emp.plan_activo) || PLANS[0];
+        if (emp.plan_activo === 'enterprise' || plObj.includesComboFull) {
+          return toast('⚡ El Plan Enterprise incluye los 6 Módulos IA activos automáticamente.');
+        }
+        const freeQuota = Number(plObj.includedSVACount) || 0;
         const prev = Array.isArray(emp.packs_ia) ? emp.packs_ia.slice() : [];
         const next = prev.includes(packId) ? prev.filter(x => x !== packId) : [...prev, packId];
-        // Actualización optimista inmediata en pantalla
+        const fixedFlag = freeQuota > 0 ? (next.length >= freeQuota) : (next.length > 0);
         emp.packs_ia = next;
-        emp.sva_elegidos_fijos = next.length > 0;
+        emp.sva_elegidos_fijos = fixedFlag;
         this.renderCompaniesView();
         try {
-          await crmActualizarEmpresa(empId, { packs_ia: next, sva_elegidos_fijos: next.length > 0 });
+          await crmActualizarEmpresa(empId, { packs_ia: next, sva_elegidos_fijos: fixedFlag });
           toast('✓ Módulos IA actualizados en vivo para ' + emp.nombre);
         } catch (e) {
           emp.packs_ia = prev;
           this.renderCompaniesView();
           toast('⚠️ Error guardando módulo IA: ' + e.message);
         }
+      },
+
+      async unlockCompanyFreeSvaQuota(empId, empName) {
+        await crmActualizarEmpresa(empId, { packs_ia: [], sva_elegidos_fijos: false });
+        toast(`🔓 Cupo de módulos gratis liberado para ${empName}. El cliente ya puede volver a elegirlos desde su App.`);
+        this.loadCompanies();
       },
 
       async resetCompanyIaQuota(empId, empRuc, empName) {
@@ -1219,7 +1272,7 @@
           ['cobranza', 'Cobrar Cartera'],
           ['bancos', 'Ver Bancos'],
           ['programador_ruta', '🗺️ Programador de Ruta GPS'],
-          ['admin_tickets', '🎫 Admin. Órdenes / Tickets Taller'],
+          ['admin_tickets', '🎫 Admin. OT (Órdenes Trabajo)'],
           ['reportes', 'Ver Reportes'],
           ['configuracion', 'Entrenar IA']
         ];

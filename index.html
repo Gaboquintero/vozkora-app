@@ -103,10 +103,7 @@
         </button>
 
         <div class="pt-2 border-t border-slate-100 space-y-2 text-center">
-          <button type="button" onclick="Auth.fillCreds('demo@vozkora.com','DEMOVOZKORA'); Auth.submitLogin();" class="w-full py-2 px-3 rounded-xl bg-[#e7f5f1] hover:bg-[#d4ede6] text-[#073e3b] font-bold text-[11px] border border-[#b9d1cd] cursor-pointer">
-            🧪 Ingresar a Entorno de Demostración
-          </button>
-          <div class="text-[10.5px] text-slate-500 pt-1">
+          <div class="text-[10.5px] text-slate-500">
             Al ingresar aceptas nuestra
             <button type="button" onclick="V.openPrivacyPolicyModal()" class="text-[#087e70] font-bold underline cursor-pointer">Política de Privacidad</button>
             y
@@ -1670,7 +1667,7 @@
             ...((() => {
               const s = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
               const canAdminTk = s.rol === 'ADMIN_EMPRESA' || s.rol === 'DEMO' || !!(s.permisos && s.permisos.admin_tickets);
-              return canAdminTk ? [['🎫', 'Admin. Tickets', 'admintickets']] : [];
+              return canAdminTk ? [['🎫', 'Admin. OT', 'admintickets']] : [];
             })()),
             ['🛟', 'Ayuda y Tickets', 'helpcenter']
           ].map(x => `
@@ -2800,29 +2797,49 @@ ${renderSearchableClientPicker('quoteClient')}
         `;
       }
 
-      // 12. MÓDULOS ADICIONALES IA (SIN PRECIOS · CANAL TÉCNICO WHATSAPP)
+      // 12. MÓDULOS ADICIONALES IA (INCLUIDOS POR PLAN + ENTERPRISE FULL IA + SYNC CRM)
       if (p === 'packs') {
         const plan = getCurrentPlan();
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
-          rol: 'DEMO', entorno: 'DEMO'
+          rol: 'DEMO', entorno: 'DEMO', sva_elegidos_fijos: false
         };
         const isDemoMode = ses.rol === 'DEMO' || ses.entorno === 'DEMO';
+        const isEnterprise = !!plan.includesComboFull;
+        const includedQuota = isEnterprise ? 6 : (Number(plan.includedSVACount) || 0);
+        const activeIds = SVA_PACKS.map(x => x.id).filter(id => configState.activeSVAs[id]);
+        const remainingFree = isEnterprise ? 0 : Math.max(0, includedQuota - activeIds.length);
+        const canClaimFree = !isEnterprise && !ses.sva_elegidos_fijos && remainingFree > 0;
 
         return `
           ${backBtn}
           <div class="flex items-center justify-between">
             <div class="text-base font-extrabold text-[#17343a]">🤖 Módulos Inteligentes IA</div>
             <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#e7f5f1] text-[#073e3b]">
-              Perfil ${esc(plan.name)}
+              Perfil ${esc(plan.name)} (${activeIds.length}/6)
             </span>
           </div>
 
-          <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b] leading-snug">
-            Explora las herramientas de automatización inteligente disponibles para tu empresa. Si deseas habilitar alguno en tu cuenta, comunícate con nuestro <strong>Canal Técnico WhatsApp</strong>.
-          </div>
+          ${isEnterprise ? `
+            <div class="p-3 rounded-xl bg-[#073e3b] text-white text-[11px] leading-snug space-y-1">
+              <div class="font-extrabold text-[#70d2bd]">⚡ Plan Enterprise · Full IA Incluido</div>
+              <div>Todos los <strong>6 Módulos Inteligentes IA</strong> están activos automáticamente en tu empresa.</div>
+            </div>
+          ` : (canClaimFree ? `
+            <div class="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-[11px] leading-snug space-y-1">
+              <div class="font-extrabold">🎁 Tienes ${remainingFree} módulo(s) adicional(es) IA gratis incluidos en tu Plan ${esc(plan.name)}</div>
+              <div>Selecciona los que deseas activar. Una vez confirmados quedarán fijados en tu empresa; para cambiarlos después deberás solicitarlo a Soporte.</div>
+            </div>
+          ` : `
+            <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b] leading-snug">
+              ${includedQuota > 0
+                ? `Ya utilizaste los <strong>${includedQuota} módulo(s) gratis</strong> incluidos en tu Plan ${esc(plan.name)}. Para cambiarlos o agregar módulos extra, comunícate con nuestro <strong>Canal Técnico WhatsApp</strong>.`
+                : `Tu Plan <strong>${esc(plan.name)}</strong> no incluye módulos IA gratuitos. Si deseas habilitar alguno en tu cuenta, comunícate con nuestro <strong>Canal Técnico WhatsApp</strong>.`
+              }
+            </div>
+          `)}
 
           ${SVA_PACKS.map((pk, idx) => {
-            const isOn = !!configState.activeSVAs[pk.id];
+            const isOn = isEnterprise ? true : !!configState.activeSVAs[pk.id];
             return `
               <div class="bg-white border ${isOn ? 'border-[#087e70]' : 'border-[#e3ebea]'} rounded-2xl p-3 space-y-2 text-xs">
                 <div class="flex items-center justify-between gap-2">
@@ -2833,10 +2850,18 @@ ${renderSearchableClientPicker('quoteClient')}
                 </div>
                 <p class="text-[11px] text-[#71838a]">${esc(pk.desc)}</p>
                 ${isOn
-                  ? `<div class="text-[10.5px] font-bold text-[#087e70]">✓ Activo en el perfil de tu empresa</div>`
-                  : `<button onclick="V.contactTechnicalChannelWhatsapp('${esc(pk.name)}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-white cursor-pointer">
-                       💬 Consultar con Canal Técnico WhatsApp
-                     </button>`
+                  ? `<div class="flex items-center justify-between text-[10.5px] font-bold text-[#087e70]">
+                       <span>✓ Activo en el perfil de tu empresa</span>
+                       ${!isEnterprise ? `<button onclick="V.contactTechnicalChannelWhatsapp('Solicitud de cambio del módulo activo: ${esc(pk.name)}')" class="underline text-[#073e3b] cursor-pointer">Solicitar cambio</button>` : ''}
+                     </div>`
+                  : (canClaimFree
+                      ? `<button onclick="V.claimIncludedFreeSva('${pk.id}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-xs cursor-pointer">
+                           🎁 Activar Módulo Gratis Incluido (${remainingFree} disp.)
+                         </button>`
+                      : `<button onclick="V.contactTechnicalChannelWhatsapp('Habilitar o cambiar módulo: ${esc(pk.name)}')" class="w-full py-2 px-3 rounded-xl text-[11px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-white cursor-pointer">
+                           💬 Solicitar Habilitación / Cambio a Soporte
+                         </button>`
+                    )
                 }
                 ${isDemoMode ? `
                   <button onclick="toggleSVA('${pk.id}')" class="w-full py-1.5 px-3 rounded-xl text-[10.5px] font-bold bg-slate-100 text-slate-700 cursor-pointer">
@@ -3533,7 +3558,7 @@ ${renderSearchableClientPicker('quoteClient')}
           ${backBtn}
           <div class="flex items-center justify-between gap-2">
             <div>
-              <div class="text-base font-extrabold text-[#17343a]">🎫 Administrador de Órdenes / Tickets</div>
+              <div class="text-base font-extrabold text-[#17343a]">🎫 Admin. OT (Órdenes de Trabajo)</div>
               <div class="text-[10.5px] text-[#087e70] font-semibold">Asigna órdenes de trabajo a los usuarios de ${esc(sesTk.empresa_nombre || 'tu empresa')}</div>
             </div>
             <button onclick="V.loadCompanyWorkOrdersAdmin()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">
@@ -3709,14 +3734,19 @@ ${renderSearchableClientPicker('quoteClient')}
         }
       },
 
-      // --- RECLAMAR SVA GRATIS INCLUIDO ---
+      // --- RECLAMAR SVA GRATIS INCLUIDO Y GUARDAR EN CRM ---
       async claimIncludedFreeSva(svaId) {
         const plan = getCurrentPlan();
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
         const includedQuota = plan.includesComboFull ? 6 : (Number(plan.includedSVACount) || 0);
         const activeIds = SVA_PACKS.map(x => x.id).filter(id => configState.activeSVAs[id]);
-        if (activeIds.length >= includedQuota) {
-          return toast('Ya completaste los módulos incluidos en tu perfil.');
+        if (ses.sva_elegidos_fijos || activeIds.length >= includedQuota) {
+          return toast('Ya completaste los módulos gratis incluidos. Solicita cambios a Soporte.');
+        }
+        const pkObj = SVA_PACKS.find(x => x.id === svaId);
+        const pkName = pkObj ? pkObj.name : svaId;
+        if (!confirm(`🎁 ¿Confirmas activar "${pkName}" como parte de tus ${includedQuota} módulo(s) gratis incluidos en Plan ${plan.name}?\n\nUna vez elegido quedará fijado y para cambiarlo deberás pedirlo a Soporte.`)) {
+          return;
         }
         configState.activeSVAs[svaId] = true;
         if (!configState.selectedSvaOrder.includes(svaId)) configState.selectedSvaOrder.push(svaId);
@@ -3733,7 +3763,9 @@ ${renderSearchableClientPicker('quoteClient')}
           } catch (e) {}
         }
         renderAll();
-        toast('✓ Módulo habilitado en tu perfil.');
+        toast(fixNow
+          ? `✅ "${pkName}" activado y sincronizado con CRM. Cupo gratis completado.`
+          : `✅ "${pkName}" activado. Te queda ${includedQuota - updatedPacks.length} módulo gratis por elegir.`);
       },
 
       // --- CÁMARA TRASERA REAL DEL CELULAR + DETECTOR DE CÓDIGOS DE BARRAS POS ---
@@ -7461,9 +7493,19 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           selectPlan(user.plan_activo);
           configState.desiredUsers = Number(user.max_usuarios) || getCurrentPlan().includedUsers;
         }
-        if (Array.isArray(user.packs_ia)) {
-          const allPacks = ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'];
-          allPacks.forEach(pk => { configState.activeSVAs[pk] = user.packs_ia.includes(pk); });
+        const allPacksList = ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'];
+        if (String(user.plan_activo || '').toLowerCase() === 'enterprise') {
+          allPacksList.forEach(pk => { configState.activeSVAs[pk] = true; });
+          configState.selectedSvaOrder = allPacksList.slice();
+          const needSyncAll = !Array.isArray(user.packs_ia) || user.packs_ia.length < 6 || !user.sva_elegidos_fijos;
+          user.packs_ia = allPacksList.slice();
+          user.sva_elegidos_fijos = true;
+          localStorage.setItem('vozkora_sesion_activa', JSON.stringify(user));
+          if (needSyncAll && user.empresa_id && typeof guardarSeleccionSvaGratisEmpresa === 'function') {
+            guardarSeleccionSvaGratisEmpresa(user.empresa_id, allPacksList, true).catch(() => {});
+          }
+        } else if (Array.isArray(user.packs_ia)) {
+          allPacksList.forEach(pk => { configState.activeSVAs[pk] = user.packs_ia.includes(pk); });
           configState.selectedSvaOrder = user.packs_ia.slice();
         }
 
