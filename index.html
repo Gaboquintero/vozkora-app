@@ -516,8 +516,9 @@
         retentions: [
           { id: 'RET-001-001-000891', invoiceRef: 'FAC-001-002-00018', client: 'Distribuidora Sol', rentaPct: 1.75, ivaPct: 30, totalRetained: 26.25, auth: '181120260717900123450012001001000000891' }
         ],
+        guideCart: [],
         dispatchGuides: [
-          { id: 'GUIA-001-002-00012', carrier: 'Transportes Rápidos Cía. Ltda.', plate: 'PBA-4821', origin: 'Bodega Principal Quito', destination: 'Av. Maldonado y Morán Valverde', itemsSummary: '15x Arroz premium 5 kg, 10x Aceite vegetal 1 L', status: 'Autorizada SRI' }
+          { id: 'GUIA-001-002-00012', carrier: 'Transportes Rápidos Cía. Ltda.', plate: 'PBA-4821', origin: 'Bodega Principal Quito', destination: 'Av. Maldonado y Morán Valverde', itemsSummary: '15x Arroz premium 5 kg [Lote: LOT-2026-A01], 10x Aceite vegetal 1 L [Lote: LOT-2026-B14]', status: 'Autorizada SRI' }
         ],
         bankAccounts: [
           { id: 'BCO-01', bank: 'Cuenta Corriente Principal', type: 'Corriente', number: '2100458921', balance: 14820.50 },
@@ -2197,7 +2198,7 @@ ${renderSearchableClientPicker('quoteClient')}
         `;
       }
 
-      // 6. GUÍAS DE REMISIÓN
+      // 6. GUÍAS DE REMISIÓN (SELECTOR REAL DE PRODUCTOS Y LOTES)
       if (p === 'guides') {
         const guidesAllowed = hasMinPlan(4);
         if (!guidesAllowed) {
@@ -2208,33 +2209,113 @@ ${renderSearchableClientPicker('quoteClient')}
           );
         }
 
+        if (!Array.isArray(appData.guideCart)) appData.guideCart = [];
+        const draft = appData.guideDraft || { carrier: '', plate: '', origin: 'Bodega Principal', destination: '' };
+        const totalUnits = appData.guideCart.reduce((a, x) => a + Number(x.qty || 0), 0);
+
         return `
           ${backBtn}
-          <div class="text-base font-extrabold text-[#17343a]">🚚 Guías de Remisión Electrónicas</div>
-          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
+          <div class="flex items-center justify-between">
+            <div class="text-base font-extrabold text-[#17343a]">🚚 Guías de Remisión Electrónicas</div>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#e7f5f1] text-[#087e70]">Trazabilidad Lotes</span>
+          </div>
+
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2.5 text-xs">
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="font-bold text-slate-600">Transportista</label>
-                <input id="guideCarrier" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Transportes ACME S.A.">
+                <label class="font-bold text-slate-600">Transportista *</label>
+                <input id="guideCarrier" value="${esc(draft.carrier || '')}" oninput="V.syncGuideDraft()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Transportes ACME S.A.">
               </div>
               <div>
-                <label class="font-bold text-slate-600">Placa Vehículo</label>
-                <input id="guidePlate" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono" placeholder="AAA-0000">
+                <label class="font-bold text-slate-600">Placa Vehículo *</label>
+                <input id="guidePlate" value="${esc(draft.plate || '')}" oninput="V.syncGuideDraft()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono uppercase" placeholder="PBA-4821">
               </div>
             </div>
-            <div>
-              <label class="font-bold text-slate-600">Punto de Partida → Destino</label>
-              <input id="guideRoute" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Bodega Principal → Local ACME">
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="font-bold text-slate-600">Bodega / Punto Partida *</label>
+                <select id="guideOrigin" onchange="V.syncGuideDraft()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 bg-white">
+                  ${(appData.warehouses || []).map(w => `<option value="${esc(w.nombre)}" ${draft.origin === w.nombre ? 'selected' : ''}>${esc(w.nombre)}</option>`).join('')}
+                  <option value="Matriz / Planta Central" ${draft.origin === 'Matriz / Planta Central' ? 'selected' : ''}>Matriz / Planta Central</option>
+                </select>
+              </div>
+              <div>
+                <label class="font-bold text-slate-600">Destino / Cliente *</label>
+                <input id="guideDestination" list="guideClientsList" value="${esc(draft.destination || '')}" oninput="V.syncGuideDraft()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Cliente o sucursal destino">
+                <datalist id="guideClientsList">
+                  ${(appData.clients || []).filter(c => c.id !== '9999999999999').map(c => `<option value="${esc(c.name)}${c.direccion ? ' — ' + esc(c.direccion) : ''}">`).join('')}
+                  ${(appData.warehouses || []).map(w => `<option value="${esc(w.nombre)}">`).join('')}
+                </datalist>
+              </div>
             </div>
-            <div>
+
+            <!-- Selector real de producto + lote + cantidad -->
+            <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
               <div class="flex items-center justify-between">
-                <label class="font-bold text-slate-600">Detalle de Mercadería a Trasladar (con Trazabilidad de Lotes)</label>
-                <button type="button" onclick="const sample = appData.products.slice(0,2).map(x => '5x ' + x.name + (x.lotNumber ? ' [Lote: ' + x.lotNumber + ']' : '')).join(', '); $('guideItems').value = sample;" class="text-[10px] font-extrabold text-[#087e70] underline cursor-pointer">+ Cargar con Lotes</button>
+                <span class="font-extrabold text-[#073e3b]">📦 Agregar Mercadería y Lote al Traslado</span>
+                <span class="text-[10px] font-bold text-[#087e70]">Inventario real</span>
               </div>
-              <input id="guideItems" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1" placeholder="Ej. 10x Arroz 5 kg [Lote: LOT-2026-A01]">
+              <div class="grid grid-cols-3 gap-2">
+                <div class="col-span-2">
+                  <label class="font-bold text-[10.5px] text-slate-600">Producto y Lote disponible</label>
+                  <select id="guideProdSelect" onchange="V.onGuideProductChange()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white text-[11px]">
+                    ${appData.products.map(pr => {
+                      const lotTxt = pr.lotNumber ? ` · Lote: ${pr.lotNumber}` : ' · Sin lote';
+                      return `<option value="${esc(pr.id)}">${esc(pr.name)}${esc(lotTxt)} (Stock: ${pr.stock})</option>`;
+                    }).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="font-bold text-[10.5px] text-slate-600">Cant. *</label>
+                  <input id="guideProdQty" type="number" min="1" value="5" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold bg-white">
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="font-bold text-[10.5px] text-slate-600">N° Lote (editable si aplica)</label>
+                  <input id="guideProdLot" value="${esc((appData.products[0] && appData.products[0].lotNumber) || '')}" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono text-[11px] bg-white" placeholder="LOT-2026-001">
+                </div>
+                <div>
+                  <label class="font-bold text-[10.5px] text-slate-600">Fecha Vencimiento</label>
+                  <input id="guideProdExpiry" type="date" value="${esc((appData.products[0] && appData.products[0].expiryDate) || '')}" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 font-mono text-[11px] bg-white">
+                </div>
+              </div>
+              <button type="button" onclick="V.addGuideItem()" class="w-full py-2 rounded-xl text-xs font-extrabold bg-[#e7f5f1] hover:bg-[#d5ede6] text-[#087e70] border border-[#b9d1cd] cursor-pointer">
+                + Agregar Producto con Lote a la Guía
+              </button>
             </div>
-            <button onclick="V.createDispatchGuide()" class="w-full py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
-              ${appData.offline ? '💾 Guardar Guía en cola Offline' : '⚡ Emitir Guía de Remisión'}
+
+            <!-- Lista de ítems cargados en la Guía -->
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <b class="text-[#073e3b]">Detalle de Carga (${appData.guideCart.length} ítem${appData.guideCart.length === 1 ? '' : 's'} · ${totalUnits} unid.)</b>
+                ${appData.guideCart.length > 0 ? `<button type="button" onclick="appData.guideCart=[]; renderPhone('guides');" class="text-[10px] font-bold text-rose-600 underline cursor-pointer">Vaciar carga</button>` : ''}
+              </div>
+              ${appData.guideCart.length === 0
+                ? '<p class="text-[11px] text-[#71838a] py-1">Selecciona arriba los productos, cantidades y lotes que viajan en este despacho.</p>'
+                : appData.guideCart.map((it, idx) => `
+                    <div class="p-2 rounded-xl bg-white border border-[#dce6e5] flex items-center justify-between gap-2">
+                      <div class="min-w-0">
+                        <div class="font-bold text-[#17343a] truncate">${it.qty}x ${esc(it.name)}</div>
+                        <div class="text-[10px] font-mono text-[#087e70]">
+                          ${it.lotNumber ? `🏷️ Lote: ${esc(it.lotNumber)}` : 'Sin lote asignado'}
+                          ${it.expiryDate ? ` · Vence: ${esc(it.expiryDate)}` : ''}
+                        </div>
+                      </div>
+                      <button type="button" onclick="V.removeGuideItem(${idx})" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs cursor-pointer shrink-0" title="Quitar ítem">×</button>
+                    </div>
+                  `).join('')
+              }
+            </div>
+
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-amber-50/80 border border-amber-200 text-[11px] font-bold text-amber-950 cursor-pointer">
+              <input id="guideDeductStock" type="checkbox" checked class="w-4 h-4 accent-[#087e70]" />
+              <span>📦 Descontar unidades trasladadas del stock de bodega</span>
+            </label>
+
+            <button onclick="V.createDispatchGuide()" class="w-full py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+              ${appData.offline ? '💾 Guardar Guía en cola Offline' : '⚡ Emitir Guía de Remisión SRI'}
             </button>
           </div>
 
@@ -7247,34 +7328,148 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         toast(isOff ? `💾 Retención ${retId} guardada en cola Offline.` : `✓ Retención ${retId} por ${appMoney(totalRetained)} aplicada.`);
       },
 
+      syncGuideDraft() {
+        appData.guideDraft = {
+          carrier: ($('guideCarrier')?.value || ''),
+          plate: ($('guidePlate')?.value || '').toUpperCase(),
+          origin: ($('guideOrigin')?.value || 'Bodega Principal'),
+          destination: ($('guideDestination')?.value || '')
+        };
+      },
+
+      onGuideProductChange() {
+        const prodId = $('guideProdSelect')?.value;
+        const pr = (appData.products || []).find(x => x.id === prodId);
+        if (!pr) return;
+        if ($('guideProdLot')) $('guideProdLot').value = pr.lotNumber || '';
+        if ($('guideProdExpiry')) $('guideProdExpiry').value = pr.expiryDate || '';
+      },
+
+      addGuideItem() {
+        this.syncGuideDraft();
+        const prodId = $('guideProdSelect')?.value;
+        const qty = Math.max(1, parseInt($('guideProdQty')?.value, 10) || 0);
+        const lotNumber = ($('guideProdLot')?.value || '').trim();
+        const expiryDate = ($('guideProdExpiry')?.value || '').trim();
+        const pr = (appData.products || []).find(x => x.id === prodId);
+        if (!pr) return toast('Selecciona un producto válido.');
+
+        const expBadge = expiryDate ? getLotExpiryBadge(expiryDate) : null;
+        if (expBadge && expBadge.status === 'EXPIRED') {
+          if (!confirm(`⚠️ ALERTA DE LOTE VENCIDO: El lote ${lotNumber || pr.id} venció el ${expiryDate}. ¿Deseas incluirlo de todas formas en la guía?`)) {
+            return;
+          }
+        }
+
+        if (!Array.isArray(appData.guideCart)) appData.guideCart = [];
+        const existingIdx = appData.guideCart.findIndex(x => x.id === pr.id && (x.lotNumber || '') === lotNumber);
+        const prevQty = existingIdx >= 0 ? Number(appData.guideCart[existingIdx].qty || 0) : 0;
+        if (prevQty + qty > Number(pr.stock || 0)) {
+          return toast(`⚠️ Stock insuficiente en bodega (${pr.stock} unid. disponibles de ${pr.name}).`);
+        }
+
+        if (existingIdx >= 0) {
+          appData.guideCart[existingIdx].qty = prevQty + qty;
+          if (expiryDate) appData.guideCart[existingIdx].expiryDate = expiryDate;
+        } else {
+          appData.guideCart.push({
+            id: pr.id,
+            name: pr.name,
+            qty,
+            lotNumber,
+            expiryDate,
+            cost: pr.cost || pr.price
+          });
+        }
+        renderPhone('guides');
+        toast(`✓ Agregado: ${qty}x ${pr.name}${lotNumber ? ' [Lote: ' + lotNumber + ']' : ''}`);
+      },
+
+      removeGuideItem(idx) {
+        this.syncGuideDraft();
+        if (Array.isArray(appData.guideCart)) {
+          appData.guideCart.splice(idx, 1);
+        }
+        renderPhone('guides');
+      },
+
       async createDispatchGuide() {
         if (checkAndBlockIfPilotLimitReached()) return;
-        const carrier = $('guideCarrier').value.trim();
-        const plate = $('guidePlate').value.trim().toUpperCase();
-        const route = $('guideRoute').value.trim();
-        const items = $('guideItems').value.trim();
-        if (!carrier || !plate || !route || !items) return toast('Completa transportista, placa, ruta y mercadería.');
+        this.syncGuideDraft();
+        const carrier = ($('guideCarrier')?.value || '').trim();
+        const plate = ($('guidePlate')?.value || '').trim().toUpperCase();
+        const origin = ($('guideOrigin')?.value || 'Bodega Principal').trim();
+        const destination = ($('guideDestination')?.value || '').trim();
+        const deductStock = !!$('guideDeductStock')?.checked;
+        const cartItems = Array.isArray(appData.guideCart) ? appData.guideCart.slice() : [];
+
+        if (!carrier || !plate || !origin || !destination) {
+          return toast('Completa transportista, placa, punto de partida y destino.');
+        }
+        if (cartItems.length === 0) {
+          return toast('Agrega al menos un producto con su lote al detalle de carga.');
+        }
+
+        const itemsSummary = cartItems.map(it => {
+          const lotStr = it.lotNumber ? ` [Lote: ${it.lotNumber}${it.expiryDate ? ' · Vence: ' + it.expiryDate : ''}]` : '';
+          return `${it.qty}x ${it.name}${lotStr}`;
+        }).join(', ');
+
+        if (deductStock) {
+          cartItems.forEach(it => {
+            const p = (appData.products || []).find(x => x.id === it.id);
+            if (p) p.stock = Math.max(0, Number(p.stock || 0) - Number(it.qty || 0));
+          });
+        }
+
         const isOff = await ensureRealtimeOfflineCheck();
         const gId = 'GUIA-001-002-' + String(13 + appData.dispatchGuides.length).padStart(5, '0');
-        const parts = route.split('→');
-        appData.dispatchGuides.unshift({
+        const guideObj = {
           id: gId,
           carrier,
           plate,
-          origin: (parts[0] || 'Bodega Principal').trim(),
-          destination: (parts[1] || route).trim(),
-          itemsSummary: items,
+          origin,
+          destination,
+          items: cartItems,
+          itemsSummary,
           status: isOff ? 'Pendiente Offline' : 'Autorizada SRI'
-        });
+        };
+        appData.dispatchGuides.unshift(guideObj);
+        appData.guideCart = [];
+        appData.guideDraft = { carrier: '', plate: '', origin: 'Bodega Principal', destination: '' };
+
         recordPilotDocumentEmission();
-        if (isOff) {
-          enqueueOfflineOp('Guía de Remisión', gId, `${carrier} (${plate}) · ${items}`, () => {
+
+        if (!isOff) {
+          if (typeof emitirDocumentoPuenteContifico === 'function') {
+            await emitirDocumentoPuenteContifico('GUI', {
+              numero_guia: gId,
+              transportista: carrier,
+              placa: plate,
+              punto_partida: origin,
+              punto_llegada: destination,
+              items: cartItems,
+              detalle_carga: itemsSummary
+            }).catch(() => {});
+          }
+          if (deductStock && typeof registrarMovimientoInventarioContifico === 'function') {
+            await registrarMovimientoInventarioContifico({
+              tipo: 'EGR',
+              fecha: new Date().toISOString().slice(0, 10),
+              bodega_id: 'BOD-01',
+              descripcion: `Traslado Guía de Remisión ${gId} (${carrier} - ${plate})`,
+              detalles: cartItems.map(it => ({ producto_codigo: it.id, cantidad: it.qty, precio: it.cost || 1 }))
+            }).catch(() => {});
+          }
+        } else {
+          enqueueOfflineOp('Guía de Remisión', gId, `${carrier} (${plate}) · ${itemsSummary}`, () => {
             const item = appData.dispatchGuides.find(x => x.id === gId);
             if (item) item.status = 'Autorizada SRI';
-          }, null, null, appData.dispatchGuides[0]);
+          }, null, null, guideObj);
         }
+
         renderPhone('guides');
-        toast(isOff ? `💾 Guía ${gId} guardada en cola Offline.` : `✓ Guía de remisión ${gId} autorizada.`);
+        toast(isOff ? `💾 Guía ${gId} guardada en cola Offline.` : `✓ Guía de remisión ${gId} emitida con trazabilidad de lotes.`);
       },
 
       syncBankMovements() {
