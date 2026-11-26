@@ -11,6 +11,10 @@
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; background-color: #edf3f2; color: #17343a; }
     .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .crm-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .crm-scroll::-webkit-scrollbar-track { background: transparent; }
+    .crm-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    .crm-scroll::-webkit-scrollbar-thumb:hover { background: #087e70; }
   </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -325,8 +329,10 @@
       search360: '',
       ticketAssigneeFilter: 'ALL',
       cachedCompanies: [],
+      selectedCompanyId: '',
       companySearch: '',
       companyFilterStatus: 'ALL',
+      selectedTicketId: '',
       cachedUsers: [],
       userFilterEmpresa: 'ALL',
       userSearch: '',
@@ -416,6 +422,55 @@
         }
       },
 
+      getCompanyStatusBadge(emp) {
+        if (!emp || emp.activa === false) {
+          return {
+            cls: 'bg-rose-100 text-rose-800 border-rose-200',
+            dot: 'bg-rose-600',
+            shortLabel: '🔴 Suspendida',
+            fullLabel: '🔴 Suspendida (Acceso Pausado)'
+          };
+        }
+        const sub = typeof evaluarEstadoSuscripcion === 'function'
+          ? evaluarEstadoSuscripcion(emp)
+          : { estado: 'AL_DIA', diasMora: 0 };
+        if (sub.estado === 'BLOQUEADO_CORTE') {
+          return {
+            cls: 'bg-rose-100 text-rose-800 border-rose-200',
+            dot: 'bg-rose-600',
+            shortLabel: `🔴 Mora +${sub.diasMora}d`,
+            fullLabel: `🔴 Suspendida por Corte (${sub.diasMora} días mora)`
+          };
+        }
+        if (sub.estado === 'PENDIENTE_RENOVACION') {
+          return {
+            cls: 'bg-amber-100 text-amber-900 border-amber-300',
+            dot: 'bg-amber-500',
+            shortLabel: `🟡 Gracia (${sub.diasMora}/5d)`,
+            fullLabel: `🟡 En Días de Gracia (${sub.diasMora} de 5 días)`
+          };
+        }
+        if (sub.estado === 'EXENTO_HASTA') {
+          return {
+            cls: 'bg-cyan-100 text-cyan-900 border-cyan-200',
+            dot: 'bg-cyan-600',
+            shortLabel: '🟢 Activa (Exenta)',
+            fullLabel: `🟢 Activa (Exenta hasta ${sub.exentoHasta})`
+          };
+        }
+        return {
+          cls: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+          dot: 'bg-emerald-600',
+          shortLabel: '🟢 Activa',
+          fullLabel: '🟢 Activa y Al Día'
+        };
+      },
+
+      selectCompanyMaster(empId) {
+        this.selectedCompanyId = empId;
+        this.renderCompaniesView();
+      },
+
       renderCompaniesView() {
         const body = $('crm-body');
         const q = (this.companySearch || '').toLowerCase();
@@ -429,160 +484,235 @@
           return true;
         });
 
+        if (filtered.length > 0 && (!this.selectedCompanyId || !filtered.some(x => x.id === this.selectedCompanyId))) {
+          this.selectedCompanyId = filtered[0].id;
+        } else if (filtered.length === 0) {
+          this.selectedCompanyId = '';
+        }
+
+        const selEmp = filtered.find(x => x.id === this.selectedCompanyId) || null;
+
+        let detailHtml = `
+          <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
+            <div class="text-3xl">🏢</div>
+            <div class="text-sm font-extrabold text-[#073e3b]">Selecciona una empresa del listado izquierdo</div>
+            <p class="text-[11px] max-w-sm">Haz clic sobre cualquier cliente SaaS para ver su estado de suscripción, cupo de usuarios, módulos IA y credenciales API.</p>
+          </div>
+        `;
+
+        if (selEmp) {
+          const realIdx = this.cachedCompanies.findIndex(x => x.id === selEmp.id);
+          const empUsers = this.cachedUsers.filter(u => (u.empresa_id === selEmp.id || u.empresa_ruc === selEmp.ruc) && u.activo);
+          const usedCount = empUsers.length;
+          const maxCount = Number(selEmp.max_usuarios) || 1;
+          const hasKeys = !!(selEmp.contifico_api_key && selEmp.contifico_pos_token);
+          const stBadge = this.getCompanyStatusBadge(selEmp);
+
+          const iaMax = typeof obtenerUmbralIaPorPlan === 'function' ? obtenerUmbralIaPorPlan(selEmp.plan_activo) : 5000;
+          const periodoHoy = new Date().toISOString().slice(0, 7);
+          const isPilot = String(selEmp.plan_activo || '').toLowerCase() === 'piloto';
+          const iaUsed = (isPilot || !selEmp.consultas_ia_periodo || selEmp.consultas_ia_periodo === periodoHoy)
+            ? (Number(selEmp.consultas_ia_mes) || 0)
+            : 0;
+          const pct = iaMax > 0 ? Math.min(100, Number(((iaUsed / iaMax) * 100).toFixed(1))) : 0;
+          const semCls = pct > 90
+            ? 'bg-rose-50 text-rose-800 border-rose-200'
+            : (pct >= 70 ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-emerald-50 text-emerald-900 border-emerald-200');
+          const barCls = pct > 90 ? 'bg-rose-600' : (pct >= 70 ? 'bg-amber-500' : 'bg-[#087e70]');
+
+          const plObj = PLANS.find(p => p.id === selEmp.plan_activo) || PLANS[0];
+          const isEnt = selEmp.plan_activo === 'enterprise' || plObj.includesComboFull;
+          const freeQuota = isEnt ? 6 : (Number(plObj.includedSVACount) || 0);
+          const empPacks = isEnt ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : (Array.isArray(selEmp.packs_ia) ? selEmp.packs_ia : []);
+
+          detailHtml = `
+            <div class="space-y-3">
+              <!-- Cabecera ejecutiva de la empresa seleccionada -->
+              <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-1.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h4 class="text-base font-black">${esc(selEmp.nombre)}</h4>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/15 text-[#70d2bd]">${esc(selEmp.entorno)}</span>
+                    </div>
+                    <div class="text-[11px] font-mono text-teal-100 mt-0.5">
+                      RUC: <strong>${esc(selEmp.ruc)}</strong> · Tel: ${esc(selEmp.telefono || 'N/A')} · ${esc(selEmp.email_contacto || 'Sin correo')}
+                    </div>
+                  </div>
+                  <span class="px-3 py-1 rounded-full text-[11px] font-extrabold border ${stBadge.cls}">
+                    ${stBadge.fullLabel}
+                  </span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 pt-1 text-[10.5px] text-teal-100 border-t border-white/15">
+                  <span class="px-2 py-0.5 rounded bg-white/10 font-bold">
+                    ${String(selEmp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL' ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
+                  </span>
+                  <span>Próximo corte: <strong class="font-mono text-white">${esc(selEmp.fecha_proximo_corte || '01 del mes')}</strong></span>
+                  <span>· Control corte: <strong>${selEmp.control_corte === false ? 'Exento' : 'Activo'}</strong></span>
+                  <span class="ml-auto px-2 py-0.5 rounded font-bold ${hasKeys ? 'bg-emerald-500/25 text-emerald-200' : 'bg-amber-500/25 text-amber-200'}">
+                    ${hasKeys ? '🔑 API Contable OK' : '⚠️ Falta API Contable'}
+                  </span>
+                </div>
+              </div>
+
+              <!-- KPIs Compactos -->
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Plan Vigente</div>
+                  <div class="text-sm font-black text-[#073e3b] uppercase mt-0.5">${esc(plObj.name)}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Cupo Usuarios</div>
+                  <div class="text-sm font-black font-mono ${usedCount >= maxCount ? 'text-amber-700' : 'text-[#087e70]'} mt-0.5">${usedCount} / ${maxCount}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Módulos IA</div>
+                  <div class="text-sm font-black font-mono text-[#073e3b] mt-0.5">${empPacks.length} / 6</div>
+                </div>
+              </div>
+
+              <!-- Consumo IA -->
+              <div class="p-2.5 rounded-xl border ${semCls} flex flex-wrap items-center justify-between gap-2 text-[10.5px]">
+                <div class="flex-1 min-w-[180px] space-y-1">
+                  <div class="flex items-center justify-between font-extrabold">
+                    <span>🤖 Consumo IA mes: ${iaUsed.toLocaleString('es-EC')} / ${iaMax.toLocaleString('es-EC')} (${pct}%)</span>
+                    <span>${pct > 90 ? '🔴 Crítico' : (pct >= 70 ? '🟡 Alto' : '🟢 Normal')}</span>
+                  </div>
+                  <div class="w-full h-1.5 rounded-full bg-black/10 overflow-hidden">
+                    <div class="h-full ${barCls}" style="width: ${pct}%"></div>
+                  </div>
+                </div>
+                <button onclick="CRM.resetCompanyIaQuota('${selEmp.id}', '${esc(selEmp.ruc)}', '${esc(selEmp.nombre)}')" class="px-2.5 py-1 rounded-lg bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] font-extrabold text-[10px] cursor-pointer shrink-0">
+                  ↺ Reiniciar a 0
+                </button>
+              </div>
+
+              <!-- Módulos IA -->
+              <div class="p-3 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                <div class="flex flex-wrap items-center justify-between gap-1 text-[10.5px]">
+                  <span class="font-extrabold text-[#073e3b]">
+                    🤖 Módulos IA Activos · ${isEnt ? '⚡ Enterprise Full IA' : `Cupo gratis: ${Math.min(empPacks.length, freeQuota)}/${freeQuota} ${selEmp.sva_elegidos_fijos ? '🔒 Fijado' : '🟢 Libre'}`}
+                  </span>
+                  ${!isEnt && freeQuota > 0 && selEmp.sva_elegidos_fijos ? `
+                    <button onclick="CRM.unlockCompanyFreeSvaQuota('${selEmp.id}', '${esc(selEmp.nombre)}')" class="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold cursor-pointer">
+                      🔓 Liberar cupo gratis
+                    </button>
+                  ` : ''}
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${SVA_PACKS.map(pk => {
+                    const active = empPacks.includes(pk.id);
+                    return `<button onclick="CRM.toggleCompanySvaPack('${selEmp.id}', '${pk.id}')" class="px-2.5 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer ${active ? 'bg-[#087e70] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}">
+                      ${active ? '✓' : '+'} ${pk.icon} ${pk.name.replace('Pack ', '').replace(' IA', '')}
+                    </button>`;
+                  }).join('')}
+                </div>
+              </div>
+
+              <!-- Controles de Gobierno SaaS -->
+              <div class="p-3 rounded-xl bg-white border border-slate-200 space-y-2">
+                <div class="font-extrabold text-[#073e3b] text-[11px]">⚙️ Configuración Comercial y Técnica</div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <label class="text-[10px] font-bold text-slate-500 block">Plan Contratado</label>
+                    <select onchange="CRM.changeCompanyPlan('${selEmp.id}', this.value)" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 bg-[#f5f8f8] font-bold">
+                      ${PLANS.map(pl => `<option value="${pl.id}" ${selEmp.plan_activo === pl.id ? 'selected' : ''}>Plan: ${pl.name} (${pl.includedUsers} usu.)</option>`).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="text-[10px] font-bold text-slate-500 block">Periodicidad</label>
+                    <select onchange="CRM.changeCompanyPeriodicity('${selEmp.id}', this.value)" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 bg-[#f5f8f8] font-bold">
+                      <option value="MENSUAL" ${(selEmp.periodicidad || 'MENSUAL') === 'MENSUAL' ? 'selected' : ''}>MENSUAL</option>
+                      <option value="ANUAL" ${selEmp.periodicidad === 'ANUAL' ? 'selected' : ''}>ANUAL (VIP)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="text-[10px] font-bold text-slate-500 block">Cupo Máximo Usuarios</label>
+                    <input type="number" min="1" max="500" value="${maxCount}" onchange="CRM.changeCompanyQuota('${selEmp.id}', this.value)" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 bg-[#f5f8f8] font-mono font-extrabold text-[#073e3b]" />
+                  </div>
+                  <div>
+                    <label class="text-[10px] font-bold text-slate-500 block">Entorno Operativo</label>
+                    <select onchange="CRM.changeCompanyEnv('${selEmp.id}', this.value)" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 bg-[#f5f8f8] font-bold">
+                      <option value="DEMO" ${selEmp.entorno === 'DEMO' ? 'selected' : ''}>DEMO</option>
+                      <option value="SANDBOX" ${selEmp.entorno === 'SANDBOX' ? 'selected' : ''}>SANDBOX</option>
+                      <option value="PRODUCCION" ${selEmp.entorno === 'PRODUCCION' ? 'selected' : ''}>PRODUCCIÓN</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                  <button onclick="CRM.openCompanyApiModal(${realIdx})" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                    🔑 API Software Contable
+                  </button>
+                  <button onclick="CRM.userFilterEmpresa='${esc(selEmp.ruc)}'; CRM.setTab('users');" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
+                    👥 Ver Usuarios (${usedCount})
+                  </button>
+                  <button onclick="CRM.openClient360ByRuc('${esc(selEmp.ruc)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-cyan-50 border border-cyan-200 text-cyan-900 cursor-pointer">
+                    🗂️ Hoja de Vida 360°
+                  </button>
+                  <button onclick="CRM.toggleCompanyActive('${selEmp.id}', ${!selEmp.activa})" class="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-extrabold ${selEmp.activa ? 'bg-rose-100 text-rose-800 hover:bg-rose-600 hover:text-white' : 'bg-emerald-600 text-white'} cursor-pointer">
+                    ${selEmp.activa ? '⛔ Suspender' : '✅ Reactivar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
               <div>
-                <h3 class="text-sm font-extrabold text-[#073e3b]">🏢 Registro Privado de Empresas (${this.cachedCompanies.length})</h3>
-                <p class="text-[11px] text-slate-500">Tus clientes SaaS contratados: define su Plan, Cupo máximo de usuarios, Entorno y APIs del Proveedor Software Contable.</p>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🏢 Empresas SaaS (${this.cachedCompanies.length})</h3>
+                <p class="text-[11px] text-slate-500">Selecciona una empresa en la lista izquierda para ver su estado (Activa / Gracia / Suspendida) y gestionar su cuenta.</p>
               </div>
-              <button onclick="CRM.openNewCompanyModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
-                + Registrar Nueva Empresa
+              <button onclick="CRM.openNewCompanyModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                + Nueva Empresa
               </button>
             </div>
 
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
-              <div class="flex gap-1.5">
-                <button onclick="CRM.companyFilterStatus='ALL'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
-                  Todas (${this.cachedCompanies.length})
-                </button>
-                <button onclick="CRM.companyFilterStatus='ACTIVAS'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'ACTIVAS' ? 'bg-[#087e70] text-white' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
-                  Activas (${this.cachedCompanies.filter(x => x.activa).length})
-                </button>
-                <button onclick="CRM.companyFilterStatus='SUSPENDIDAS'; CRM.renderCompaniesView();" class="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${this.companyFilterStatus === 'SUSPENDIDAS' ? 'bg-rose-600 text-white' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
-                  Suspendidas (${this.cachedCompanies.filter(x => !x.activa).length})
-                </button>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <!-- PANEL IZQUIERDO: LISTADO COMPACTO DE CLIENTES -->
+              <div class="lg:col-span-4 bg-[#f5f8f8] rounded-2xl p-3 border border-[#dce6e5] space-y-2.5">
+                <input type="text" value="${esc(this.companySearch)}" oninput="CRM.companySearch=this.value; CRM.renderCompaniesView();" placeholder="🔍 Buscar empresa o RUC..." class="w-full px-3 py-2 rounded-xl border border-[#d7e1e0] bg-white text-[11px] focus:outline-none focus:border-[#087e70]" />
+
+                <div class="flex gap-1">
+                  <button onclick="CRM.companyFilterStatus='ALL'; CRM.renderCompaniesView();" class="flex-1 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer ${this.companyFilterStatus === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-white text-slate-600 border border-[#dce6e5]'}">
+                    Todas (${this.cachedCompanies.length})
+                  </button>
+                  <button onclick="CRM.companyFilterStatus='ACTIVAS'; CRM.renderCompaniesView();" class="flex-1 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer ${this.companyFilterStatus === 'ACTIVAS' ? 'bg-[#087e70] text-white' : 'bg-white text-slate-600 border border-[#dce6e5]'}">
+                    Activas (${this.cachedCompanies.filter(x => x.activa).length})
+                  </button>
+                  <button onclick="CRM.companyFilterStatus='SUSPENDIDAS'; CRM.renderCompaniesView();" class="flex-1 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer ${this.companyFilterStatus === 'SUSPENDIDAS' ? 'bg-rose-600 text-white' : 'bg-white text-slate-600 border border-[#dce6e5]'}">
+                    Susp. (${this.cachedCompanies.filter(x => !x.activa).length})
+                  </button>
+                </div>
+
+                <div class="max-h-[62vh] overflow-y-auto crm-scroll space-y-1.5 pr-1">
+                  ${filtered.length === 0 ? '<p class="text-[11px] text-slate-500 text-center py-6">Sin empresas que coincidan.</p>' : filtered.map(emp => {
+                    const isSel = emp.id === this.selectedCompanyId;
+                    const badge = this.getCompanyStatusBadge(emp);
+                    return `
+                      <button type="button" onclick="CRM.selectCompanyMaster('${emp.id}')" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
+                        <div class="min-w-0">
+                          <div class="font-extrabold text-xs truncate">${esc(emp.nombre)}</div>
+                          <div class="text-[10px] font-mono ${isSel ? 'text-teal-200' : 'text-slate-500'} truncate">
+                            ${esc(emp.ruc)} · ${esc(String(emp.plan_activo || '').toUpperCase())}
+                          </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[9.5px] font-extrabold border shrink-0 ${isSel ? 'bg-white/15 text-[#70d2bd] border-white/20' : badge.cls}">
+                          ${badge.shortLabel}
+                        </span>
+                      </button>
+                    `;
+                  }).join('')}
+                </div>
               </div>
-              <input type="text" value="${esc(this.companySearch)}" oninput="CRM.companySearch=this.value; CRM.renderCompaniesView();" placeholder="🔍 Buscar empresa o RUC..." class="w-full sm:w-64 px-3 py-1.5 rounded-xl border border-[#d7e1e0] text-[11px]" />
-            </div>
 
-            <div class="space-y-2.5">
-              ${filtered.map(emp => {
-                const realIdx = this.cachedCompanies.findIndex(x => x.id === emp.id);
-                const empUsers = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo);
-                const usedCount = empUsers.length;
-                const maxCount = Number(emp.max_usuarios) || 1;
-                const hasKeys = !!(emp.contifico_api_key && emp.contifico_pos_token);
-                return `
-                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border ${emp.activa ? 'border-[#dce6e5]' : 'border-rose-300 bg-rose-50/50'} space-y-2">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <span class="font-extrabold text-sm text-[#073e3b]">${esc(emp.nombre)}</span>
-                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd]">${esc(emp.entorno)}</span>
-                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${usedCount >= maxCount ? 'bg-amber-100 text-amber-900' : 'bg-[#e7f5f1] text-[#087e70]'}">
-                          👥 Cupo Usuarios: ${usedCount} / ${maxCount}
-                        </span>
-                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${hasKeys ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">
-                          ${hasKeys ? '🔑 API Proveedor Software Contable OK' : '⚠️ Falta API Software Contable'}
-                        </span>
-                      </div>
-                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${emp.activa ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
-                        ${emp.activa ? '● Activa' : '● Suspendida'}
-                      </span>
-                    </div>
-
-                    <div class="text-[11px] text-slate-600 font-mono">
-                      RUC: <strong>${esc(emp.ruc)}</strong> · Tel: ${esc(emp.telefono || 'N/A')} · Contacto: ${esc(emp.email_contacto || 'N/A')}
-                    </div>
-
-                    <div class="text-[10.5px] text-slate-600 flex flex-wrap items-center gap-2">
-                      <span class="px-2 py-0.5 rounded font-extrabold ${String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL' ? 'bg-amber-100 text-amber-900' : 'bg-cyan-50 text-cyan-900'}">
-                        ${String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL' ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
-                      </span>
-                      <span>Próximo corte: <strong class="font-mono">${esc(emp.fecha_proximo_corte || '01 del mes')}</strong></span>
-                      <span>· Control corte: <strong>${emp.control_corte === false ? 'Exento' : 'Activo'}</strong>${emp.exento_hasta ? ` (Exento hasta ${esc(emp.exento_hasta)})` : ''}</span>
-                    </div>
-
-                    ${(() => {
-                      const iaMax = typeof obtenerUmbralIaPorPlan === 'function' ? obtenerUmbralIaPorPlan(emp.plan_activo) : 5000;
-                      const periodoHoy = new Date().toISOString().slice(0, 7);
-                      const isPilot = String(emp.plan_activo || '').toLowerCase() === 'piloto';
-                      const iaUsed = (isPilot || !emp.consultas_ia_periodo || emp.consultas_ia_periodo === periodoHoy)
-                        ? (Number(emp.consultas_ia_mes) || 0)
-                        : 0;
-                      const pct = iaMax > 0 ? Math.min(100, Number(((iaUsed / iaMax) * 100).toFixed(1))) : 0;
-                      const semCls = pct > 90
-                        ? 'bg-rose-100 text-rose-800 border-rose-300'
-                        : (pct >= 70 ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-emerald-100 text-emerald-900 border-emerald-300');
-                      const barCls = pct > 90 ? 'bg-rose-600' : (pct >= 70 ? 'bg-amber-500' : 'bg-[#087e70]');
-                      return `
-                        <div class="p-2 rounded-xl bg-white border ${semCls} flex flex-wrap items-center justify-between gap-2 text-[10.5px]">
-                          <div class="flex-1 min-w-[180px] space-y-1">
-                            <div class="flex items-center justify-between font-extrabold">
-                              <span>🤖 Consumo IA mes: ${iaUsed.toLocaleString('es-EC')} / ${iaMax.toLocaleString('es-EC')} (${pct}%)</span>
-                              <span>${pct > 90 ? '🔴 Crítico' : (pct >= 70 ? '🟡 Alto' : '🟢 Normal')}</span>
-                            </div>
-                            <div class="w-full h-1.5 rounded-full bg-black/10 overflow-hidden">
-                              <div class="h-full ${barCls}" style="width: ${pct}%"></div>
-                            </div>
-                          </div>
-                          <button onclick="CRM.resetCompanyIaQuota('${emp.id}', '${esc(emp.ruc)}', '${esc(emp.nombre)}')" class="px-2.5 py-1 rounded-lg bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] font-extrabold text-[10px] cursor-pointer shrink-0">
-                            ↺ Reiniciar a 0
-                          </button>
-                        </div>
-                      `;
-                    })()}
-
-                    <!-- Módulos SVA (Módulos Adicionales IA) activos y editables directamente desde el CRM -->
-                    ${(() => {
-                      const plObj = PLANS.find(p => p.id === emp.plan_activo) || PLANS[0];
-                      const isEnt = emp.plan_activo === 'enterprise' || plObj.includesComboFull;
-                      const freeQuota = isEnt ? 6 : (Number(plObj.includedSVACount) || 0);
-                      const empPacks = isEnt ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : (Array.isArray(emp.packs_ia) ? emp.packs_ia : []);
-                      return `
-                        <div class="p-2 rounded-xl bg-white border border-slate-200 space-y-1.5">
-                          <div class="flex flex-wrap items-center justify-between gap-1 text-[10px]">
-                            <span class="font-extrabold text-[#073e3b]">
-                              🤖 Módulos IA (${empPacks.length}/6) · ${isEnt ? '⚡ Enterprise Full IA (6/6 automáticos)' : `Cupo gratis Plan ${plObj.name}: ${Math.min(empPacks.length, freeQuota)}/${freeQuota} ${emp.sva_elegidos_fijos ? '🔒 Fijado' : '🟢 Libre en App'}`}
-                            </span>
-                            ${!isEnt && freeQuota > 0 && emp.sva_elegidos_fijos ? `
-                              <button onclick="CRM.unlockCompanyFreeSvaQuota('${emp.id}', '${esc(emp.nombre)}')" class="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold cursor-pointer">
-                                🔓 Liberar cupo para que elija en App
-                              </button>
-                            ` : ''}
-                          </div>
-                          <div class="flex flex-wrap gap-1">
-                            ${SVA_PACKS.map(pk => {
-                              const active = empPacks.includes(pk.id);
-                              return `<button onclick="CRM.toggleCompanySvaPack('${emp.id}', '${pk.id}')" class="px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer ${active ? 'bg-[#087e70] text-white' : 'bg-slate-100 text-slate-500'}">
-                                ${active ? '✓' : '+'} ${pk.icon} ${pk.name.replace('Pack ', '').replace(' IA', '')}
-                              </button>`;
-                            }).join('')}
-                          </div>
-                        </div>
-                      `;
-                    })()}
-
-                    <div class="flex flex-wrap items-center gap-2 pt-1">
-                      <select onchange="CRM.changeCompanyPlan('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
-                        ${PLANS.map(pl => `<option value="${pl.id}" ${emp.plan_activo === pl.id ? 'selected' : ''}>Plan: ${pl.name} (${pl.includedUsers} usu.)</option>`).join('')}
-                      </select>
-                      <select onchange="CRM.changeCompanyPeriodicity('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
-                        <option value="MENSUAL" ${(emp.periodicidad || 'MENSUAL') === 'MENSUAL' ? 'selected' : ''}>Periodicidad: MENSUAL</option>
-                        <option value="ANUAL" ${emp.periodicidad === 'ANUAL' ? 'selected' : ''}>Periodicidad: ANUAL (VIP)</option>
-                      </select>
-                      <div class="inline-flex items-center gap-1 bg-white border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px]">
-                        <span class="font-bold text-slate-600">Cupo máx:</span>
-                        <input type="number" min="1" max="500" value="${maxCount}" onchange="CRM.changeCompanyQuota('${emp.id}', this.value)" class="w-12 text-center font-mono font-extrabold text-[#073e3b] border-b border-slate-300" />
-                      </div>
-                      <select onchange="CRM.changeCompanyEnv('${emp.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-white text-[11px] font-bold">
-                        <option value="DEMO" ${emp.entorno === 'DEMO' ? 'selected' : ''}>Entorno: DEMO</option>
-                        <option value="SANDBOX" ${emp.entorno === 'SANDBOX' ? 'selected' : ''}>Entorno: SANDBOX</option>
-                        <option value="PRODUCCION" ${emp.entorno === 'PRODUCCION' ? 'selected' : ''}>Entorno: PRODUCCIÓN</option>
-                      </select>
-                      <button onclick="CRM.openCompanyApiModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
-                        🔑 API Proveedor Software Contable
-                      </button>
-                      <button onclick="CRM.userFilterEmpresa='${esc(emp.ruc)}'; CRM.setTab('users');" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
-                        👥 Usuarios (${usedCount})
-                      </button>
-                      <button onclick="CRM.toggleCompanyActive('${emp.id}', ${!emp.activa})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${emp.activa ? 'bg-rose-100 text-rose-800' : 'bg-emerald-600 text-white'} cursor-pointer">
-                        ${emp.activa ? 'Suspender' : 'Reactivar'}
-                      </button>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
+              <!-- PANEL DERECHO: CUADRO DE DETALLE CON SCROLL INTERNO -->
+              <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] max-h-[72vh] overflow-y-auto crm-scroll">
+                ${detailHtml}
+              </div>
             </div>
           </div>
         `;
@@ -1350,6 +1480,11 @@
         }
       },
 
+      selectTicketMaster(tkId) {
+        this.selectedTicketId = tkId;
+        this.renderTicketsView();
+      },
+
       renderTicketsView() {
         const body = $('crm-body');
         const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
@@ -1357,7 +1492,7 @@
         const isSuper = (rolNorm === 'SUPERADMIN');
         const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
 
-        // Si es SOPORTE o VENTAS: ve ÚNICAMENTE los tickets asignados a su correo (nunca los sin asignar ni los de otros)
+        // SOPORTE y VENTAS ven únicamente los tickets asignados a su correo
         const baseTickets = isSuper
           ? this.cachedTickets
           : this.cachedTickets.filter(t => {
@@ -1374,147 +1509,209 @@
         else if (this.ticketFilterStatus === 'CERRADOS') listToShow = cerrados;
         else if (this.ticketFilterStatus === 'TODOS') listToShow = baseTickets;
 
+        if (isSuper) {
+          if (this.ticketAssigneeFilter === 'MINE' && sesNow) {
+            listToShow = listToShow.filter(t => (t.asignado_a || (t.detalle && t.detalle.asignado_a_email)) === sesNow.email);
+          } else if (this.ticketAssigneeFilter === 'UNASSIGNED') {
+            listToShow = listToShow.filter(t => !(t.asignado_a || (t.detalle && t.detalle.asignado_a_email)));
+          }
+        }
+
+        if (listToShow.length > 0 && (!this.selectedTicketId || !listToShow.some(x => x.id === this.selectedTicketId))) {
+          this.selectedTicketId = listToShow[0].id;
+        } else if (listToShow.length === 0) {
+          this.selectedTicketId = '';
+        }
+
+        const selTk = listToShow.find(x => x.id === this.selectedTicketId) || null;
+
+        let ticketDetailHtml = `
+          <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
+            <div class="text-3xl">🎫</div>
+            <div class="text-sm font-extrabold text-[#073e3b]">Selecciona un ticket o lead del listado</div>
+            <p class="text-[11px] max-w-sm">Haz clic sobre el nombre del cliente a la izquierda para ver el detalle completo, el estado de su cuenta SaaS y gestionar respuestas.</p>
+          </div>
+        `;
+
+        if (selTk) {
+          const realIdx = this.cachedTickets.findIndex(x => x.id === selTk.id);
+          const det = selTk.detalle || {};
+          const hist = Array.isArray(det.historial) ? det.historial : [];
+          const empObj = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(selTk.empresa_ruc || '').trim()) || null;
+          const empBadge = empObj
+            ? this.getCompanyStatusBadge(empObj)
+            : { cls: 'bg-slate-100 text-slate-700 border-slate-200', fullLabel: '⚪ Prospecto / Sin empresa SaaS' };
+
+          const tkBadgeCls = selTk.estado === 'PENDIENTE'
+            ? 'bg-amber-100 text-amber-900'
+            : (selTk.estado === 'EN_PROCESO'
+              ? 'bg-cyan-100 text-cyan-900'
+              : (selTk.estado === 'APROBADO' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'));
+
+          const clientFullMsg = selTk.tipo_solicitud === 'NUEVO_USUARIO'
+            ? `Solicita crear usuario para <strong>${esc(det.nombre || 'N/A')}</strong> (${esc(det.email_nuevo || 'N/A')}) · Perfil: <strong>${esc(det.perfil || 'N/A')}</strong>${det.descripcion ? ' · Nota: ' + esc(det.descripcion) : ''}`
+            : `${esc(det.descripcion || det.motivo || JSON.stringify(det))}`;
+
+          const waDigits = String(det.telefono_contacto || (empObj && empObj.telefono) || '').replace(/\D/g, '');
+
+          ticketDetailHtml = `
+            <div class="space-y-3">
+              <!-- Encabezado con Estado del Ticket + Estado de Cuenta del Cliente -->
+              <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-2">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div class="text-[10px] uppercase font-bold text-[#70d2bd]">Cliente / Empresa Solicitante</div>
+                    <h4 class="text-base font-black">${esc(selTk.empresa_nombre)}</h4>
+                    <div class="text-[11px] font-mono text-teal-100">RUC: <strong>${esc(selTk.empresa_ruc)}</strong> · Solicitante: ${esc(selTk.solicitado_por)}</div>
+                  </div>
+                  <div class="flex flex-col items-end gap-1">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${tkBadgeCls}">${this.ticketLabel(selTk.estado)}</span>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold border ${empBadge.cls}">${empBadge.fullLabel}</span>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-white/15 text-[10.5px] text-teal-100">
+                  <span>Categoría: <strong class="text-white">${esc(det.categoria || selTk.tipo_solicitud)}</strong></span>
+                  <span>📅 ${esc((selTk.creado_en || '').slice(0, 16).replace('T', ' '))}</span>
+                  ${waDigits ? `
+                    <button onclick="window.open('https://wa.me/${esc(waDigits)}','_blank')" class="px-2.5 py-1 rounded-lg bg-[#70d2bd] text-[#073e3b] font-extrabold text-[10px] cursor-pointer">
+                      💬 WhatsApp (${esc(det.telefono_contacto || empObj.telefono)})
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+
+              <!-- Mensaje original del cliente -->
+              <div class="p-3 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-[11.5px] text-slate-800 space-y-1">
+                <div class="text-[10px] font-extrabold uppercase text-[#087e70]">📩 Solicitud / Mensaje del Cliente:</div>
+                <div>${clientFullMsg}</div>
+              </div>
+
+              <!-- Responsable + Acceso directo a Hoja de Vida 360° -->
+              <div class="p-2.5 rounded-xl bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-bold text-[#073e3b]">🎧 Responsable:</span>
+                  ${isSuper ? `
+                    <select onchange="CRM.assignTicketStaff('${selTk.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-[#f5f8f8] font-bold text-[#073e3b]">
+                      <option value="">-- Sin asignar --</option>
+                      ${(this.cachedStaff || []).map(st => {
+                        const currAssigned = selTk.asignado_a || det.asignado_a_email || '';
+                        return `<option value="${esc(st.email)}" ${currAssigned === st.email ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(st.rol)}]</option>`;
+                      }).join('')}
+                    </select>
+                  ` : `<span class="px-2 py-0.5 rounded-lg bg-[#e7f5f1] text-[#073e3b] font-bold">${esc(sesNow?.nombre_completo || myEmail)}</span>`}
+                </div>
+                <button onclick="CRM.openClient360ByRuc('${esc(selTk.empresa_ruc)}')" class="px-3 py-1.5 rounded-xl bg-[#e7f5f1] hover:bg-[#087e70] text-[#073e3b] hover:text-white border border-[#b9d1cd] font-extrabold cursor-pointer">
+                  🗂️ Abrir Hoja de Vida 360° →
+                </button>
+              </div>
+
+              <!-- Acciones de cambio de estado (Ida y Vuelta) -->
+              <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                ${selTk.estado !== 'PENDIENTE' ? `
+                  <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'PENDIENTE')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer">
+                    🟡 Pasar a Abierto
+                  </button>
+                ` : ''}
+                ${selTk.estado !== 'EN_PROCESO' ? `
+                  <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'EN_PROCESO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-cyan-100 hover:bg-cyan-200 text-cyan-900 cursor-pointer">
+                    🔵 Pasar a En Proceso
+                  </button>
+                ` : ''}
+                ${selTk.estado !== 'APROBADO' ? `
+                  <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'APROBADO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                    🟢 Cerrar (Resuelto)
+                  </button>
+                ` : ''}
+                ${selTk.estado !== 'RECHAZADO' ? `
+                  <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'RECHAZADO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 cursor-pointer">
+                    🔴 Cerrar (Rechazado)
+                  </button>
+                ` : ''}
+
+                <button onclick="CRM.openTicketCommentModal(${realIdx})" class="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                  💬 Comentar en Bitácora
+                </button>
+              </div>
+
+              <!-- Bitácora cronológica -->
+              <div class="p-3 rounded-xl bg-[#e7f5f1]/60 border border-[#b9d1cd] text-[10.5px] text-[#073e3b] space-y-1.5">
+                <div class="font-extrabold uppercase text-[9.5px] text-[#087e70]">📜 Historial Completo de Movimientos (${hist.length}):</div>
+                ${hist.length === 0 ? '<p class="text-slate-500">Sin movimientos adicionales registrados aún.</p>' : hist.map((h, i) => `
+                  <div class="border-t border-[#b9d1cd]/50 pt-1.5 first:border-0 first:pt-0">
+                    <span class="font-bold">#${i + 1} [${esc(h.fecha)}] ${esc(h.de_estado)} → ${esc(h.a_estado)}:</span>
+                    <span>${esc(h.motivo)}</span>
+                    <span class="text-slate-500">(${esc(h.autor || 'Sistema')})</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-            <div>
-              <h3 class="text-sm font-extrabold text-[#073e3b]">🎫 ${isSuper ? `Bandeja Global de Tickets (${baseTickets.length})` : `Mis Tickets Asignados (${baseTickets.length})`}</h3>
-              <p class="text-[11px] text-slate-500">Cambia libremente entre Abierto, En Proceso o Cerrado (ida y vuelta) registrando siempre el motivo en bitácora.</p>
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🔥 ${isSuper ? `Leads & Tickets (${baseTickets.length})` : `Mis Tickets Asignados (${baseTickets.length})`}</h3>
+                <p class="text-[11px] text-slate-500">Haz clic sobre un cliente a la izquierda para ver su estado de cuenta y gestionar su solicitud al frente.</p>
+              </div>
+              <div class="flex flex-wrap gap-1.5 items-center">
+                <button onclick="CRM.ticketFilterStatus='ABIERTOS'; CRM.renderTicketsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'ABIERTOS' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
+                  🟡 Abiertos (${abiertos.length})
+                </button>
+                <button onclick="CRM.ticketFilterStatus='EN_PROCESO'; CRM.renderTicketsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'EN_PROCESO' ? 'bg-cyan-700 text-white' : 'bg-cyan-50 text-cyan-900 border border-cyan-200'}">
+                  🔵 Proceso (${enProceso.length})
+                </button>
+                <button onclick="CRM.ticketFilterStatus='CERRADOS'; CRM.renderTicketsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'CERRADOS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">
+                  🟢 Cerrados (${cerrados.length})
+                </button>
+                <button onclick="CRM.ticketFilterStatus='TODOS'; CRM.renderTicketsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer ${this.ticketFilterStatus === 'TODOS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
+                  Todos (${baseTickets.length})
+                </button>
+                ${isSuper ? `
+                  <select onchange="CRM.ticketAssigneeFilter=this.value; CRM.renderTicketsView();" class="border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-bold text-[#073e3b]">
+                    <option value="ALL" ${this.ticketAssigneeFilter === 'ALL' ? 'selected' : ''}>👤 Todos</option>
+                    <option value="MINE" ${this.ticketAssigneeFilter === 'MINE' ? 'selected' : ''}>⭐ Míos</option>
+                    <option value="UNASSIGNED" ${this.ticketAssigneeFilter === 'UNASSIGNED' ? 'selected' : ''}>⚪ Sin asignar</option>
+                  </select>
+                ` : `<span class="px-2.5 py-1 rounded-xl bg-[#e7f5f1] text-[#073e3b] text-[10.5px] font-bold">👤 ${esc(sesNow?.nombre_completo || myEmail)}</span>`}
+              </div>
             </div>
 
-            <div class="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2.5">
-              <button onclick="CRM.ticketFilterStatus='ABIERTOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'ABIERTOS' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
-                🟡 Abiertos (${abiertos.length})
-              </button>
-              <button onclick="CRM.ticketFilterStatus='EN_PROCESO'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'EN_PROCESO' ? 'bg-cyan-700 text-white' : 'bg-cyan-50 text-cyan-900 border border-cyan-200'}">
-                🔵 En Proceso (${enProceso.length})
-              </button>
-              <button onclick="CRM.ticketFilterStatus='CERRADOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'CERRADOS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">
-                🟢 Cerrados (${cerrados.length})
-              </button>
-              <button onclick="CRM.ticketFilterStatus='TODOS'; CRM.renderTicketsView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.ticketFilterStatus === 'TODOS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
-                Todos (${baseTickets.length})
-              </button>
-              ${isSuper ? `
-                <select onchange="CRM.ticketAssigneeFilter=this.value; CRM.renderTicketsView();" class="ml-auto border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-bold text-[#073e3b]">
-                  <option value="ALL" ${this.ticketAssigneeFilter === 'ALL' ? 'selected' : ''}>👤 Todos los responsables</option>
-                  <option value="MINE" ${this.ticketAssigneeFilter === 'MINE' ? 'selected' : ''}>⭐ Mis tickets asignados</option>
-                  <option value="UNASSIGNED" ${this.ticketAssigneeFilter === 'UNASSIGNED' ? 'selected' : ''}>⚪ Sin asignar</option>
-                </select>
-              ` : `<span class="ml-auto px-2.5 py-1 rounded-xl bg-[#e7f5f1] text-[#073e3b] text-[11px] font-bold">👤 Agente: ${esc(sesNow?.nombre_completo || myEmail)} [${esc(rolNorm)}]</span>`}
-            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <!-- PANEL IZQUIERDO: LISTADO COMPACTO DE TICKETS POR CLIENTE -->
+              <div class="lg:col-span-4 bg-[#f5f8f8] rounded-2xl p-3 border border-[#dce6e5] max-h-[68vh] overflow-y-auto crm-scroll space-y-1.5">
+                ${listToShow.length === 0 ? '<p class="text-slate-500 text-center py-6 text-[11px]">No hay tickets en esta bandeja.</p>' : listToShow.map(tk => {
+                  const isSel = tk.id === this.selectedTicketId;
+                  const det = tk.detalle || {};
+                  const empObj = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(tk.empresa_ruc || '').trim()) || null;
+                  const empBadge = empObj ? this.getCompanyStatusBadge(empObj) : { cls: 'bg-slate-100 text-slate-600 border-slate-200', shortLabel: '⚪ Lead' };
+                  const tkDot = tk.estado === 'PENDIENTE' ? '🟡' : (tk.estado === 'EN_PROCESO' ? '🔵' : (tk.estado === 'APROBADO' ? '🟢' : '🔴'));
 
-            ${(() => {
-              const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
-              if (this.ticketAssigneeFilter === 'MINE' && sesNow) {
-                listToShow = listToShow.filter(t => (t.asignado_a || (t.detalle && t.detalle.asignado_a_email)) === sesNow.email);
-              } else if (this.ticketAssigneeFilter === 'UNASSIGNED') {
-                listToShow = listToShow.filter(t => !(t.asignado_a || (t.detalle && t.detalle.asignado_a_email)));
-              }
-              return listToShow.length === 0 ? '<p class="text-slate-500 py-3">No hay tickets que coincidan con el filtro seleccionado.</p>' : '';
-            })()}
-            <div class="space-y-2.5">
-              ${listToShow.map(tk => {
-                const realIdx = this.cachedTickets.findIndex(x => x.id === tk.id);
-                const det = tk.detalle || {};
-                const hist = Array.isArray(det.historial) ? det.historial : [];
-                const lastNote = hist.length > 0 ? hist[hist.length - 1] : null;
-                const badgeCls = tk.estado === 'PENDIENTE'
-                  ? 'bg-amber-100 text-amber-900'
-                  : (tk.estado === 'EN_PROCESO'
-                    ? 'bg-cyan-100 text-cyan-900'
-                    : (tk.estado === 'APROBADO' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'));
-
-                const clientFullMsg = tk.tipo_solicitud === 'NUEVO_USUARIO'
-                  ? `Solicita crear usuario para <strong>${esc(det.nombre || 'N/A')}</strong> (${esc(det.email_nuevo || 'N/A')}) · Perfil: <strong>${esc(det.perfil || 'N/A')}</strong>${det.descripcion ? ' · Nota: ' + esc(det.descripcion) : ''}`
-                  : `${esc(det.descripcion || det.motivo || JSON.stringify(det))}`;
-
-                return `
-                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
-                    <div class="flex flex-wrap justify-between items-center gap-2">
-                      <div>
-                        <strong class="text-sm text-[#073e3b]">${esc(tk.empresa_nombre)}</strong>
-                        <span class="text-[11px] font-mono text-slate-500 ml-1">(RUC: ${esc(tk.empresa_ruc)})</span>
+                  return `
+                    <button type="button" onclick="CRM.selectTicketMaster('${tk.id}')" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer space-y-1 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
+                      <div class="flex items-center justify-between gap-1.5">
+                        <span class="font-extrabold text-xs truncate">${tkDot} ${esc(tk.empresa_nombre)}</span>
+                        <span class="px-2 py-0.5 rounded-full text-[9px] font-extrabold border shrink-0 ${isSel ? 'bg-white/15 text-[#70d2bd] border-white/20' : empBadge.cls}">
+                          ${empBadge.shortLabel}
+                        </span>
                       </div>
-                      <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${badgeCls}">${this.ticketLabel(tk.estado)}</span>
-                    </div>
-
-                    <div class="text-[11px] text-slate-600">
-                      Categoría: <strong>${esc(det.categoria || tk.tipo_solicitud)}</strong> · Enviado por: <strong>${esc(tk.solicitado_por)}</strong> · Tel: <span class="font-mono">${esc(det.telefono_contacto || 'N/A')}</span> · Fecha: ${esc((tk.creado_en || '').slice(0, 16).replace('T', ' '))}
-                    </div>
-
-                    <!-- Mensaje original del cliente SIEMPRE VISIBLE en cualquier estado -->
-                    <div class="p-2.5 rounded-xl bg-white border border-slate-200 text-[11.5px] text-slate-800 space-y-1">
-                      <div class="text-[10px] font-extrabold uppercase text-[#087e70]">📩 Solicitud / Mensaje del Cliente:</div>
-                      <div>${clientFullMsg}</div>
-                    </div>
-
-                    ${hist.length > 0 ? `
-                      <div class="p-2.5 rounded-xl bg-[#e7f5f1]/60 border border-[#b9d1cd] text-[10.5px] text-[#073e3b] space-y-1">
-                        <div class="font-extrabold uppercase text-[9.5px] text-[#087e70]">📜 Historial Completo de Movimientos (${hist.length}):</div>
-                        ${hist.map((h, i) => `
-                          <div class="border-t border-[#b9d1cd]/50 pt-1 first:border-0 first:pt-0">
-                            <span class="font-bold">#${i + 1} [${esc(h.fecha)}] ${esc(h.de_estado)} → ${esc(h.a_estado)}:</span>
-                            <span>${esc(h.motivo)}</span>
-                            <span class="text-slate-500">(${esc(h.autor || 'Sistema')})</span>
-                          </div>
-                        `).join('')}
+                      <div class="text-[10.5px] font-semibold truncate ${isSel ? 'text-teal-100' : 'text-slate-600'}">
+                        ${esc(det.categoria || tk.tipo_solicitud)}
                       </div>
-                    ` : ''}
-
-                    <!-- Asignación a Colaborador Soporte/Ventas + Acceso a Hoja de Vida 360° -->
-                    <div class="p-2 rounded-xl bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      <div class="flex items-center gap-1.5">
-                        <span class="font-bold text-[#073e3b]">🎧 Responsable:</span>
-                        ${isSuper ? `
-                          <select onchange="CRM.assignTicketStaff('${tk.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-[#f5f8f8] font-bold text-[#073e3b]">
-                            <option value="">-- Sin asignar --</option>
-                            ${(this.cachedStaff || []).map(st => {
-                              const currAssigned = tk.asignado_a || det.asignado_a_email || '';
-                              return `<option value="${esc(st.email)}" ${currAssigned === st.email ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(st.rol)}]</option>`;
-                            }).join('')}
-                          </select>
-                        ` : `<span class="px-2 py-0.5 rounded-lg bg-[#e7f5f1] text-[#073e3b] font-bold">${esc(sesNow?.nombre_completo || myEmail)}</span>`}
+                      <div class="text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">
+                        ${esc((tk.creado_en || '').slice(0, 16).replace('T', ' '))}
                       </div>
-                      <button onclick="CRM.openClient360ByRuc('${esc(tk.empresa_ruc)}')" class="px-2.5 py-1 rounded-lg bg-[#e7f5f1] hover:bg-[#087e70] text-[#073e3b] hover:text-white border border-[#b9d1cd] font-extrabold cursor-pointer">
-                        🗂️ Abrir Hoja de Vida 360° →
-                      </button>
-                    </div>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
 
-                    <!-- Controles libres de cambio de estado (Ida y Vuelta) + Bitácora -->
-                    <div class="flex flex-wrap items-center gap-1.5 pt-1">
-                      ${tk.estado !== 'PENDIENTE' ? `
-                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'PENDIENTE')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer">
-                          🟡 Pasar a Abierto
-                        </button>
-                      ` : ''}
-                      ${tk.estado !== 'EN_PROCESO' ? `
-                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'EN_PROCESO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-cyan-100 hover:bg-cyan-200 text-cyan-900 cursor-pointer">
-                          🔵 Pasar a En Proceso
-                        </button>
-                      ` : ''}
-                      ${tk.estado !== 'APROBADO' ? `
-                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'APROBADO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
-                          🟢 Cerrar (Resuelto)
-                        </button>
-                      ` : ''}
-                      ${tk.estado !== 'RECHAZADO' ? `
-                        <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'RECHAZADO')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 cursor-pointer">
-                          🔴 Cerrar (Rechazado)
-                        </button>
-                      ` : ''}
-
-                      <div class="ml-auto flex items-center gap-1.5">
-                        <button onclick="CRM.openTicketCommentModal(${realIdx})" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-white hover:bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
-                          💬 Comentar
-                        </button>
-                        <button onclick="CRM.openTicketBitacoraModal(${realIdx})" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
-                          📜 Bitácora (${hist.length || 1})
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
+              <!-- PANEL DERECHO: DETALLE DEL TICKET Y CLIENTE CON SCROLL INTERNO -->
+              <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] max-h-[68vh] overflow-y-auto crm-scroll">
+                ${ticketDetailHtml}
+              </div>
             </div>
           </div>
         `;
@@ -2052,8 +2249,8 @@
               </div>
             </div>
 
-            <!-- PANEL DERECHO (8 cols): HOJA DE VIDA 360° DEL CLIENTE CONSULTADO -->
-            <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <!-- PANEL DERECHO (8 cols): HOJA DE VIDA 360° DEL CLIENTE CONSULTADO (CON SCROLL INTERNO) -->
+            <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] max-h-[72vh] overflow-y-auto crm-scroll space-y-3">
               ${!rucQuery ? `
                 <div class="py-12 text-center space-y-2">
                   <div class="text-3xl">🗂️</div>
@@ -2073,8 +2270,12 @@
                       <span class="text-[10px] uppercase font-bold text-[#70d2bd]">Hoja de Vida Integral del Cliente</span>
                       <h3 class="text-base font-black">${esc(selEmp.nombre)}</h3>
                     </div>
-                    <div class="flex gap-1.5">
-                      ${selEmp.telefono ? `<button onclick="window.open('https://wa.me/${esc(selEmp.telefono.replace(/\D/g,''))}','_blank')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#70d2bd] text-[#073e3b] cursor-pointer">💬 WhatsApp Cliente</button>` : ''}
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      ${(() => {
+                        const b360 = this.getCompanyStatusBadge(selEmp);
+                        return `<span class="px-2.5 py-1 rounded-full text-[10.5px] font-extrabold border ${b360.cls}">${b360.fullLabel}</span>`;
+                      })()}
+                      ${selEmp.telefono ? `<button onclick="window.open('https://wa.me/${esc(selEmp.telefono.replace(/\D/g,''))}','_blank')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#70d2bd] text-[#073e3b] cursor-pointer">💬 WhatsApp</button>` : ''}
                     </div>
                   </div>
                   <div class="text-[11px] text-teal-100 font-mono">
