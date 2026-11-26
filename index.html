@@ -1404,11 +1404,15 @@
       const salesToday = appData.invoices.reduce((a, x) => a + x.total, 0);
       const pendingReceivables = Math.max(0, 3840.00 - appData.payments.reduce((a, x) => a + x.amount, 0));
       const gerenciaActive = configState.activeSVAs.gerencia;
+      const sesHome = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+      const userDisplayName = (sesHome.nombre_completo && String(sesHome.nombre_completo).trim())
+        ? String(sesHome.nombre_completo).trim()
+        : (sesHome.email ? String(sesHome.email).split('@')[0] : 'Usuario');
 
       return `
         <div>
           <div class="text-[11px] font-bold uppercase tracking-wider text-[#71838a]">PANEL EMPRESARIAL</div>
-          <div class="text-lg font-extrabold text-[#17343a]">¡Hola, administrador! 👋</div>
+          <div class="text-lg font-extrabold text-[#17343a]">¡Hola, ${esc(userDisplayName)}! 👋</div>
         </div>
         ${(() => {
           const pq = getPilotQuotaStatus();
@@ -7961,7 +7965,12 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
             ? 'px-2 py-0.5 rounded-full text-[9.5px] font-black bg-amber-400 text-[#073e3b] shadow-sm animate-[pulse_3s_ease-in-out_infinite] shrink-0 cursor-pointer'
             : 'px-2 py-0.5 rounded-full text-[9.5px] font-extrabold bg-white/15 hover:bg-white/25 text-[#70d2bd] shrink-0 cursor-pointer';
         }
-        if ($('header-env-badge')) $('header-env-badge').textContent = `${user.empresa_nombre} ▾`;
+        if ($('header-env-badge')) {
+          const usrNames = (user.nombre_completo && String(user.nombre_completo).trim())
+            ? String(user.nombre_completo).trim()
+            : (user.email ? String(user.email).split('@')[0] : 'Usuario');
+          $('header-env-badge').textContent = `${usrNames} ▾`;
+        }
         if ($('phone-company-subtitle')) $('phone-company-subtitle').textContent = `RUC ${user.empresa_ruc}`;
         if ($('phone-company-title')) $('phone-company-title').textContent = user.empresa_nombre;
 
