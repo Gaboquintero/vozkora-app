@@ -552,6 +552,8 @@
         quoteDiscountPct: 0,
         payments: [],
         paymentsLoadedFromCloud: false,
+        purchaseFilterPeriod: 'month',
+        purchaseFilterDate: (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10)),
         purchases: [
           {
             id: 'COMP-001',
@@ -3617,10 +3619,35 @@ ${renderSearchableClientPicker('quoteClient')}
           );
         }
 
-        const list = Array.isArray(appData.purchases) ? appData.purchases : [];
-        const ventasIvaTot = (appData.invoices || []).reduce((a, x) => a + Number(x.ivaAmt || 0), 0);
+        const pPeriod = appData.purchaseFilterPeriod || 'month';
+        const pRefDate = appData.purchaseFilterDate || new Date().toISOString().slice(0, 10);
+        const pRefYear = pRefDate.slice(0, 4);
+        const pRefMonth = pRefDate.slice(0, 7);
+
+        const normIsoPur = (raw) => {
+          const s = String(raw || '').trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+          if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
+            const pts = s.slice(0, 10).split('/');
+            return `${pts[2]}-${pts[1]}-${pts[0]}`;
+          }
+          return pRefDate;
+        };
+
+        const matchesPurPeriod = (rawDate) => {
+          const iso = normIsoPur(rawDate);
+          if (pPeriod === 'day') return iso === pRefDate;
+          if (pPeriod === 'year') return iso.slice(0, 4) === pRefYear;
+          return iso.slice(0, 7) === pRefMonth;
+        };
+
+        const allPurchases = Array.isArray(appData.purchases) ? appData.purchases : [];
+        const list = allPurchases.filter(x => matchesPurPeriod(x.date || pRefDate));
+        const invPeriodList = (appData.invoices || []).filter(x => matchesPurPeriod(x.date || pRefDate));
+
+        const ventasIvaTot = invPeriodList.reduce((a, x) => a + Number(x.ivaAmt || 0), 0);
         const totalCreditoIva = list.filter(x => x.deductible !== false).reduce((a, x) => a + Number(x.ivaAmt || 0), 0);
-        const totalGastosMes = list.reduce((a, x) => a + Number(x.total || 0), 0);
+        const totalGastosPeriodo = list.reduce((a, x) => a + Number(x.total || 0), 0);
         const ivaEstimadoPagar = Math.max(0, ventasIvaTot - totalCreditoIva);
 
         return `
@@ -3631,15 +3658,57 @@ ${renderSearchableClientPicker('quoteClient')}
               <div class="text-[10.5px] text-[#087e70] font-semibold">Escudo Deducible SRI + Crédito Tributario Formulario 104</div>
             </div>
             <button onclick="V.exportPurchasesCsv()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer shrink-0">
-              📥 Excel Contador
+              📥 Excel (${list.length})
             </button>
+          </div>
+
+          <!-- FILTRO POR DÍA, MES Y AÑO -->
+          <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="font-extrabold text-[#073e3b]">📅 Filtrar Compras / Pre-Cierre por:</span>
+              <span class="font-mono text-[10.5px] font-bold text-[#087e70]">${pPeriod === 'day' ? pRefDate : (pPeriod === 'year' ? 'Año ' + pRefYear : 'Mes ' + pRefMonth)}</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5 bg-[#f5f8f8] p-1 rounded-xl border border-[#dce6e5]">
+              <button type="button" onclick="V.setPurchaseFilter('day')" class="py-1.5 rounded-lg text-[11px] font-extrabold cursor-pointer ${pPeriod === 'day' ? 'bg-[#073e3b] text-[#70d2bd] shadow-xs' : 'text-slate-600'}">Por Día</button>
+              <button type="button" onclick="V.setPurchaseFilter('month')" class="py-1.5 rounded-lg text-[11px] font-extrabold cursor-pointer ${pPeriod === 'month' ? 'bg-[#073e3b] text-[#70d2bd] shadow-xs' : 'text-slate-600'}">Por Mes</button>
+              <button type="button" onclick="V.setPurchaseFilter('year')" class="py-1.5 rounded-lg text-[11px] font-extrabold cursor-pointer ${pPeriod === 'year' ? 'bg-[#073e3b] text-[#70d2bd] shadow-xs' : 'text-slate-600'}">Por Año</button>
+            </div>
+            <div class="flex items-center justify-between gap-2 pt-0.5">
+              <span class="text-[11px] text-slate-600 font-semibold">
+                ${pPeriod === 'day' ? 'Selecciona el día:' : (pPeriod === 'month' ? 'Selecciona mes y año:' : 'Selecciona el año:')}
+              </span>
+              ${pPeriod === 'day' ? `
+                <input type="date" value="${esc(pRefDate)}" onchange="V.setPurchaseDate(this.value)" class="border border-[#d7e1e0] rounded-lg px-2.5 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]" />
+              ` : (pPeriod === 'month' ? `
+                <div class="flex items-center gap-1.5">
+                  <select onchange="V.setPurchaseMonthPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px] font-bold bg-white text-[#073e3b]">
+                    ${[
+                      ['01','Enero'],['02','Febrero'],['03','Marzo'],['04','Abril'],
+                      ['05','Mayo'],['06','Junio'],['07','Julio'],['08','Agosto'],
+                      ['09','Septiembre'],['10','Octubre'],['11','Noviembre'],['12','Diciembre']
+                    ].map(m => `<option value="${m[0]}" ${pRefDate.slice(5,7) === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}
+                  </select>
+                  <select onchange="V.setPurchaseYearPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]">
+                    ${Array.from({length: 6}, (_, i) => String(new Date().getFullYear() - 3 + i)).map(y => `
+                      <option value="${y}" ${pRefYear === y ? 'selected' : ''}>${y}</option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : `
+                <select onchange="V.setPurchaseYearPart(this.value)" class="border border-[#d7e1e0] rounded-lg px-3 py-1 text-[11px] font-mono font-bold bg-white text-[#073e3b]">
+                  ${Array.from({length: 6}, (_, i) => String(new Date().getFullYear() - 3 + i)).map(y => `
+                    <option value="${y}" ${pRefYear === y ? 'selected' : ''}>Año ${y}</option>
+                  `).join('')}
+                </select>
+              `)}
+            </div>
           </div>
 
           <!-- Termómetro en Vivo del Formulario 104 SRI -->
           <div class="bg-[#073e3b] text-white rounded-2xl p-3.5 space-y-2 text-xs shadow-sm">
             <div class="flex items-center justify-between">
               <span class="font-extrabold text-[#70d2bd]">🏛️ Simulador Pre-Cierre IVA (Form. 104)</span>
-              <span class="px-2 py-0.5 rounded-full bg-white/15 text-[10px] font-mono">En Vivo</span>
+              <span class="px-2 py-0.5 rounded-full bg-white/15 text-[10px] font-mono">${pPeriod === 'day' ? pRefDate : (pPeriod === 'year' ? pRefYear : pRefMonth)}</span>
             </div>
             <div class="grid grid-cols-3 gap-1.5 text-center pt-0.5">
               <div class="p-2 rounded-xl bg-white/10">
@@ -3656,8 +3725,8 @@ ${renderSearchableClientPicker('quoteClient')}
               </div>
             </div>
             <div class="text-[10.5px] text-teal-100 flex justify-between pt-1 border-t border-white/15">
-              <span>Total compras/gastos registrados (${list.length}):</span>
-              <strong class="font-mono text-white">${appMoney(totalGastosMes)}</strong>
+              <span>Total compras/gastos del período (${list.length}):</span>
+              <strong class="font-mono text-white">${appMoney(totalGastosPeriodo)}</strong>
             </div>
           </div>
 
@@ -3665,7 +3734,7 @@ ${renderSearchableClientPicker('quoteClient')}
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2.5 text-xs">
             <div class="font-extrabold text-[#073e3b]">📸 Escanear Factura de Proveedor o Gasto</div>
             <p class="text-[11px] text-slate-600 leading-snug">
-              Toma foto al recibo físico o sube el <strong>PDF RIDE</strong>: la IA extrae RUC, fecha, subtotal e IVA, verifica que no sea <em>Consumidor Final</em> y permite sumar stock si es mercadería.
+              Toma foto al recibo físico o sube el <strong>PDF RIDE</strong>: la IA extrae RUC, fecha, subtotal e IVA, guarda el respaldo en la nube y verifica que no sea <em>Consumidor Final</em>.
             </p>
             <div class="grid grid-cols-2 gap-2">
               <button onclick="V.openRealCameraModal('purchase')" class="py-2.5 px-2 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow-xs cursor-pointer">
@@ -3679,8 +3748,8 @@ ${renderSearchableClientPicker('quoteClient')}
 
           <!-- Historial de Compras y Gastos Auditados -->
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
-            <b>Comprobantes de Compra Auditados (${list.length})</b>
-            ${list.length === 0 ? '<p class="text-[11px] text-slate-500">Aún no has registrado facturas de proveedores o gastos.</p>' : list.map((c, idx) => `
+            <b>Comprobantes del Período (${list.length} de ${allPurchases.length})</b>
+            ${list.length === 0 ? '<p class="text-[11px] text-slate-500">No hay facturas de compras o gastos registradas en este día/mes/año.</p>' : list.map((c) => `
               <div class="p-2.5 rounded-xl bg-[#f5f8f8] border ${c.deductible === false ? 'border-rose-300 bg-rose-50/40' : 'border-[#dce6e5]'} space-y-1">
                 <div class="flex items-center justify-between gap-2">
                   <strong class="text-[#073e3b] truncate">${esc(c.supplierName)}</strong>
@@ -3699,7 +3768,7 @@ ${renderSearchableClientPicker('quoteClient')}
                     : '<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-extrabold text-[9.5px]">✓ Deducible SRI (Suma Crédito IVA)</span>'
                   }
                   ${c.addStock ? '<span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-900 font-bold text-[9.5px]">📦 Ingresó a Inventario</span>' : ''}
-                  ${c.evidenceUrl ? `<button type="button" onclick="V.openVoucherEvidenceModal('${esc(c.evidenceUrl)}', '${esc(c.supplierName)}')" class="ml-auto px-2 py-0.5 rounded bg-[#073e3b] text-[#70d2bd] font-bold text-[9.5px] cursor-pointer">🖼️ Ver Respaldo</button>` : ''}
+                  ${c.evidenceUrl ? `<button type="button" onclick="V.openVoucherEvidenceModal('${esc(c.evidenceUrl)}', '${esc(c.supplierName)}')" class="ml-auto px-2 py-0.5 rounded bg-[#073e3b] text-[#70d2bd] font-bold text-[9.5px] cursor-pointer">${c.isPdf ? '📄 Ver PDF' : '🖼️ Ver Foto'}</button>` : ''}
                 </div>
               </div>
             `).join('')}
@@ -5117,7 +5186,46 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         }
       },
 
+      setPurchaseFilter(period) {
+        appData.purchaseFilterPeriod = period;
+        renderPhone('purchases');
+      },
+
+      setPurchaseDate(dateStr) {
+        if (dateStr) {
+          appData.purchaseFilterDate = dateStr;
+          renderPhone('purchases');
+        }
+      },
+
+      setPurchaseMonthPart(mm) {
+        const curr = appData.purchaseFilterDate || new Date().toISOString().slice(0, 10);
+        const yyyy = curr.slice(0, 4);
+        appData.purchaseFilterDate = `${yyyy}-${mm}-01`;
+        renderPhone('purchases');
+      },
+
+      setPurchaseYearPart(yyyy) {
+        const curr = appData.purchaseFilterDate || new Date().toISOString().slice(0, 10);
+        const mm = curr.slice(5, 7) || '01';
+        appData.purchaseFilterDate = `${yyyy}-${mm}-01`;
+        renderPhone('purchases');
+      },
+
+      getPurchasesStorageKey() {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const ruc = ses.empresa_ruc || '123456789001';
+        return 'vozkora_compras_ocr_' + ruc;
+      },
+
+      savePurchasesToLocal() {
+        try {
+          localStorage.setItem(this.getPurchasesStorageKey(), JSON.stringify(appData.purchases || []));
+        } catch (e) {}
+      },
+
       capturedPurchaseEvidenceUrl: '',
+      pendingPurchasePdfFile: null,
       parsePurchaseInvoiceTextLocal(rawText) {
         const txt = String(rawText || '');
         const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -5179,6 +5287,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         if (!configState.activeSVAs.finanzas) {
           return toast('🔒 Este módulo requiere el Pack Finanzas y Pre-Cierre SRI.');
         }
+        this.pendingPurchasePdfFile = null;
         this.capturedPurchaseEvidenceUrl = capturedDataUrl
           ? await this.compressImageDataUrl(capturedDataUrl, 640, 0.65)
           : '';
@@ -5198,7 +5307,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
              ` : ''}
 
              <div>
-               <label class="font-bold text-[#073e3b]">Adjuntar PDF RIDE o Imagen de Factura (Opcional)</label>
+               <label class="font-bold text-[#073e3b]">Adjuntar PDF RIDE o Imagen de Factura (Se guarda como respaldo)</label>
                <input id="purOcrFileInput" type="file" accept="image/*,application/pdf,.pdf" onchange="V.onPurchaseFileSelected(this)" class="w-full border border-[#d7e1e0] rounded-xl p-1.5 mt-0.5 bg-[#f5f8f8]" />
                <div id="purOcrStatusLbl" class="text-[10px] text-[#087e70] font-semibold mt-0.5">Soporta PDF RIDE del SRI o fotos de recibos físicos.</div>
              </div>
@@ -5319,6 +5428,8 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
 
         let extractedText = '';
         if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
+          this.pendingPurchasePdfFile = file;
+          this.capturedPurchaseEvidenceUrl = '';
           try {
             const buf = await file.arrayBuffer();
             if (window.pdfjsLib) {
@@ -5329,6 +5440,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
             }
           } catch (e) {}
         } else if (file.type && file.type.startsWith('image/')) {
+          this.pendingPurchasePdfFile = null;
           const rawImg = await new Promise((resolve) => {
             const r = new FileReader();
             r.onload = () => resolve(r.result);
@@ -5345,8 +5457,8 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         this.applyParsedPurchaseFields(parsed);
         if (lbl) {
           lbl.textContent = (parsed.supplierRuc || parsed.total > 0)
-            ? '✅ Datos extraídos automáticamente. Revisa los importes antes de guardar.'
-            : '⚠️ Archivo adjuntado; completa los campos numéricos manualmente.';
+            ? '✅ Datos extraídos automáticamente. El archivo quedará guardado como respaldo.'
+            : '⚠️ Archivo adjuntado; completa los campos numéricos y guárdalo.';
         }
       },
 
@@ -5380,9 +5492,22 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         const quotaIa = await verificarYRegistrarUsoIa();
         if (!quotaIa.permitido) return;
 
-        let evidenceUrl = this.capturedPurchaseEvidenceUrl || '';
+        toast('⏳ Guardando comprobante y respaldo en la nube...');
         const compId = 'COMP-' + String((appData.purchases || []).length + 1).padStart(3, '0');
-        if (evidenceUrl && evidenceUrl.startsWith('data:') && typeof subirEvidenciaFotoSupabase === 'function') {
+        let evidenceUrl = this.capturedPurchaseEvidenceUrl || '';
+        let isPdfFile = false;
+
+        if (this.pendingPurchasePdfFile) {
+          isPdfFile = true;
+          try {
+            if (typeof subirPdfRucSupabase === 'function') {
+              const upPdf = await subirPdfRucSupabase(this.pendingPurchasePdfFile, compId);
+              if (upPdf && upPdf.url) evidenceUrl = upPdf.url;
+            }
+          } catch (e) {
+            evidenceUrl = URL.createObjectURL(this.pendingPurchasePdfFile);
+          }
+        } else if (evidenceUrl && evidenceUrl.startsWith('data:') && typeof subirEvidenciaFotoSupabase === 'function') {
           try {
             const blob = await (await fetch(evidenceUrl)).blob();
             const up = await subirEvidenciaFotoSupabase(blob, 'compras', compId);
@@ -5414,33 +5539,51 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           deductible,
           addStock,
           evidenceUrl,
+          isPdf: isPdfFile,
           status: deductible ? 'Deducible SRI' : 'No Deducible'
         });
+        this.savePurchasesToLocal();
+
+        if (typeof registrarEnRepositorio === 'function') {
+          await registrarEnRepositorio('repo_cobros', {
+            cliente_nombre: `COMPRA: ${name} (${ruc})`,
+            monto: total,
+            medio_pago: `${category} | IVA: $${ivaAmt.toFixed(2)}`,
+            referencia_comprobante: evidenceUrl ? `${compId} | ${evidenceUrl}` : compId
+          }).catch(() => {});
+        }
 
         this.closeModal();
         renderPhone('purchases');
         toast(deductible
-          ? `✅ Compra registrada: +${appMoney(ivaAmt)} sumados a tu Crédito Tributario IVA.`
+          ? `✅ Compra y respaldo guardados: +${appMoney(ivaAmt)} sumados a tu Crédito Tributario IVA.`
           : `⚠️ Compra guardada como No Deducible (no suma crédito IVA).`);
       },
 
       exportPurchasesCsv() {
-        const list = appData.purchases || [];
-        if (!list.length) return toast('No hay compras registradas para exportar.');
+        const pPeriod = appData.purchaseFilterPeriod || 'month';
+        const pRefDate = appData.purchaseFilterDate || new Date().toISOString().slice(0, 10);
+        const list = (appData.purchases || []).filter(x => {
+          const iso = String(x.date || pRefDate).slice(0, 10);
+          if (pPeriod === 'day') return iso === pRefDate;
+          if (pPeriod === 'year') return iso.slice(0, 4) === pRefDate.slice(0, 4);
+          return iso.slice(0, 7) === pRefDate.slice(0, 7);
+        });
+        if (!list.length) return toast('No hay compras registradas en el período filtrado para exportar.');
         const rows = [
-          ['Codigo', 'Fecha', 'RUC Proveedor', 'Razon Social', 'Factura SRI', 'Categoria', 'Subtotal 0%', 'Subtotal 15%', 'IVA', 'Total', 'Deducible SRI'],
-          ...list.map(c => [c.id, c.date, c.supplierRuc, c.supplierName, c.invoiceNum, c.category, c.subtotal0, c.subtotal15, c.ivaAmt, c.total, c.deductible ? 'SI' : 'NO'])
+          ['Codigo', 'Fecha', 'RUC Proveedor', 'Razon Social', 'Factura SRI', 'Categoria', 'Subtotal 0%', 'Subtotal 15%', 'IVA', 'Total', 'Deducible SRI', 'Enlace Respaldo'],
+          ...list.map(c => [c.id, c.date, c.supplierRuc, c.supplierName, c.invoiceNum, c.category, c.subtotal0, c.subtotal15, c.ivaAmt, c.total, c.deductible ? 'SI' : 'NO', c.evidenceUrl || ''])
         ];
         const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Compras_Gastos_SRI_${new Date().toISOString().slice(0,10)}.csv`;
+        a.download = `Compras_Gastos_SRI_${pRefDate}.csv`;
         document.body.appendChild(a);
         a.click();
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
-        toast('📥 Reporte de Compras y Crédito IVA descargado para tu contador.');
+        toast(`📥 Reporte de Compras filtrado (${list.length} reg.) descargado para tu contador.`);
       },
 
       openVoucherEvidenceModal(url, clientName) {
