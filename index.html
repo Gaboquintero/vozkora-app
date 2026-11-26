@@ -158,9 +158,9 @@
       <div class="bg-[#073e3b] text-white px-4 py-2.5 flex items-center justify-between gap-2">
         <div class="min-w-0">
           <div id="phone-company-subtitle" class="text-[10px] text-teal-100/75 truncate">Empresa Activa</div>
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <div id="phone-company-title" class="text-sm font-extrabold text-white truncate">Empresa Vozkora</div>
-            <span id="phone-periodicity-badge" class="px-1.5 py-0.5 rounded text-[9.5px] font-extrabold bg-white/15 text-[#70d2bd] shrink-0">ACTIVA</span>
+            <button type="button" onclick="V.openScheduleModal()" id="phone-periodicity-badge" class="px-2 py-0.5 rounded-full text-[9.5px] font-extrabold bg-white/15 text-[#70d2bd] shrink-0 cursor-pointer">🕒 Horario Normal</button>
           </div>
         </div>
         <button onclick="V.open('plans')" id="phone-active-plan-pill" class="px-2.5 py-1 rounded-lg text-[10.5px] font-extrabold bg-white/10 hover:bg-white/20 text-[#70d2bd] border border-[#70d2bd]/30 flex items-center gap-1 transition cursor-pointer shrink-0">
@@ -1450,24 +1450,53 @@
           </div>
         </div>
 
-        ${gerenciaActive ? `
-          <div class="bg-[#073e3b] text-white rounded-2xl p-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <div class="text-xs font-extrabold text-[#70d2bd]">🎧 Briefing Matutino en Audio IA</div>
-              <button onclick="V.toggleBriefing()" class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold bg-[#70d2bd] text-[#073e3b] cursor-pointer">
-                ${appData.briefingPlaying ? '⏸ Pausar' : '▶ Escuchar'}
-              </button>
+        ${gerenciaActive ? (() => {
+          const bPeriod = appData.briefingFilterPeriod || 'day';
+          const bDate = appData.briefingFilterDate || (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10));
+          const bAnalysis = V.computeBriefingConsultingData(bPeriod, bDate);
+          return `
+            <div class="bg-[#073e3b] text-white rounded-2xl p-3.5 space-y-2.5 shadow-sm">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-extrabold text-[#70d2bd]">🎧 Briefing Gerencial en Audio IA</div>
+                  <div class="text-[10px] text-teal-200">Consultoría ejecutiva + proyección operativa</div>
+                </div>
+                <button onclick="V.toggleBriefing()" class="px-3 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#70d2bd] hover:bg-white text-[#073e3b] cursor-pointer shrink-0">
+                  ${appData.briefingPlaying ? '⏸ Detener Audio' : '▶ Escuchar Briefing'}
+                </button>
+              </div>
+
+              <!-- Filtro Día, Mes y Año -->
+              <div class="flex flex-wrap items-center gap-1.5 bg-black/25 p-1.5 rounded-xl">
+                <button type="button" onclick="V.setBriefingFilter('day')" class="px-2 py-1 rounded-lg text-[10px] font-extrabold cursor-pointer ${bPeriod === 'day' ? 'bg-[#70d2bd] text-[#073e3b]' : 'text-teal-100'}">Día</button>
+                <button type="button" onclick="V.setBriefingFilter('month')" class="px-2 py-1 rounded-lg text-[10px] font-extrabold cursor-pointer ${bPeriod === 'month' ? 'bg-[#70d2bd] text-[#073e3b]' : 'text-teal-100'}">Mes</button>
+                <button type="button" onclick="V.setBriefingFilter('year')" class="px-2 py-1 rounded-lg text-[10px] font-extrabold cursor-pointer ${bPeriod === 'year' ? 'bg-[#70d2bd] text-[#073e3b]' : 'text-teal-100'}">Año</button>
+                ${bPeriod === 'day' ? `
+                  <input type="date" value="${esc(bDate)}" onchange="V.setBriefingDate(this.value)" class="ml-auto bg-white/15 text-white border border-white/20 rounded-lg px-2 py-0.5 text-[10px] font-mono" />
+                ` : (bPeriod === 'month' ? `
+                  <input type="month" value="${esc(bDate.slice(0, 7))}" onchange="V.setBriefingDate(this.value + '-01')" class="ml-auto bg-white/15 text-white border border-white/20 rounded-lg px-2 py-0.5 text-[10px] font-mono" />
+                ` : `
+                  <select onchange="V.setBriefingDate(this.value + '-01-01')" class="ml-auto bg-[#073e3b] text-white border border-white/20 rounded-lg px-2 py-0.5 text-[10px] font-mono">
+                    ${[2025, 2026, 2027].map(y => `<option value="${y}" ${bDate.startsWith(String(y)) ? 'selected' : ''}>Año ${y}</option>`).join('')}
+                  </select>
+                `)}
+              </div>
+
+              <div class="flex items-center gap-1 h-3.5 px-2 bg-black/25 rounded-lg">
+                ${Array.from({ length: 24 }).map((_, i) => `
+                  <span class="flex-1 bg-[#70d2bd] rounded-full ${appData.briefingPlaying ? 'wave-bar' : 'opacity-40'}" style="height: ${appData.briefingPlaying ? (35 + ((i * 19) % 60)) + '%' : '30%'}; animation-delay: ${i * 0.05}s"></span>
+                `).join('')}
+              </div>
+
+              <div class="p-2.5 rounded-xl bg-white/10 text-[11px] text-teal-50 leading-relaxed space-y-1.5">
+                <div><strong>📊 Diagnóstico (${esc(bAnalysis.periodLabel)}):</strong> ${esc(bAnalysis.summaryText)}</div>
+                <div class="p-2 rounded-lg bg-amber-400/20 border border-amber-300/40 text-amber-100">
+                  <strong>⚠️ Esto puede pasar:</strong> ${esc(bAnalysis.predictionText)}
+                </div>
+              </div>
             </div>
-            <div class="flex items-center gap-1 h-4 px-2 bg-black/25 rounded-lg">
-              ${Array.from({ length: 22 }).map((_, i) => `
-                <span class="flex-1 bg-[#70d2bd] rounded-full ${appData.briefingPlaying ? 'wave-bar' : 'opacity-40'}" style="height: ${appData.briefingPlaying ? (35 + ((i * 19) % 60)) + '%' : '30%'}; animation-delay: ${i * 0.05}s"></span>
-              `).join('')}
-            </div>
-            <p class="text-[11px] text-teal-100 italic leading-snug">
-              "Buenos días. Hoy llevas ${appMoney(salesToday)} facturados y ${appMoney(pendingReceivables)} por cobrar. Revisa la alerta de stock bajo en Atún en lata."
-            </p>
-          </div>
-        ` : ''}
+          `;
+        })() : ''}
 
         <div class="bg-white border border-[#e3ebea] rounded-2xl p-3">
           <div class="text-xs font-extrabold text-[#17343a] mb-2">Accesos rápidos</div>
@@ -2024,13 +2053,16 @@ ${renderSearchableClientPicker('quoteClient')}
                 </div>
                 <div class="grid grid-cols-2 gap-1.5">
                   <button onclick="V.previewProformaPdf(${idx})" class="py-1.5 px-2 rounded-lg text-[10.5px] font-extrabold bg-white hover:bg-slate-100 text-[#073e3b] border border-[#b9d1cd] cursor-pointer">
-                    📄 Descargar / Ver PDF
+                    📄 Ver / PDF
                   </button>
                   ${q.converted
                     ? '<span class="py-1.5 px-2 rounded-lg bg-emerald-100 text-emerald-800 text-[10px] font-bold text-center">✓ Facturada SRI</span>'
                     : `<button onclick="V.convertQuoteToInvoice(${idx})" class="py-1.5 px-2 rounded-lg text-[10.5px] font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">⚡ Facturar 1 Clic</button>`
                   }
                 </div>
+                <button onclick="V.sendProformaWhatsapp(${idx})" class="w-full py-1.5 px-2.5 rounded-lg text-[10.5px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                  📲 Enviar Proforma por WhatsApp al Cliente
+                </button>
               </div>
             `).join('')}
           </div>
@@ -2557,15 +2589,21 @@ ${renderSearchableClientPicker('quoteClient')}
         `;
       }
 
-      // 9. CLIENTES + CÁMARA FOTO RUC / PDF RUC (PLAN 2 IMPULSO+ O PACK VOZ IA) + EDICIÓN VÍA API
+      // 9. CLIENTES + SINCRONIZACIÓN API + ALERTA TELÉFONO INVÁLIDO + FOTO/PDF RUC
       if (p === 'clients') {
         const ocrRucAllowed = hasMinPlan(2) || configState.activeSVAs.voz;
+        const invalidPhoneClients = appData.clients.filter(c => c.id !== '9999999999999' && !V.isValidWhatsappPhone(c.phone));
         return `
           ${backBtn}
           <div class="space-y-1.5">
-            <div>
-              <div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (API Proveedor Software Contable)</div>
-              <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados en la nube Vozkora y enviados vía API Proveedor Software Contable</div>
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-base font-extrabold text-[#17343a]">👥 Clientes de la Empresa (${appData.clients.length})</div>
+                <div class="text-[10px] text-[#087e70] font-semibold">Sincronizados con Proveedor Software Contable vía API</div>
+              </div>
+              <button id="btnSyncClientsApi" onclick="V.syncClientsFromAccounting()" class="px-2.5 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] cursor-pointer shrink-0">
+                🔄 Sincronizar Clientes
+              </button>
             </div>
             <div class="grid ${ocrRucAllowed ? 'grid-cols-3' : 'grid-cols-1'} gap-1.5">
               ${ocrRucAllowed ? `
@@ -2580,10 +2618,9 @@ ${renderSearchableClientPicker('quoteClient')}
                 + Nuevo Cliente
               </button>
             </div>
-            ${!ocrRucAllowed ? `
-              <div class="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[10.5px] text-amber-900 flex items-center justify-between gap-2">
-                <span>🔒 <strong>Foto RUC y lectura PDF RUC</strong> disponibles desde Plan Impulso o Pack Voz IA.</span>
-                <button onclick="V.open('plans')" class="px-2 py-0.5 rounded bg-[#087e70] text-white font-bold text-[10px] shrink-0 cursor-pointer">Subir Plan</button>
+            ${invalidPhoneClients.length > 0 ? `
+              <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-[10.5px] text-amber-950 flex items-center justify-between gap-2">
+                <span>⚠️ <strong>${invalidPhoneClients.length} cliente(s)</strong> no tienen número WhatsApp válido para envíos automáticos.</span>
               </div>
             ` : ''}
           </div>
@@ -2596,12 +2633,20 @@ ${renderSearchableClientPicker('quoteClient')}
               if (c.es_empleado) rolesList.push('Empleado');
               if (c.es_accionista) rolesList.push('Accionista');
               if (c.es_vendedor) rolesList.push('Vendedor');
+              const phoneOk = c.id === '9999999999999' || V.isValidWhatsappPhone(c.phone);
               return `
               <div class="flex items-start justify-between py-2.5 border-b border-slate-100 last:border-0 gap-2">
                 <div class="min-w-0 space-y-0.5">
                   <div class="font-bold text-[#17343a] truncate">${esc(c.name)}</div>
                   ${c.nombre_comercial ? `<div class="text-[10.5px] text-slate-600 truncate">🏪 ${esc(c.nombre_comercial)}</div>` : ''}
-                  <div class="text-[11px] font-mono text-[#71838a]">RUC/CI: ${esc(c.id)} · ${esc(c.phone)}</div>
+                  <div class="text-[11px] font-mono ${phoneOk ? 'text-[#71838a]' : 'text-rose-700 font-bold'}">
+                    RUC/CI: ${esc(c.id)} · ${phoneOk ? esc(c.phone) : `⚠️ Teléfono inválido (${esc(c.phone || 'vacío')})`}
+                  </div>
+                  ${!phoneOk ? `
+                    <button type="button" onclick="V.openEditClientModal(${idx})" class="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[9.5px] font-extrabold cursor-pointer">
+                      ✏️ Corregir teléfono y actualizar vía API
+                    </button>
+                  ` : ''}
                   ${c.email || c.direccion ? `<div class="text-[10px] text-slate-500 truncate">${c.email ? '✉️ ' + esc(c.email) : ''} ${c.direccion ? '· 📍 ' + esc(c.direccion) : ''}</div>` : ''}
                   <div class="flex flex-wrap items-center gap-1 pt-0.5">
                     <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[9.5px] font-bold">${esc(c.tipo_persona || 'Natural')}</span>
@@ -2679,6 +2724,28 @@ ${renderSearchableClientPicker('quoteClient')}
               </div>
             `).join('')}
           </div>
+
+          ${(appData.payments && appData.payments.length > 0) ? `
+            <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-1.5 text-xs">
+              <b>🧾 Comprobantes y Cobros Registrados (${appData.payments.length})</b>
+              ${appData.payments.slice().reverse().map(py => `
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] flex items-center justify-between gap-2">
+                  <div class="min-w-0">
+                    <div class="font-bold text-[#073e3b] truncate">${esc(py.name)}</div>
+                    <div class="text-[10px] text-slate-500">${esc(py.method || 'Cobro')} · ${esc(py.date || nowFormatted())}</div>
+                  </div>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <strong class="font-mono text-[#087e70]">+${appMoney(py.amount)}</strong>
+                    ${py.voucherUrl ? `
+                      <button type="button" onclick="V.openVoucherEvidenceModal('${esc(py.voucherUrl)}', '${esc(py.name)}')" class="px-2 py-1 rounded-lg bg-[#073e3b] text-[#70d2bd] text-[10px] font-extrabold cursor-pointer">
+                        ${py.isPdf ? '📄 Ver PDF' : '🖼️ Ver Foto'}
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
         `;
       }
 
@@ -4822,6 +4889,22 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         );
       },
 
+      openVoucherEvidenceModal(url, clientName) {
+        const isPdf = /\.pdf($|\?)/i.test(url) || url.startsWith('data:application/pdf');
+        this.openModal(
+          `🧾 Respaldo Comprobante · ${clientName}`,
+          isPdf
+            ? `<div class="space-y-2 text-center">
+                 <iframe src="${esc(url)}" class="w-full h-72 rounded-xl border border-slate-200"></iframe>
+                 <a href="${esc(url)}" target="_blank" rel="noopener" class="inline-block px-3 py-1.5 rounded-xl bg-[#087e70] text-white font-bold text-xs">Abrir PDF en pestaña nueva ↗</a>
+               </div>`
+            : `<div class="rounded-2xl overflow-hidden border border-[#dce6e5]">
+                 <img src="${esc(url)}" alt="Comprobante" class="w-full max-h-80 object-contain bg-black" />
+               </div>`,
+          `<button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-white cursor-pointer">Cerrar</button>`
+        );
+      },
+
       async submitVoucherValidation() {
         const clientName = $('voucherClientSelect').value;
         const amt = Number($('voucherDetectedAmt').value);
@@ -4833,20 +4916,55 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         }
         if (amt <= 0) return toast('Ingresa un monto válido.');
 
-        if (fileObj && fileObj.type && fileObj.type.startsWith('image/')) {
-          const rawImg = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(fileObj);
-          });
-          if (rawImg) {
-            this.capturedVoucherDataUrl = await this.compressImageDataUrl(rawImg, 640, 0.65);
+        toast('⏳ Guardando respaldo del comprobante en la nube...');
+        let savedUrl = this.capturedVoucherDataUrl || '';
+        let isPdfFile = false;
+        const refCode = 'VCH-' + Date.now();
+
+        if (fileObj) {
+          isPdfFile = fileObj.type === 'application/pdf' || /\.pdf$/i.test(fileObj.name || '');
+          if (isPdfFile) {
+            try {
+              if (typeof subirPdfRucSupabase === 'function') {
+                const upPdf = await subirPdfRucSupabase(fileObj, refCode);
+                if (upPdf && upPdf.url) savedUrl = upPdf.url;
+              }
+            } catch (e) {
+              savedUrl = URL.createObjectURL(fileObj);
+            }
+          } else if (fileObj.type && fileObj.type.startsWith('image/')) {
+            const rawImg = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(fileObj);
+            });
+            if (rawImg) {
+              savedUrl = await this.compressImageDataUrl(rawImg, 640, 0.65);
+            }
           }
         }
 
+        if (!isPdfFile && savedUrl && savedUrl.startsWith('data:')) {
+          try {
+            if (typeof subirEvidenciaFotoSupabase === 'function') {
+              const resBlob = await (await fetch(savedUrl)).blob();
+              const upImg = await subirEvidenciaFotoSupabase(resBlob, 'vouchers', refCode);
+              if (upImg && upImg.url) savedUrl = upImg.url;
+            }
+          } catch (e) {}
+        }
+
         const isOff = appData.offline;
-        appData.payments.push({ name: clientName, amount: amt, pendingSync: isOff });
+        appData.payments.push({
+          name: clientName,
+          amount: amt,
+          method: bank,
+          date: nowFormatted(),
+          voucherUrl: savedUrl,
+          isPdf: isPdfFile,
+          pendingSync: isOff
+        });
         const cl = appData.clients.find(c => c.name === clientName);
         if (cl) cl.debt = Math.max(0, cl.debt - amt);
 
@@ -4855,12 +4973,12 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
             cliente_nombre: clientName,
             monto: amt,
             medio_pago: bank,
-            referencia_comprobante: 'VCH-' + Date.now()
+            referencia_comprobante: savedUrl ? `${refCode} | ${savedUrl}` : refCode
           });
         }
         this.closeModal();
         renderPhone('receivables');
-        toast(`✓ Comprobante ${bank} por ${appMoney(amt)} validado por IA y abonado a ${clientName}.`);
+        toast(`✅ Comprobante ${bank} (${appMoney(amt)}) guardado y abonado a ${clientName}.`);
       },
 
       // --- MENSAJE DE COBRANZA IA POR WHATSAPP DIRECTO AL CLIENTE ---
@@ -4884,13 +5002,203 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         );
       },
 
+      isValidWhatsappPhone(phone) {
+        const digits = String(phone || '').replace(/\D/g, '');
+        return digits.length >= 9 && digits.length <= 15 && !/^0+$/.test(digits);
+      },
+
+      formatEcuadorWhatsappDigits(phone) {
+        const digits = String(phone || '').replace(/\D/g, '');
+        if (digits.startsWith('0') && digits.length === 10) return '593' + digits.slice(1);
+        return digits;
+      },
+
+      promptFixClientPhoneAndRetry(clientName, afterCallbackNote = '') {
+        const idx = appData.clients.findIndex(c => c.name === clientName);
+        if (idx < 0) {
+          return toast(`⚠️ No se encontró el cliente "${clientName}" en la lista.`);
+        }
+        const cl = appData.clients[idx];
+        this.openModal(
+          `⚠️ Número WhatsApp Faltante o Inválido`,
+          `<div class="space-y-2.5 text-[11px]">
+             <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 font-semibold">
+               El cliente <strong>${esc(cl.name)}</strong> tiene registrado un teléfono inválido (<strong>${esc(cl.phone || 'vacío')}</strong>).
+             </div>
+             <p class="text-slate-600">Actualízalo aquí mismo: se guardará en Vozkora y se sincronizará con tu software contable vía API.</p>
+             <div>
+               <label class="font-bold text-[#073e3b]">Nuevo teléfono WhatsApp (10 dígitos, ej. 0991234567) *</label>
+               <input id="quickFixClientPhoneInput" type="tel" maxlength="15" value="${esc(cl.phone && cl.phone !== 'N/A' ? cl.phone : '')}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-1 font-mono font-bold" placeholder="0991234567" />
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="V.saveQuickClientPhone(${idx}, '${esc(afterCallbackNote)}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar y Actualizar API</button>`
+        );
+      },
+
+      async saveQuickClientPhone(idx, afterNote = '') {
+        const newPhone = ($('quickFixClientPhoneInput')?.value || '').trim();
+        if (!this.isValidWhatsappPhone(newPhone)) {
+          return toast('⚠️ Ingresa un número válido de al menos 9 dígitos (ej. 0991234567).');
+        }
+        const cl = appData.clients[idx];
+        if (!cl) return;
+        cl.phone = newPhone;
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        if (!appData.offline) {
+          if (ses.empresa_ruc && typeof actualizarClienteEnRepositorio === 'function') {
+            await actualizarClienteEnRepositorio(ses.empresa_ruc, cl.id, { cliente_telefono: newPhone });
+          }
+          if (typeof sincronizarClientePuenteContifico === 'function') {
+            const tipoApi = cl.tipo_persona === 'Juridica' ? 'J' : 'N';
+            await sincronizarClientePuenteContifico({
+              tipo: tipoApi,
+              ruc: cl.id.length === 13 ? cl.id : '',
+              cedula: cl.id.length === 10 ? cl.id : (cl.id.length === 13 ? cl.id.slice(0, 10) : ''),
+              razon_social: cl.name,
+              nombre_comercial: cl.nombre_comercial || cl.name,
+              telefonos: newPhone,
+              direccion: cl.direccion || '',
+              email: cl.email || '',
+              es_cliente: true
+            }, true);
+          }
+        }
+        this.closeModal();
+        if (appData.currentPage === 'clients') renderPhone('clients');
+        toast(`✅ Teléfono de ${cl.name} actualizado (${newPhone}) y sincronizado vía API.`);
+      },
+
+      sendProformaWhatsapp(idx) {
+        const q = appData.quotes[idx];
+        if (!q) return;
+        const cl = appData.clients.find(c => c.name === q.client);
+        const phone = cl ? cl.phone : '';
+        if (!this.isValidWhatsappPhone(phone)) {
+          return this.promptFixClientPhoneAndRetry(q.client, 'proforma');
+        }
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { empresa_nombre: 'Vozkora' };
+        const itemsText = q.items.map(it => `• ${it.qty}x ${it.name}: ${appMoney(it.price * it.qty)}`).join('\n');
+        const msg = [
+          `Hola *${q.client}*, le enviamos su proforma comercial desde *${ses.empresa_nombre || 'Vozkora'}*:`,
+          `📄 *Documento:* ${q.id}`,
+          itemsText,
+          `💰 *Total (IVA incl.):* ${appMoney(q.total)}`,
+          `Quedamos atentos a su confirmación.`
+        ].join('\n');
+        const waDigits = this.formatEcuadorWhatsappDigits(phone);
+        window.open(`https://wa.me/${waDigits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+        toast(`📲 Abriendo WhatsApp de ${q.client} (${phone})...`);
+      },
+
+      async syncClientsFromAccounting() {
+        const btn = $('btnSyncClientsApi');
+        if (btn) { btn.textContent = '⏳ Sincronizando...'; btn.disabled = true; }
+        try {
+          if (typeof obtenerClientesContificoVozkora === 'function') {
+            const res = await obtenerClientesContificoVozkora();
+            if (res && res.ok && Array.isArray(res.clientes) && res.clientes.length > 0) {
+              res.clientes.forEach(raw => {
+                const ident = String(raw.ruc || raw.cedula || raw.identificacion || '').trim();
+                const nombre = String(raw.razon_social || raw.nombre_comercial || raw.nombre || '').trim();
+                if (!ident || !nombre) return;
+                const tel = String(raw.telefonos || raw.telefono || raw.celular || '').trim();
+                const mapped = {
+                  name: nombre,
+                  id: ident,
+                  phone: tel || 'Sin teléfono',
+                  debt: 0,
+                  tipo_persona: raw.tipo === 'J' ? 'Juridica' : 'Natural',
+                  nombre_comercial: raw.nombre_comercial || '',
+                  direccion: raw.direccion || '',
+                  email: raw.email || '',
+                  es_cliente: raw.es_cliente !== false,
+                  es_proveedor: !!raw.es_proveedor
+                };
+                const exIdx = appData.clients.findIndex(x => x.id === ident);
+                if (exIdx >= 0) {
+                  appData.clients[exIdx] = Object.assign({}, appData.clients[exIdx], mapped);
+                } else {
+                  appData.clients.unshift(mapped);
+                }
+              });
+              renderPhone('clients');
+              toast(`✅ ${res.clientes.length} cliente(s) sincronizados desde el software contable.`);
+            } else {
+              toast('ℹ️ No se encontraron clientes adicionales en el software contable.');
+            }
+          }
+        } catch (e) {
+          toast('⚠️ Error sincronizando clientes: ' + e.message);
+        } finally {
+          if (btn) { btn.textContent = '🔄 Sincronizar Clientes'; btn.disabled = false; }
+        }
+      },
+
+      openScheduleModal() {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const isAnual = String(ses.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+        if (isAnual) {
+          this.openModal(
+            '👑 Horario Especial VIP Activo',
+            `<div class="space-y-2.5 text-[11px]">
+               <div class="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 space-y-1">
+                 <div class="font-black text-xs">🌟 Atención Preferencial Plan Anual VIP</div>
+                 <div>Tu empresa cuenta con <strong>Horario Especial VIP de 6:00 AM a 11:00 PM</strong> de lunes a domingo.</div>
+               </div>
+               <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] text-slate-600">
+                 • <strong>Horario VIP (Plan Anual):</strong> 6:00 AM – 11:00 PM<br/>
+                 • <strong>Horario Normal (Plan Mensual):</strong> 8:00 AM – 6:00 PM
+               </div>
+             </div>`,
+            `<button onclick="V.closeModal(); V.contactTechnicalChannelWhatsapp('Atención Prioritaria Horario VIP');" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">💬 Canal VIP WhatsApp</button>
+             <button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 cursor-pointer">Cerrar</button>`
+          );
+        } else {
+          this.openModal(
+            '🕒 Horario de Atención · Plan Mensual',
+            `<div class="space-y-2.5 text-[11px]">
+               <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] text-[#17343a] space-y-1">
+                 <div class="font-extrabold text-xs text-[#073e3b]">Horario de Atención Normal: 8:00 AM a 6:00 PM</div>
+                 <p class="text-slate-600">Los clientes con suscripción <strong>Anual</strong> acceden automáticamente al <strong>👑 Horario Especial VIP de 6:00 AM a 11:00 PM</strong>.</p>
+               </div>
+               <p class="text-slate-600">¿Deseas pasar tu suscripción a modalidad Anual para activar el Horario VIP?</p>
+             </div>`,
+            `<button onclick="V.closeModal(); V.contactTechnicalChannelWhatsapp('Consulta Soporte — Horario de Atención');" class="px-3 py-2 rounded-xl text-xs font-bold bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd] cursor-pointer">🛟 Soporte</button>
+             <button onclick="V.closeModal(); V.requestVipAnnualTicket();" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-amber-400 hover:bg-amber-500 text-[#073e3b] cursor-pointer">👑 Pasar a Horario VIP</button>`
+          );
+        }
+      },
+
+      async requestVipAnnualTicket() {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        try {
+          if (typeof crearTicketVozkora === 'function') {
+            await crearTicketVozkora({
+              empresa_ruc: ses.empresa_ruc || 'N/A',
+              empresa_nombre: ses.empresa_nombre || 'Empresa Vozkora',
+              solicitado_por: ses.email || 'usuario@empresa.com',
+              tipo_solicitud: 'VENTAS_UPGRADE',
+              detalle: {
+                categoria: '👑 Solicitud Cambio a Plan Anual (Horario VIP 6am-11pm)',
+                telefono_contacto: ses.empresa_telefono || 'N/A',
+                descripcion: 'El cliente solicita pasar su suscripción mensual a Anual para activar el Horario Especial VIP (6:00 AM a 11:00 PM).',
+                historial: [
+                  { fecha: nowFormatted(), de_estado: 'NUEVO', a_estado: '🟡 Abierto', motivo: 'Solicitud de paso a Plan Anual VIP desde indicador de horario.', autor: ses.email || 'Cliente' }
+                ]
+              }
+            });
+          }
+        } catch (e) {}
+        this.contactTechnicalChannelWhatsapp('Quiero pasar mi plan a Anual para activar el Horario VIP (6am - 11pm)');
+      },
+
       sendAiWhatsappCollection(phone) {
         const text = ($('aiWaCollectionText')?.value || '').trim();
-        const cleanDigits = String(phone || '').replace(/\D/g, '');
-        if (!cleanDigits || cleanDigits.length < 7) {
+        if (!this.isValidWhatsappPhone(phone)) {
           return toast('⚠️ Este cliente no tiene un número de teléfono WhatsApp válido. Edítalo en Clientes.');
         }
-        const waPhone = cleanDigits.startsWith('0') ? ('593' + cleanDigits.slice(1)) : cleanDigits;
+        const waPhone = this.formatEcuadorWhatsappDigits(phone);
         window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
         this.closeModal();
         toast('📲 Abriendo WhatsApp con el mensaje generado por IA...');
@@ -5120,8 +5428,66 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         }
       },
 
+      setBriefingFilter(period) {
+        appData.briefingFilterPeriod = period;
+        renderPhone('home');
+      },
+
+      setBriefingDate(dateStr) {
+        if (dateStr) {
+          appData.briefingFilterDate = dateStr;
+          renderPhone('home');
+        }
+      },
+
+      computeBriefingConsultingData(period = 'day', refDate = '') {
+        const isoRef = refDate || (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10));
+        const normIso = (raw) => {
+          const s = String(raw || '').trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+          if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
+            const p = s.slice(0, 10).split('/');
+            return `${p[2]}-${p[1]}-${p[0]}`;
+          }
+          return isoRef;
+        };
+        const matches = (d) => {
+          const iso = normIso(d);
+          if (period === 'day') return iso === isoRef;
+          if (period === 'year') return iso.slice(0, 4) === isoRef.slice(0, 4);
+          return iso.slice(0, 7) === isoRef.slice(0, 7);
+        };
+
+        const invs = (appData.invoices || []).filter(x => matches(x.date || isoRef));
+        const totalSales = invs.reduce((a, x) => a + Number(x.total || 0), 0);
+        const pendingDebt = (appData.clients || []).reduce((a, c) => a + Number(c.debt || 0), 0);
+        const lowItems = (appData.products || []).filter(p => Number(p.stock || 0) <= 15);
+        const topClient = invs.length > 0 ? invs[0].client : ((appData.clients[0] && appData.clients[0].name) || 'Distribuidora Sol');
+        const critProd = lowItems.length > 0 ? lowItems[0] : (appData.products[0] || { name: 'Atún en lata', stock: 12 });
+
+        const periodLabel = period === 'day' ? `Día ${isoRef}` : (period === 'year' ? `Año ${isoRef.slice(0, 4)}` : `Mes ${isoRef.slice(0, 7)}`);
+        const summaryText = `Facturación acumulada de ${appMoney(totalSales)} en ${invs.length} comprobante(s) y cartera por cobrar de ${appMoney(pendingDebt)}. Prioridad operativa: gestionar cobro a ${topClient} y controlar rotación de ${lowItems.length} producto(s) con stock ajustado.`;
+        const predictionText = `Si se agota ${critProd.name} (quedan ${critProd.stock} unid.), podrías perder ventas recurrentes: históricamente clientes como ${topClient} suelen pedir alrededor de 22 unidades en cierres de semana/viernes. Repón hoy mismo para proteger el margen.`;
+        return { periodLabel, summaryText, predictionText };
+      },
+
       toggleBriefing() {
         appData.briefingPlaying = !appData.briefingPlaying;
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          if (appData.briefingPlaying) {
+            const bPeriod = appData.briefingFilterPeriod || 'day';
+            const bDate = appData.briefingFilterDate || new Date().toISOString().slice(0, 10);
+            const info = this.computeBriefingConsultingData(bPeriod, bDate);
+            const utter = new SpeechSynthesisUtterance(
+              `Briefing gerencial Vozkora para ${info.periodLabel}. ${info.summaryText} Atención, esto puede pasar: ${info.predictionText}`
+            );
+            utter.lang = 'es-ES';
+            utter.rate = 1.02;
+            utter.onend = () => { appData.briefingPlaying = false; renderPhone('home'); };
+            window.speechSynthesis.speak(utter);
+          }
+        }
         renderPhone('home');
       },
 
@@ -7509,9 +7875,13 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           configState.selectedSvaOrder = user.packs_ia.slice();
         }
 
-        const envLabel = user.entorno === 'DEMO' ? 'DEMO' : 'EMPRESA';
-        if ($('phone-periodicity-badge')) {
-          $('phone-periodicity-badge').textContent = envLabel;
+        const perBadge = $('phone-periodicity-badge');
+        if (perBadge) {
+          const isAnual = String(user.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+          perBadge.textContent = isAnual ? '👑 HORARIO VIP' : '🕒 Horario Normal';
+          perBadge.className = isAnual
+            ? 'px-2 py-0.5 rounded-full text-[9.5px] font-black bg-amber-400 text-[#073e3b] shadow-sm animate-[pulse_3s_ease-in-out_infinite] shrink-0 cursor-pointer'
+            : 'px-2 py-0.5 rounded-full text-[9.5px] font-extrabold bg-white/15 hover:bg-white/25 text-[#70d2bd] shrink-0 cursor-pointer';
         }
         if ($('header-env-badge')) $('header-env-badge').textContent = `${user.empresa_nombre} ▾`;
         if ($('phone-company-subtitle')) $('phone-company-subtitle').textContent = `RUC ${user.empresa_ruc}`;
@@ -7790,7 +8160,12 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           const prevPlan = ses.plan_activo;
           const prevPacks = JSON.stringify(ses.packs_ia || []);
           const fresh = await refrescarSesionDesdeSupabase(ses);
-          if (fresh && (fresh.plan_activo !== prevPlan || JSON.stringify(fresh.packs_ia || []) !== prevPacks)) {
+          if (fresh && fresh._kicked) {
+            alert(fresh.error || 'Tu sesión fue cerrada porque otro dispositivo inició sesión o fue liberada por Soporte.');
+            Auth.logout();
+            return;
+          }
+          if (fresh && (fresh.plan_activo !== prevPlan || JSON.stringify(fresh.packs_ia || []) !== prevPacks || fresh.periodicidad !== ses.periodicidad)) {
             await Auth.applySession(fresh);
           }
         }

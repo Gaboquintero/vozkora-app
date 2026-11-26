@@ -116,13 +116,23 @@ async function refrescarSesionDesdeSupabase(sesionActual) {
     if (!data || !data.ok || !data.user) return sesionActual;
 
     const u = data.user;
+    const localDevId = obtenerDeviceIdLocal();
+    const isExemptRole = ['DEMO', 'SUPERADMIN'].includes(String(u.rol || sesionActual.rol || '').toUpperCase());
+    if (!isExemptRole && u.session_token && u.session_token !== localDevId) {
+      localStorage.removeItem(VOZKORA_CONFIG.STORAGE_KEYS.SESION);
+      return {
+        _kicked: true,
+        error: 'Tu sesión se cerró porque otro dispositivo tomó control o fue liberada por el administrador.'
+      };
+    }
     const sesionFresca = Object.assign({}, sesionActual, u, {
       periodicidad: u.periodicidad || 'MENSUAL',
       fecha_proximo_corte: u.fecha_proximo_corte || calcularProximoCorte('MENSUAL'),
       control_corte: u.control_corte !== false,
       exento_hasta: u.exento_hasta || null,
       max_usuarios: Number(u.max_usuarios) || 5,
-      sva_elegidos_fijos: !!u.sva_elegidos_fijos
+      sva_elegidos_fijos: !!u.sva_elegidos_fijos,
+      session_token: u.session_token || localDevId
     });
     localStorage.setItem(VOZKORA_CONFIG.STORAGE_KEYS.SESION, JSON.stringify(sesionFresca));
     return sesionFresca;
@@ -151,6 +161,14 @@ async function loginVozkora(email, clave) {
   const data = await resp.json();
   if (!data || !data.ok) {
     return { ok: false, error: (data && data.error) ? data.error : 'Credenciales incorrectas.' };
+  }
+
+  const isExempt = ['DEMO', 'SUPERADMIN'].includes(String(data.user.rol || '').toUpperCase());
+  if (!isExempt && data.user.session_token && data.user.session_token !== localDevId) {
+    return {
+      ok: false,
+      error: `⛔ Este usuario ya tiene una sesión activa en otro dispositivo (${data.user.dispositivo_info || 'otro equipo'}). Cierra sesión allá o pide a Soporte liberar el dispositivo.`
+    };
   }
 
   const sesionCompleta = Object.assign({}, data.user, {
@@ -1264,5 +1282,67 @@ async function empresaActualizarOrdenTrabajoRepositorio(empresaRuc, codigoOrden,
     return resp.ok;
   } catch (e) {
     return false;
+  }
+}
+
+
+// -------------------------------------------------------------------------
+// O. SINCRONIZACIÓN DE CLIENTES / PERSONAS DESDE PROVEEDOR SOFTWARE CONTABLE
+// -------------------------------------------------------------------------
+async function obtenerClientesContificoVozkora() {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  const empRuc = (ses && ses.empresa_ruc) ? ses.empresa_ruc : '123456789001';
+  const cacheKey = `${VOZKORA_CONFIG.STORAGE_KEYS.CLIENTES}_${empRuc}`;
+  try {
+    const resp = await fetch(
+      `${VOZKORA_CONFIG.PUENTE_URL}/api/contifico/${encodeURIComponent(empId)}/clientes`
+    );
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.ok && Array.isArray(data.clientes)) {
+      localStorage.setItem(cacheKey, JSON.stringify(data.clientes));
+      return { ok: true, origen: 'ONLINE', clientes: data.clientes };
+    }
+    return { ok: false, error: data.error || ('HTTP ' + resp.status), clientes: [] };
+  } catch (err) {
+    const locales = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+    return { ok: false, origen: 'OFFLINE', error: err.message, clientes: locales };
+  }
+}
+
+// -------------------------------------------------------------------------
+// P. COPILOTO IA Y BRIEFING GERENCIAL EN VIVO (PUENTE IA + CONTEXTO REAL)
+// -------------------------------------------------------------------------
+async function consultarCopilotoIaVozkora(pregunta, contextoEmpresa = {}) {
+  const ses = obtenerSesionVozkora();
+  const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
+  const endpoint = `${VOZKORA_CONFIG.PUENTE_URL}/api/ia/consultar`;
+  const promptCompleto = [
+    'Eres el Copiloto Gerencial y Contable de Vozkora (Ecuador).',
+    'Responde de forma clara, directa, accionable y con cifras exactas basadas ÚNICAMENTE en los datos reales proporcionados de la empresa.',
+    'Si preguntan por una bodega específica (ej. Bodega Norte, Bodega Principal), cuenta exactamente cuántos productos distintos y cuántas unidades físicas existen en esa bodega.',
+    'DATOS EN TIEMPO REAL DE LA EMPRESA:',
+    JSON.stringify(contextoEmpresa),
+    'CONSULTA DEL USUARIO:',
+    String(pregunta || '')
+  ].join('\n');
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        empresa_id: empId,
+        prompt: promptCompleto
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    const texto = data.respuesta || data.texto || data.resultado || '';
+    if (resp.ok && texto && String(texto).trim().length > 5) {
+      return { ok: true, respuesta: String(texto).trim() };
+    }
+    return { ok: false, error: data.error || 'Sin respuesta del motor IA' };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Error de red' };
   }
 }
