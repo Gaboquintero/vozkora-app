@@ -722,11 +722,8 @@ async function extraerDatosRucConIA({ textoPdf = '', imagenBase64 = '' }) {
     '- Si dice "Razón Social" o "SOCIEDADES", tipo_persona debe ser "Juridica".',
     '- Extrae la dirección completa del domicilio tributario (provincia, cantón, parroquia, calle, número, referencia).',
     '- Si un campo no aparece, déjalo como "" (o false en contribuyente_especial).',
-    textoPdf ? ('
-TEXTO EXTRAÍDO DEL PDF RUC:
-' + String(textoPdf).slice(0, 4500)) : ''
-  ].join('
-');
+    textoPdf ? ('\nTEXTO EXTRAÍDO DEL PDF RUC:\n' + String(textoPdf).slice(0, 4500)) : ''
+  ].join('\n');
 
   try {
     const resp = await fetch(endpoint, {
