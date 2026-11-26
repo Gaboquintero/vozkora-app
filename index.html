@@ -2682,7 +2682,7 @@ ${renderSearchableClientPicker('quoteClient')}
                     <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[9.5px] font-bold">${esc(c.tipo_persona || 'Natural')}</span>
                     <span class="px-1.5 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] text-[9.5px] font-bold">${esc(rolesList.join(' · ') || 'Cliente')}</span>
                     ${c.contribuyente_especial ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[9.5px] font-bold">Contrib. Especial</span>' : ''}
-                    ${c.rucPdfUrl ? `<a href="${esc(c.rucPdfUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200 text-[9.5px] font-bold">📄 PDF RUC</a>` : ''}
+                    ${c.rucPdfUrl ? `<button type="button" onclick="V.openVoucherEvidenceModal('${esc(c.rucPdfUrl)}', '${esc(c.name)} · RUC')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 text-[9.5px] font-bold cursor-pointer">${/\.pdf($|\?)/i.test(c.rucPdfUrl) || c.rucPdfUrl.startsWith('data:application/pdf') ? '📄 Ver PDF RUC' : '📷 Ver Foto RUC'}</button>` : ''}
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
@@ -4939,11 +4939,26 @@ ${renderSearchableClientPicker('schedRouteClient', { excludeMostrador: true })}
           try {
             if (typeof subirPdfRucSupabase === 'function') {
               const up = await subirPdfRucSupabase(this.pendingRucPdfFile, identPrincipal);
-              pdfUrl = up.url;
+              if (up && up.url) pdfUrl = up.url;
             }
-          } catch (e) {
-            pdfUrl = URL.createObjectURL(this.pendingRucPdfFile);
+          } catch (e) {}
+          if (!pdfUrl) {
+            pdfUrl = await new Promise((resolve) => {
+              const r = new FileReader();
+              r.onload = () => resolve(r.result || '');
+              r.onerror = () => resolve('');
+              r.readAsDataURL(this.pendingRucPdfFile);
+            });
           }
+        } else if (mode === 'photo' && this.pendingRucPhotoDataUrl) {
+          pdfUrl = this.pendingRucPhotoDataUrl;
+          try {
+            if (typeof subirEvidenciaFotoSupabase === 'function' && pdfUrl.startsWith('data:')) {
+              const blob = await (await fetch(pdfUrl)).blob();
+              const up = await subirEvidenciaFotoSupabase(blob, 'ruc_fotos', identPrincipal);
+              if (up && up.url) pdfUrl = up.url;
+            }
+          } catch (e) {}
         }
 
         const isOff = await ensureRealtimeOfflineCheck();
@@ -5060,6 +5075,10 @@ ${renderSearchableClientPicker('schedRouteClient', { excludeMostrador: true })}
           }, 'repo_clientes', repoId, clientObj);
         }
 
+        try {
+          const rucCliKey = 'vozkora_clientes_cache_' + (ses.empresa_ruc || '123456789001');
+          localStorage.setItem(rucCliKey, JSON.stringify(appData.clients || []));
+        } catch (e) {}
         this.closeModal();
         renderPhone('clients');
         if (isOff) {
@@ -5144,7 +5163,54 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           if (ses.empresa_ruc && ses.rol !== 'DEMO' && ses.entorno !== 'DEMO' && typeof consultarRepositorio === 'function') {
             const rows = await consultarRepositorio('repo_cobros', ses.empresa_ruc).catch(() => []);
             if (Array.isArray(rows) && rows.length > 0) {
-              const cloudPayments = rows.slice().reverse().map(r => {
+              const purchaseRows = rows.filter(r => String(r.cliente_nombre || '').startsWith('COMPRA:'));
+              const paymentRows = rows.filter(r => !String(r.cliente_nombre || '').startsWith('COMPRA:'));
+
+              if (purchaseRows.length > 0) {
+                const cloudPurchases = purchaseRows.map((r, i) => {
+                  const refRaw = String(r.referencia_comprobante || '');
+                  const pipeIdx = refRaw.indexOf('|');
+                  const urlPart = pipeIdx >= 0 ? refRaw.slice(pipeIdx + 1).trim() : '';
+                  const codePart = pipeIdx >= 0 ? refRaw.slice(0, pipeIdx).trim() : (refRaw || ('COMP-DB-' + (i + 1)));
+                  const rawCli = String(r.cliente_nombre || '').replace(/^COMPRA:\s*/i, '');
+                  const mRuc = rawCli.match(/\((\d{10,13})\)/);
+                  const supRuc = mRuc ? mRuc[1] : '9999999999001';
+                  const supName = rawCli.replace(/\(\d{10,13}\)/, '').trim() || 'Proveedor';
+                  const mpRaw = String(r.medio_pago || '');
+                  const mIva = mpRaw.match(/IVA:\s*\$?([\d.,]+)/i);
+                  const ivaVal = mIva ? (parseFloat(mIva[1].replace(',', '.')) || 0) : 0;
+                  const catPart = mpRaw.split('|')[0].trim() || 'Gastos Operativos / Generales';
+                  const totVal = Number(r.monto || 0);
+                  const sub15Val = ivaVal > 0 ? Number((ivaVal / 0.15).toFixed(2)) : 0;
+                  const sub0Val = Math.max(0, Number((totVal - sub15Val - ivaVal).toFixed(2)));
+                  return {
+                    id: codePart,
+                    supplierRuc: supRuc,
+                    supplierName: supName,
+                    invoiceNum: codePart,
+                    date: (r.creado_en || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+                    category: catPart,
+                    subtotal0: sub0Val,
+                    subtotal15: sub15Val,
+                    ivaAmt: ivaVal,
+                    total: totVal,
+                    deductible: ivaVal > 0 || supRuc !== '9999999999999',
+                    addStock: false,
+                    evidenceUrl: urlPart,
+                    isPdf: /\.pdf($|\?)/i.test(urlPart) || urlPart.startsWith('data:application/pdf'),
+                    status: 'Sincronizado Nube'
+                  };
+                });
+                const mergedPur = [...cloudPurchases];
+                (appData.purchases || []).forEach(loc => {
+                  const ex = mergedPur.some(m => (loc.id && m.id === loc.id) || (loc.evidenceUrl && m.evidenceUrl === loc.evidenceUrl));
+                  if (!ex) mergedPur.push(loc);
+                });
+                appData.purchases = mergedPur;
+                this.savePurchasesToLocal();
+              }
+
+              const cloudPayments = paymentRows.slice().reverse().map(r => {
                 const refRaw = String(r.referencia_comprobante || '');
                 const pipeIdx = refRaw.indexOf('|');
                 const urlPart = pipeIdx >= 0 ? refRaw.slice(pipeIdx + 1).trim() : (refRaw.startsWith('http') ? refRaw.trim() : '');
@@ -5504,8 +5570,14 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
               const upPdf = await subirPdfRucSupabase(this.pendingPurchasePdfFile, compId);
               if (upPdf && upPdf.url) evidenceUrl = upPdf.url;
             }
-          } catch (e) {
-            evidenceUrl = URL.createObjectURL(this.pendingPurchasePdfFile);
+          } catch (e) {}
+          if (!evidenceUrl) {
+            evidenceUrl = await new Promise((resolve) => {
+              const r = new FileReader();
+              r.onload = () => resolve(r.result || '');
+              r.onerror = () => resolve('');
+              r.readAsDataURL(this.pendingPurchasePdfFile);
+            });
           }
         } else if (evidenceUrl && evidenceUrl.startsWith('data:') && typeof subirEvidenciaFotoSupabase === 'function') {
           try {
@@ -5626,8 +5698,14 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
                 const upPdf = await subirPdfRucSupabase(fileObj, refCode);
                 if (upPdf && upPdf.url) savedUrl = upPdf.url;
               }
-            } catch (e) {
-              savedUrl = URL.createObjectURL(fileObj);
+            } catch (e) {}
+            if (!savedUrl) {
+              savedUrl = await new Promise((resolve) => {
+                const r = new FileReader();
+                r.onload = () => resolve(r.result || '');
+                r.onerror = () => resolve('');
+                r.readAsDataURL(fileObj);
+              });
             }
           } else if (fileObj.type && fileObj.type.startsWith('image/')) {
             const rawImg = await new Promise((resolve) => {
@@ -8644,11 +8722,26 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           lockScreen.classList.remove('hidden');
         }
 
-        if (user.empresa_ruc && typeof leerRutasLocalStorage === 'function') {
-          const cachedRutas = leerRutasLocalStorage(user.empresa_ruc);
-          if (Array.isArray(cachedRutas) && cachedRutas.length > 0) {
-            appData.routeVisits = cachedRutas;
+        if (user.empresa_ruc) {
+          try {
+            const rawPurLoc = localStorage.getItem('vozkora_compras_ocr_' + user.empresa_ruc);
+            if (rawPurLoc) {
+              const pPur = JSON.parse(rawPurLoc);
+              if (Array.isArray(pPur) && pPur.length > 0) appData.purchases = pPur;
+            }
+            const rawCliLoc = localStorage.getItem('vozkora_clientes_cache_' + user.empresa_ruc);
+            if (rawCliLoc) {
+              const pCli = JSON.parse(rawCliLoc);
+              if (Array.isArray(pCli) && pCli.length > 0) appData.clients = pCli;
+            }
+          } catch (e) {}
+          if (typeof leerRutasLocalStorage === 'function') {
+            const cachedRutas = leerRutasLocalStorage(user.empresa_ruc);
+            if (Array.isArray(cachedRutas) && cachedRutas.length > 0) {
+              appData.routeVisits = cachedRutas;
+            }
           }
+          if (window.V && typeof V.hydratePaymentsHistory === 'function') V.hydratePaymentsHistory();
         }
 
         if (user.empresa_ruc && typeof consultarRepositorio === 'function') {
