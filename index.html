@@ -1202,7 +1202,7 @@
       return getCurrentPlan().rank >= minRank;
     }
     function hasLotsModule() {
-      return !!(configState.activeSVAs && configState.activeSVAs.operaciones) || hasMinPlan(6);
+      return !!(configState.activeSVAs && configState.activeSVAs.operaciones);
     }
 
     function getLotExpiryBadge(expiryDateStr) {
@@ -1595,7 +1595,12 @@
               <b class="text-xs font-extrabold">Catálogo en Bodega (${appData.products.length})</b>
               <div class="text-[10px] text-[#087e70] font-semibold">✏️ Edita precios, stock y código de barras POS</div>
             </div>
-            <div class="flex items-center gap-1.5 shrink-0">
+            <div class="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+              ${configState.activeSVAs.operaciones ? `
+                <button onclick="V.openVoiceInventoryModal()" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-indigo-900 hover:bg-indigo-800 text-white cursor-pointer" title="Conteo físico de inventario dictando por voz">
+                  🎙️ Conteo Voz
+                </button>
+              ` : ''}
               ${hasMinPlan(3) ? `
                 <button id="btnSyncCatalogInv" onclick="V.syncCatalogFromAccounting()" class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] cursor-pointer" title="Descargar productos y códigos de barras desde Proveedor Software Contable">
                   🔄 Sincronizar
@@ -1832,7 +1837,7 @@ ${renderSearchableClientPicker('saleClient')}
               </select>
             </div>
 
-            ${(configState.activeSVAs.gerencia || hasMinPlan(6)) ? `
+            ${configState.activeSVAs.gerencia ? `
               <div class="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between gap-2">
                 <div>
                   <div class="text-[11px] font-extrabold text-[#073e3b]">🏆 Comisión Vendedor (${fin.appliedCommRate.toFixed(1)}%)</div>
@@ -2115,7 +2120,7 @@ ${renderSearchableClientPicker('quoteClient')}
 
       // 5. RETENCIONES SRI
       if (p === 'retentions') {
-        const retAllowed = configState.activeSVAs.cobranza || hasMinPlan(6);
+        const retAllowed = !!configState.activeSVAs.cobranza;
         if (!retAllowed) {
           return backBtn + renderLockBanner(
             'Gestión y Consulta de Retenciones SRI',
@@ -2174,7 +2179,7 @@ ${renderSearchableClientPicker('quoteClient')}
 
       // 6. GUÍAS DE REMISIÓN
       if (p === 'guides') {
-        const guidesAllowed = configState.activeSVAs.operaciones || hasMinPlan(4);
+        const guidesAllowed = hasMinPlan(4);
         if (!guidesAllowed) {
           return backBtn + renderLockBanner(
             'Emisión y Consulta de Guías de Remisión',
@@ -2232,7 +2237,7 @@ ${renderSearchableClientPicker('quoteClient')}
 
       // 7. MÓDULO BANCARIO
       if (p === 'banking') {
-        const bankAllowed = configState.activeSVAs.cobranza || hasMinPlan(6);
+        const bankAllowed = !!configState.activeSVAs.cobranza;
         if (!bankAllowed) {
           return backBtn + renderLockBanner(
             'Módulo Bancario y Consulta de Movimientos',
@@ -2293,7 +2298,7 @@ ${renderSearchableClientPicker('quoteClient')}
 
       // 8. DASHBOARD DE COMISIONES (REQUIERE PACK GERENCIA Y CONTROL IA)
       if (p === 'commissions') {
-        if (!configState.activeSVAs.gerencia && !hasMinPlan(6)) {
+        if (!configState.activeSVAs.gerencia) {
           return backBtn + renderLockBanner(
             'Calculadora de Comisiones y Control Gerencial IA',
             'Liquida automáticamente comisiones por venta, bonificaciones por margen saludable y control gerencial.',
@@ -2596,7 +2601,7 @@ ${renderSearchableClientPicker('quoteClient')}
 
       // 9. CLIENTES + SINCRONIZACIÓN API + ALERTA TELÉFONO INVÁLIDO + FOTO/PDF RUC
       if (p === 'clients') {
-        const ocrRucAllowed = hasMinPlan(2) || configState.activeSVAs.voz;
+        const ocrRucAllowed = !!configState.activeSVAs.voz;
         const invalidPhoneClients = appData.clients.filter(c => c.id !== '9999999999999' && !V.isValidWhatsappPhone(c.phone));
         return `
           ${backBtn}
@@ -3289,6 +3294,7 @@ ${renderSearchableClientPicker('quoteClient')}
             }
           </div>
 
+          ${configState.activeSVAs.ventas ? `
           <div class="bg-amber-50/80 border border-amber-200 rounded-2xl p-3.5 space-y-2 text-xs">
             <div class="flex items-center justify-between">
               <b class="text-amber-950">😴 Radar de Clientes Dormidos (${dormantClients.length})</b>
@@ -3309,6 +3315,7 @@ ${renderSearchableClientPicker('quoteClient')}
                 `).join('')
             }
           </div>
+          ` : ''}
 
           <!-- CONSOLIDADO MULTI-BODEGA / SUCURSALES -->
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3.5 space-y-2 text-xs">
@@ -3402,6 +3409,7 @@ ${renderSearchableClientPicker('quoteClient')}
             </button>
           </div>
 
+          ${configState.activeSVAs.voz ? `
           <div class="bg-white border border-[#e3ebea] rounded-2xl p-3 space-y-2 text-xs">
             <b>🧠 Cuadro de Entrenamiento Empresarial IA</b>
             <label class="block text-[11px] text-[#71838a]">Jerga o apodos de productos</label>
@@ -3434,6 +3442,11 @@ ${renderSearchableClientPicker('quoteClient')}
               Guardar reglas en vivo
             </button>
           </div>
+          ` : renderLockBanner(
+            'Cuadro de Entrenamiento Empresarial IA',
+            'Personaliza apodos/jerga de productos, reglas de comisiones, topes de descuento y tono de cobranza IA.',
+            'sva', 'voz', 'Pack Voz y Clientes IA', 'settings'
+          )}
         `;
       }
 
@@ -3512,7 +3525,7 @@ ${renderSearchableClientPicker('quoteClient')}
 
       // 17. ÓRDENES DE TRABAJO
       if (p === 'workorders') {
-        const opsAllowed = configState.activeSVAs.operaciones || hasMinPlan(6);
+        const opsAllowed = !!configState.activeSVAs.operaciones;
         if (!opsAllowed) {
           return backBtn + renderLockBanner(
             'Órdenes de Trabajo, Taller y Trazabilidad',
@@ -4582,6 +4595,9 @@ ${renderSearchableClientPicker('schedRouteClient', { excludeMostrador: true })}
       },
 
       openAttachRucPdfModal() {
+        if (!configState.activeSVAs.voz) {
+          return toast('🔒 La lectura de PDF RUC requiere el Pack Voz y Clientes IA.');
+        }
         this.pendingRucPdfFile = null;
         this.pendingRucPhotoDataUrl = '';
         this.openModal(
@@ -4611,6 +4627,9 @@ ${renderSearchableClientPicker('schedRouteClient', { excludeMostrador: true })}
       },
 
       async processCapturedRucPhoto(dataUrl) {
+        if (!configState.activeSVAs.voz) {
+          return toast('🔒 El alta por Foto RUC requiere el Pack Voz y Clientes IA.');
+        }
         this.pendingRucPdfFile = null;
         const compressed = dataUrl ? await this.compressImageDataUrl(dataUrl, 640, 0.65) : '';
         this.pendingRucPhotoDataUrl = compressed;
@@ -5214,6 +5233,41 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         } finally {
           if (btn) { btn.textContent = '🔄 Sincronizar Clientes'; btn.disabled = false; }
         }
+      },
+
+      openVoiceInventoryModal() {
+        if (!configState.activeSVAs.operaciones) {
+          return toast('🔒 El Inventario Físico por Voz requiere el Pack Operaciones y Taller IA.');
+        }
+        this.openModal(
+          '🎙️ Inventario Físico por Voz (Operaciones IA)',
+          `<div class="space-y-2.5 text-[11px]">
+             <p class="text-slate-600">Dicta o escribe el conteo físico en bodega para actualizar el stock real al instante:</p>
+             <textarea id="voiceInvText" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 text-xs">Arroz 38, Aceite 24, Atún 15</textarea>
+             <button type="button" onclick="V.applyVoiceInventoryCount()" class="w-full py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
+               ✅ Aplicar Conteo al Inventario
+             </button>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 cursor-pointer">Cerrar</button>`
+        );
+      },
+
+      applyVoiceInventoryCount() {
+        const raw = ($('voiceInvText')?.value || '').trim().toLowerCase();
+        if (!raw) return toast('Escribe o dicta las cantidades contadas.');
+        let updated = 0;
+        appData.products.forEach(p => {
+          const firstWord = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/)[0];
+          const normRaw = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const m = normRaw.match(new RegExp(firstWord + '[a-z]*\\s*[:=]?\\s*(\\d+)', 'i'));
+          if (m) {
+            p.stock = parseInt(m[1], 10);
+            updated++;
+          }
+        });
+        this.closeModal();
+        renderPhone('inventory');
+        toast(updated > 0 ? `✅ Stock físico actualizado en ${updated} producto(s).` : '⚠️ No coincidió ningún producto del catálogo.');
       },
 
       openScheduleModal() {
@@ -6154,6 +6208,11 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         }
         const quotaIa = await verificarYRegistrarUsoIa();
         if (!quotaIa.permitido) return;
+        if (!configState.activeSVAs.finanzas && /(pre-?cierre|declaraci[oó]n\s+sri|formulario\s*104|iva\s+por\s+pagar|cierre\s+tributario)/i.test(q)) {
+          appData.aiAnswer = '🔒 <strong>Módulo No Habilitado:</strong> El análisis de <strong>Pre-Cierre IVA SRI y Declaraciones</strong> pertenece al <strong>Pack Finanzas y Pre-Cierre SRI</strong>. Solicita su activación a Soporte.';
+          renderPhone('ai');
+          return;
+        }
         if (!configState.activeSVAs.voz && getCurrentPlan().id === 'piloto') {
           if (getPilotVoiceRemaining() <= 0) {
             renderPhone('voice');
@@ -8255,6 +8314,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           }
           if (fresh && (fresh.plan_activo !== prevPlan || JSON.stringify(fresh.packs_ia || []) !== prevPacks || fresh.periodicidad !== ses.periodicidad)) {
             await Auth.applySession(fresh);
+            renderAll();
           }
         }
       }
