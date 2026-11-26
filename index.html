@@ -5919,32 +5919,177 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         this.openModal(
           '🎙️ Inventario Físico por Voz (Operaciones IA)',
           `<div class="space-y-2.5 text-[11px]">
-             <p class="text-slate-600">Dicta o escribe el conteo físico en bodega para actualizar el stock real al instante:</p>
-             <textarea id="voiceInvText" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 text-xs">Arroz 38, Aceite 24, Atún 15</textarea>
-             <button type="button" onclick="V.applyVoiceInventoryCount()" class="w-full py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">
-               ✅ Aplicar Conteo al Inventario
-             </button>
+             <p class="text-slate-600">Pulsa el micrófono para dictar hablando normal o escribe el conteo físico en bodega (soporta números en palabras o dígitos):</p>
+             <textarea id="voiceInvText" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 text-xs focus:outline-none focus:border-[#087e70]">Arroz 38, Aceite 24, Atún 15</textarea>
+             <div class="grid grid-cols-2 gap-2">
+               <button id="btn-voice-inv-mic" type="button" onclick="V.startVoiceInventoryMic()" class="py-2.5 px-2 rounded-xl text-xs font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] hover:text-white cursor-pointer">
+                 🎙️ Dictar por Voz
+               </button>
+               <button id="btn-apply-voice-inv" type="button" onclick="V.applyVoiceInventoryCount()" class="py-2.5 px-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                 ✅ Aplicar Conteo
+               </button>
+             </div>
+             <div id="voiceInvStatusMsg" class="text-[10px] text-slate-500">
+               💡 Ej. <em>"Arroz treinta y ocho, aceite veinticuatro, atún quince"</em>. Sincroniza directo con la nube y API.
+             </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 cursor-pointer">Cerrar</button>`
         );
       },
 
-      applyVoiceInventoryCount() {
-        const raw = ($('voiceInvText')?.value || '').trim().toLowerCase();
-        if (!raw) return toast('Escribe o dicta las cantidades contadas.');
-        let updated = 0;
+      startVoiceInventoryMic() {
+        if (!sessionStorage.getItem('vozkora_mic_disclosure_session')) {
+          this.openModal(
+            '🎙️ Autorización de Uso de Micrófono (Google Play)',
+            `<div class="space-y-2 text-[11px] text-slate-700 leading-relaxed">
+               <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-bold">
+                 Estás autorizando a Vozkora a usar el micrófono de tu dispositivo.
+               </div>
+               <p><strong>Finalidad exclusiva:</strong> Transcribir tus dictados de voz a texto para registrar conteos físicos de inventario y pedidos comerciales dentro de la aplicación.</p>
+               <p class="text-[10.5px] text-slate-500">El micrófono solo se activa cuando pulsas "Dictar por Voz" y el audio no se almacena ni se comparte con fines publicitarios.</p>
+             </div>`,
+            `<button onclick="V.openVoiceInventoryModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+             <button onclick="sessionStorage.setItem('vozkora_mic_disclosure_session','1'); V.openVoiceInventoryModal(); V.startVoiceInventoryMic();" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">✓ Autorizo Usar el Micrófono</button>`
+          );
+          return;
+        }
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          return toast('Tu navegador no soporta micrófono directo; escribe o edita el conteo en el cuadro.');
+        }
+        const btn = $('btn-voice-inv-mic');
+        const statusEl = $('voiceInvStatusMsg');
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'es-EC';
+        recognition.interimResults = false;
+        recognition.onstart = () => {
+          if (btn) btn.textContent = '🔴 Escuchando...';
+          if (statusEl) statusEl.textContent = '🎙️ Habla ahora dictando cada producto y su cantidad física en bodega...';
+          toast('🎙️ Escuchando conteo de inventario...');
+        };
+        recognition.onresult = (e) => {
+          const txt = e.results[0][0].transcript;
+          if ($('voiceInvText')) $('voiceInvText').value = txt;
+          if (statusEl) statusEl.innerHTML = `✅ Escuchado: <strong>"${esc(txt)}"</strong>. Revisa y pulsa <strong>Aplicar Conteo</strong>.`;
+          toast('✓ Dictado transcrito. Revisa o aplica el conteo.');
+        };
+        recognition.onerror = () => {
+          if (statusEl) statusEl.textContent = '⚠️ No se detectó audio claro. Intenta acercarte al micrófono.';
+          toast('No se detectó audio. Intenta de nuevo.');
+        };
+        recognition.onend = () => {
+          if (btn) btn.textContent = '🎙️ Dictar por Voz';
+        };
+        recognition.start();
+      },
+
+      async applyVoiceInventoryCount() {
+        const rawOriginal = ($('voiceInvText')?.value || '').trim();
+        if (!rawOriginal) return toast('Escribe o dicta las cantidades contadas.');
+        if (!validarTemaContableVozkora(rawOriginal)) {
+          return toast(MENSAJE_BLOQUEO_TEMA_IA);
+        }
+
+        const quotaIa = await verificarYRegistrarUsoIa();
+        if (!quotaIa.permitido) return;
+
+        // Normalizar palabras numéricas en español a dígitos
+        let normRaw = rawOriginal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const wordNums = [
+          ['cero', 0], ['uno', 1], ['una', 1], ['dos', 2], ['tres', 3], ['cuatro', 4],
+          ['cinco', 5], ['seis', 6], ['siete', 7], ['ocho', 8], ['nueve', 9],
+          ['diez', 10], ['once', 11], ['doce', 12], ['trece', 13], ['catorce', 14],
+          ['quince', 15], ['veinte', 20], ['veinticinco', 25], ['treinta', 30],
+          ['cuarenta', 40], ['cincuenta', 50], ['sesenta', 60], ['setenta', 70],
+          ['ochenta', 80], ['noventa', 90], ['cien', 100]
+        ];
+        wordNums.forEach(([w, n]) => {
+          normRaw = normRaw.replace(new RegExp('\\b' + w + '\\b', 'g'), String(n));
+        });
+
+        const updatedProducts = [];
         appData.products.forEach(p => {
-          const firstWord = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/)[0];
-          const normRaw = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          const m = normRaw.match(new RegExp(firstWord + '[a-z]*\\s*[:=]?\\s*(\\d+)', 'i'));
-          if (m) {
-            p.stock = parseInt(m[1], 10);
-            updated++;
+          const cleanName = (p.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const firstWord = cleanName.split(/\s+/)[0];
+          const kws = Array.isArray(p.keywords)
+            ? p.keywords.map(k => String(k || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()).filter(Boolean)
+            : [];
+          const tokens = Array.from(new Set([firstWord, ...kws])).filter(t => t.length >= 3);
+
+          let matchedQty = null;
+          for (const tk of tokens) {
+            const mAfter = normRaw.match(new RegExp(tk + '[a-z0-9\\s]{0,18}?[:=]?\\s*(\\d+)', 'i'));
+            if (mAfter) {
+              matchedQty = parseInt(mAfter[1], 10);
+              break;
+            }
+            const mBefore = normRaw.match(new RegExp('(\\d+)\\s*(?:unidades\\s+de\\s+|unid\\s+de\\s+|x\\s*)?' + tk + '[a-z]*', 'i'));
+            if (mBefore) {
+              matchedQty = parseInt(mBefore[1], 10);
+              break;
+            }
+          }
+
+          if (matchedQty !== null && !isNaN(matchedQty)) {
+            const prevStock = Number(p.stock || 0);
+            p.stock = matchedQty;
+            updatedProducts.push({ prod: p, prevStock, newStock: matchedQty });
           }
         });
+
+        if (updatedProducts.length === 0) {
+          return toast('⚠️ No coincidió ningún producto del catálogo con lo dictado.');
+        }
+
+        const btnApply = $('btn-apply-voice-inv');
+        if (btnApply) { btnApply.textContent = '⏳ Sincronizando...'; btnApply.disabled = true; }
+
+        const isOff = await ensureRealtimeOfflineCheck();
+        let syncedApiCount = 0;
+
+        for (const item of updatedProducts) {
+          const p = item.prod;
+          if (isOff) {
+            p.pendingSync = true;
+            enqueueOfflineOp(
+              'Conteo Físico Voz IA',
+              p.id,
+              `${p.name}: ${item.prevStock} → ${item.newStock} unid.`,
+              () => { p.pendingSync = false; },
+              null,
+              null,
+              p
+            );
+          } else {
+            if (typeof sincronizarProductoPuenteContifico === 'function') {
+              const resApi = await sincronizarProductoPuenteContifico({
+                codigo: p.id,
+                codigo_barra: p.barcode || '',
+                nombre: p.name,
+                pvp1: p.price,
+                cantidad_stock: item.newStock,
+                porcentaje_iva: p.ivaRate
+              }, true).catch(() => ({ ok: false }));
+              if (resApi && resApi.ok) syncedApiCount++;
+            }
+            if (typeof registrarMovimientoInventarioContifico === 'function' && item.prevStock !== item.newStock) {
+              const diff = item.newStock - item.prevStock;
+              await registrarMovimientoInventarioContifico({
+                tipo: diff > 0 ? 'ING' : 'EGR',
+                fecha: new Date().toISOString().slice(0, 10),
+                bodega_id: p.warehouseId || 'BOD-01',
+                descripcion: `Ajuste conteo físico por Voz IA (${item.prevStock} -> ${item.newStock})`,
+                detalles: [{ producto_codigo: p.id, cantidad: Math.abs(diff), precio: p.cost || p.price }]
+              }).catch(() => {});
+            }
+          }
+        }
+
         this.closeModal();
         renderPhone('inventory');
-        toast(updated > 0 ? `✅ Stock físico actualizado en ${updated} producto(s).` : '⚠️ No coincidió ningún producto del catálogo.');
+        toast(isOff
+          ? `💾 Conteo aplicado en ${updatedProducts.length} producto(s) y guardado en cola Offline.`
+          : `✅ Stock físico actualizado en ${updatedProducts.length} producto(s) y sincronizado con API/nube.`);
       },
 
       openScheduleModal() {
