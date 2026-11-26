@@ -551,6 +551,7 @@
         quoteDiscountMode: 'none',
         quoteDiscountPct: 0,
         payments: [],
+        paymentsLoadedFromCloud: false,
         quotes: [
           {
             id: 'PROF-001',
@@ -2672,6 +2673,9 @@ ${renderSearchableClientPicker('quoteClient')}
 
       // 10. CARTERA Y COBROS
       if (p === 'receivables') {
+        if (!appData.paymentsLoadedFromCloud && !appData._loadingPayments) {
+          V.hydratePaymentsHistory();
+        }
         const pendingReceivables = Math.max(0, 3840.00 - appData.payments.reduce((a, x) => a + x.amount, 0));
         const collectedTotal = appData.payments.reduce((a, x) => a + x.amount, 0);
         const cobranzaIAOn = configState.activeSVAs.cobranza;
@@ -4889,6 +4893,77 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         );
       },
 
+      getPaymentsStorageKey() {
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const ruc = ses.empresa_ruc || '123456789001';
+        return 'vozkora_cobros_vouchers_' + ruc;
+      },
+
+      savePaymentsToLocal() {
+        try {
+          localStorage.setItem(this.getPaymentsStorageKey(), JSON.stringify(appData.payments || []));
+        } catch (e) {}
+      },
+
+      async hydratePaymentsHistory() {
+        appData._loadingPayments = true;
+        try {
+          // 1. Cargar inmediatamente desde localStorage para respuesta instantánea
+          const rawLocal = localStorage.getItem(this.getPaymentsStorageKey());
+          if (rawLocal) {
+            const parsed = JSON.parse(rawLocal);
+            if (Array.isArray(parsed) && parsed.length > 0 && appData.payments.length === 0) {
+              appData.payments = parsed;
+            }
+          }
+
+          // 2. Consultar Supabase repo_cobros para recuperar fotos/PDFs guardados en la nube
+          const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+          if (ses.empresa_ruc && ses.rol !== 'DEMO' && ses.entorno !== 'DEMO' && typeof consultarRepositorio === 'function') {
+            const rows = await consultarRepositorio('repo_cobros', ses.empresa_ruc).catch(() => []);
+            if (Array.isArray(rows) && rows.length > 0) {
+              const cloudPayments = rows.slice().reverse().map(r => {
+                const refRaw = String(r.referencia_comprobante || '');
+                const pipeIdx = refRaw.indexOf('|');
+                const urlPart = pipeIdx >= 0 ? refRaw.slice(pipeIdx + 1).trim() : (refRaw.startsWith('http') ? refRaw.trim() : '');
+                const refCode = pipeIdx >= 0 ? refRaw.slice(0, pipeIdx).trim() : refRaw;
+                const dStr = r.creado_en ? String(r.creado_en).slice(0, 16).replace('T', ' ') : '';
+                return {
+                  refCode,
+                  name: r.cliente_nombre || 'Cliente',
+                  amount: Number(r.monto || 0),
+                  method: r.medio_pago || 'Transferencia',
+                  date: dStr,
+                  voucherUrl: urlPart,
+                  isPdf: /\.pdf($|\?)/i.test(urlPart),
+                  pendingSync: false
+                };
+              });
+
+              // Combinar sin duplicar (preservando respaldos locales si alguno aún no estaba en nube)
+              const merged = [...cloudPayments];
+              (appData.payments || []).forEach(loc => {
+                const exists = merged.some(m =>
+                  (loc.voucherUrl && m.voucherUrl === loc.voucherUrl) ||
+                  (loc.refCode && m.refCode === loc.refCode) ||
+                  (m.name === loc.name && Math.abs(m.amount - loc.amount) < 0.01 && m.date === loc.date)
+                );
+                if (!exists) merged.push(loc);
+              });
+              appData.payments = merged;
+              this.savePaymentsToLocal();
+            }
+          }
+          appData.paymentsLoadedFromCloud = true;
+        } catch (e) {
+        } finally {
+          appData._loadingPayments = false;
+          if (appData.currentPage === 'receivables' || appData.currentPage === 'home') {
+            renderPhone(appData.currentPage);
+          }
+        }
+      },
+
       openVoucherEvidenceModal(url, clientName) {
         const isPdf = /\.pdf($|\?)/i.test(url) || url.startsWith('data:application/pdf');
         this.openModal(
@@ -4957,6 +5032,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
 
         const isOff = appData.offline;
         appData.payments.push({
+          refCode,
           name: clientName,
           amount: amt,
           method: bank,
@@ -4965,11 +5041,12 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
           isPdf: isPdfFile,
           pendingSync: isOff
         });
+        this.savePaymentsToLocal();
         const cl = appData.clients.find(c => c.name === clientName);
         if (cl) cl.debt = Math.max(0, cl.debt - amt);
 
         if (typeof registrarEnRepositorio === 'function') {
-          registrarEnRepositorio('repo_cobros', {
+          await registrarEnRepositorio('repo_cobros', {
             cliente_nombre: clientName,
             monto: amt,
             medio_pago: bank,
@@ -7125,7 +7202,8 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         const method = $('mCollectMethod') ? $('mCollectMethod').value : 'Efectivo en ruta';
         if (amt <= 0) return toast('Monto inválido.');
         const isOff = await ensureRealtimeOfflineCheck();
-        appData.payments.push({ name: clientName, amount: amt, pendingSync: isOff });
+        appData.payments.push({ refCode: 'COB-' + Date.now(), name: clientName, amount: amt, method, date: nowFormatted(), pendingSync: isOff });
+        this.savePaymentsToLocal();
         const cl = appData.clients.find(c => c.name === clientName);
         if (cl) cl.debt = Math.max(0, cl.debt - amt);
         if (isOff) {
@@ -8129,6 +8207,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
             : existing;
           await Auth.applySession(refreshed);
           hydrateOfflineQueueFromStorage(refreshed.empresa_ruc);
+          V.hydratePaymentsHistory();
           if (appData.offlineQueueItems.length > 0) {
             appData.offline = true;
             await V.setOfflineState(false, true);
