@@ -5160,7 +5160,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
 
           // 2. Consultar Supabase repo_cobros para recuperar fotos/PDFs guardados en la nube
           const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
-          if (ses.empresa_ruc && ses.rol !== 'DEMO' && ses.entorno !== 'DEMO' && typeof consultarRepositorio === 'function') {
+          if (ses.empresa_ruc && typeof consultarRepositorio === 'function') {
             const rows = await consultarRepositorio('repo_cobros', ses.empresa_ruc).catch(() => []);
             if (Array.isArray(rows) && rows.length > 0) {
               const purchaseRows = rows.filter(r => String(r.cliente_nombre || '').startsWith('COMPRA:'));
