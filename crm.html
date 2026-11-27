@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vozkora Control CRM — Consola Maestra SaaS</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -414,6 +415,20 @@
       repoFilterDesde: '',
       repoFilterHasta: '',
       repoSearch: '',
+
+      selectedBillingRucs: [],
+      staffExcelMonth: new Date().toISOString().slice(0, 7),
+
+      getSessionEmail() {
+        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        return String((ses && ses.email) || '').trim().toLowerCase();
+      },
+
+      isMasterAdmin() {
+        const em = this.getSessionEmail();
+        const r = this.getSessionRole();
+        return em === 'admin@vozkora.com' || ['SUPERADMIN', 'ADMIN', 'SUPER_ADMIN', 'ADMINISTRADOR'].includes(r);
+      },
 
       getSessionRole() {
         const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
@@ -1006,20 +1021,96 @@
       billingFilter: 'ALL',
       async loadBillingTab() {
         const body = $('crm-body');
-        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Calculando estado de cartera y fechas de corte...</div>';
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Calculando estado de cartera, asignaciones y fechas de corte...</div>';
         try {
-          this.cachedCompanies = await crmListarEmpresas();
+          const [emps, usrs, tks] = await Promise.all([crmListarEmpresas(), crmListarUsuarios(), crmListarTickets()]);
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.cachedTickets = tks;
+          this.cachedStaff = usrs.filter(u => this.isInternalRole(u.rol));
           this.renderBillingView();
         } catch (e) {
           body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
         }
       },
 
+      getBillingAssignmentsMap() {
+        let localMap = {};
+        try {
+          localMap = JSON.parse(localStorage.getItem('vozkora_crm_cartera_asignada') || '{}');
+        } catch (e) {}
+        return localMap;
+      },
+
+      async assignSelectedBillingPortfolio() {
+        if (!this.isMasterAdmin()) return toast('⛔ Solo admin@vozkora.com puede asignar cartera.');
+        const targetEmail = ($('billingAssignTargetEmail')?.value || '').trim().toLowerCase();
+        if (!this.selectedBillingRucs.length) {
+          return toast('⚠️ Selecciona al menos una empresa con check en el listado.');
+        }
+        const map = this.getBillingAssignmentsMap();
+        const staffObj = (this.cachedStaff || []).find(s => String(s.email || '').toLowerCase() === targetEmail);
+        const staffName = staffObj ? (staffObj.nombre_completo || staffObj.email) : '';
+
+        this.selectedBillingRucs.forEach(ruc => {
+          if (targetEmail) {
+            map[ruc] = { email: targetEmail, nombre: staffName, fecha: nowFormatted() };
+          } else {
+            delete map[ruc];
+          }
+        });
+        try {
+          localStorage.setItem('vozkora_crm_cartera_asignada', JSON.stringify(map));
+        } catch (e) {}
+
+        const count = this.selectedBillingRucs.length;
+        this.selectedBillingRucs = [];
+        toast(targetEmail
+          ? `✅ ${count} empresa(s) de cartera asignada(s) a ${staffName}.`
+          : `✅ Asignación removida de ${count} empresa(s).`);
+        this.renderBillingView();
+      },
+
+      toggleBillingSelectRuc(ruc, checked) {
+        const clean = String(ruc || '').trim();
+        if (checked) {
+          if (!this.selectedBillingRucs.includes(clean)) this.selectedBillingRucs.push(clean);
+        } else {
+          this.selectedBillingRucs = this.selectedBillingRucs.filter(x => x !== clean);
+        }
+        const badge = $('billingSelectedCountBadge');
+        if (badge) badge.textContent = `${this.selectedBillingRucs.length} seleccionada(s)`;
+      },
+
       renderBillingView() {
         const body = $('crm-body');
-        const enriched = this.cachedCompanies.map(emp => ({
+        const isMaster = this.isMasterAdmin();
+        const myEmail = this.getSessionEmail();
+        const assignMap = this.getBillingAssignmentsMap();
+
+        // Empresas con pago/cobranza recién reportado pendiente de activación/facturación se ocultan de la cartera pendiente del asesor
+        const pendingPayRucs = new Set(
+          (this.cachedTickets || [])
+            .filter(t => ['ACTIVACION_VENTA', 'FACTURACION_PAGO'].includes(String(t.tipo_solicitud || '').toUpperCase()) && t.estado === 'PENDIENTE')
+            .map(t => String(t.empresa_ruc || '').trim())
+        );
+
+        let baseCompanies = this.cachedCompanies;
+        if (!isMaster && !this.isReadOnlyRole()) {
+          baseCompanies = baseCompanies.filter(emp => {
+            const ruc = String(emp.ruc || '').trim();
+            const asg = assignMap[ruc];
+            if (!asg || String(asg.email || '').toLowerCase() !== myEmail) return false;
+            if (pendingPayRucs.has(ruc)) return false;
+            const st = evaluarEstadoSuscripcion(emp);
+            return st.estado === 'PENDIENTE_RENOVACION' || st.estado === 'BLOQUEADO_CORTE' || !emp.activa;
+          });
+        }
+
+        const enriched = baseCompanies.map(emp => ({
           emp,
-          subStatus: evaluarEstadoSuscripcion(emp)
+          subStatus: evaluarEstadoSuscripcion(emp),
+          assignedTo: assignMap[String(emp.ruc || '').trim()] || null
         }));
 
         const alDiaCount = enriched.filter(x => x.subStatus.estado === 'AL_DIA' || x.subStatus.estado.startsWith('EXENTO')).length;
@@ -1033,12 +1124,20 @@
           return true;
         });
 
+        const commercialStaff = (this.cachedStaff || []).filter(u =>
+          ['COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION', 'COBRANZAS'].includes(String(u.rol || '').toUpperCase()) && u.activo
+        );
+
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 class="text-sm font-extrabold text-[#073e3b]">💳 Cobranzas Automáticas, Fechas de Corte (Día 01) y Recaudo</h3>
-                <p class="text-[11px] text-slate-500">Regla 1: Días 1–5 tras corte = Aviso rojo en App · Regla 2: +5 días tras corte = Bloqueo total por mora.</p>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">💳 Cobranzas Automáticas, Asignación de Cartera y Cortes</h3>
+                <p class="text-[11px] text-slate-500">
+                  ${isMaster
+                    ? 'Marca con check las empresas de cartera pendiente y asígnalas a un asesor. Cuando registren el pago, viajará a 🚀 Activaciones Pendientes.'
+                    : 'Bandeja de cartera asignada a tu gestión. Al registrar el pago, se retira de tu bandeja y viaja a 🚀 Activaciones Pendientes.'}
+                </p>
               </div>
               ${!this.isReadOnlyRole() ? `
                 <button onclick="CRM.openPaymentModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
@@ -1047,19 +1146,33 @@
               ` : '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-[11px]">👁️ Modo Solo Lectura</span>'}
             </div>
 
-            <!-- Canal Oficial de Activación y Renovación -->
-            <div class="p-3 rounded-2xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b] flex items-center justify-between gap-2">
-              <span>📲 <strong>Activaciones y Renovaciones Oficiales:</strong> Toda solicitud desde la App crea automáticamente un ticket <code>VENTAS_UPGRADE</code> y abre WhatsApp oficial <strong>+57 323 939 9953</strong> con el cálculo exacto.</span>
-            </div>
+            ${isMaster ? `
+              <div class="p-3 rounded-2xl bg-[#073e3b] text-white flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div class="flex items-center gap-2">
+                  <span class="font-extrabold text-[#70d2bd]">☑️ Asignación de Cartera:</span>
+                  <span id="billingSelectedCountBadge" class="px-2 py-0.5 rounded-full bg-white/15 font-mono font-bold">${this.selectedBillingRucs.length} seleccionada(s)</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <select id="billingAssignTargetEmail" class="rounded-xl px-3 py-1.5 bg-white text-[#073e3b] font-extrabold text-[11px]">
+                    <option value="">-- Quitar asignación --</option>
+                    ${commercialStaff.map(st => `<option value="${esc(st.email)}">💼 ${esc(st.nombre_completo || st.email)}</option>`).join('')}
+                  </select>
+                  <button onclick="CRM.assignSelectedBillingPortfolio()" class="px-3.5 py-1.5 rounded-xl bg-[#70d2bd] hover:bg-white text-[#073e3b] font-extrabold cursor-pointer">
+                    Asignar Cartera Seleccionada →
+                  </button>
+                </div>
+              </div>
+            ` : ''}
 
-            <!-- Filtros Semáforo -->
             <div class="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2.5">
               <button onclick="CRM.billingFilter='ALL'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
                 Todas (${enriched.length})
               </button>
-              <button onclick="CRM.billingFilter='AL_DIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'AL_DIA' ? 'bg-[#087e70] text-white' : 'bg-emerald-50 text-emerald-900 border border-emerald-200'}">
-                🟢 Al día / Exentas (${alDiaCount})
-              </button>
+              ${isMaster ? `
+                <button onclick="CRM.billingFilter='AL_DIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'AL_DIA' ? 'bg-[#087e70] text-white' : 'bg-emerald-50 text-emerald-900 border border-emerald-200'}">
+                  🟢 Al día / Exentas (${alDiaCount})
+                </button>
+              ` : ''}
               <button onclick="CRM.billingFilter='GRACIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'GRACIA' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
                 🟡 En días de gracia 1–5 (${moraGraciaCount})
               </button>
@@ -1069,10 +1182,11 @@
             </div>
 
             <div class="space-y-2.5">
-              ${filtered.map(({ emp, subStatus }) => {
+              ${filtered.length === 0 ? '<p class="text-slate-500 text-center py-8 text-[11px]">No tienes cartera pendiente asignada en esta bandeja.</p>' : filtered.map(({ emp, subStatus, assignedTo }) => {
                 const pl = PLANS.find(p => p.id === emp.plan_activo) || PLANS[3];
                 const isAnual = String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
                 const monto = isAnual ? pl.annualPrice : pl.monthlyPrice;
+                const isChecked = this.selectedBillingRucs.includes(String(emp.ruc || '').trim());
                 const badgeCls = subStatus.estado === 'BLOQUEADO_CORTE'
                   ? 'bg-rose-100 text-rose-800'
                   : (subStatus.estado === 'PENDIENTE_RENOVACION'
@@ -1085,35 +1199,43 @@
                     : (subStatus.estado === 'EXENTO' ? '⚪ Control Corte Desactivado' : (subStatus.estado === 'EXENTO_HASTA' ? `🎁 Exento hasta ${subStatus.exentoHasta}` : '🟢 Al día')));
 
                 return `
-                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border ${isChecked ? 'border-[#087e70] ring-1 ring-[#087e70]' : 'border-[#dce6e5]'} space-y-2">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <strong class="text-sm text-[#073e3b]">${esc(emp.nombre)}</strong>
-                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isAnual ? 'bg-amber-100 text-amber-900' : 'bg-cyan-50 text-cyan-900'}">
-                          ${isAnual ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
-                        </span>
-                        <span class="ml-1 font-mono text-[11px] font-bold text-[#087e70]">Plan ${esc(pl.name)} ($${monto.toFixed(2)})</span>
+                      <div class="flex items-center gap-2">
+                        ${isMaster ? `
+                          <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="CRM.toggleBillingSelectRuc('${esc(emp.ruc)}', this.checked)" class="w-4 h-4 accent-[#087e70] cursor-pointer" title="Seleccionar para asignar cartera" />
+                        ` : ''}
+                        <div>
+                          <strong class="text-sm text-[#073e3b]">${esc(emp.nombre)}</strong>
+                          <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isAnual ? 'bg-amber-100 text-amber-900' : 'bg-cyan-50 text-cyan-900'}">
+                            ${isAnual ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
+                          </span>
+                          <span class="ml-1 font-mono text-[11px] font-bold text-[#087e70]">Plan ${esc(pl.name)} ($${monto.toFixed(2)})</span>
+                          ${assignedTo ? `<span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-900">👤 Asignada a: ${esc(assignedTo.nombre)}</span>` : ''}
+                        </div>
                       </div>
                       <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${badgeCls}">${badgeTxt}</span>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] bg-white p-2.5 rounded-xl border border-slate-200">
-                      <div>
-                        <label class="font-bold text-slate-600 block">Fecha Próximo Corte (Día 01):</label>
-                        <input type="date" value="${esc(emp.fecha_proximo_corte || '')}" onchange="CRM.updateBillingField('${emp.id}', { fecha_proximo_corte: this.value })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
+                    ${isMaster ? `
+                      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] bg-white p-2.5 rounded-xl border border-slate-200">
+                        <div>
+                          <label class="font-bold text-slate-600 block">Fecha Próximo Corte (Día 01):</label>
+                          <input type="date" value="${esc(emp.fecha_proximo_corte || '')}" onchange="CRM.updateBillingField('${emp.id}', { fecha_proximo_corte: this.value })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
+                        </div>
+                        <div>
+                          <label class="font-bold text-slate-600 block">Control de Corte Automático:</label>
+                          <select onchange="CRM.updateBillingField('${emp.id}', { control_corte: this.value === 'true' })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 bg-white font-bold">
+                            <option value="true" ${emp.control_corte !== false ? 'selected' : ''}>✅ Activado (Aplica Reglas 1 y 2)</option>
+                            <option value="false" ${emp.control_corte === false ? 'selected' : ''}>⏸️ Desactivado (Exento)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label class="font-bold text-slate-600 block">Exento / Meses Gratis Hasta:</label>
+                          <input type="date" value="${esc(emp.exento_hasta || '')}" onchange="CRM.updateBillingField('${emp.id}', { exento_hasta: this.value || null })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
+                        </div>
                       </div>
-                      <div>
-                        <label class="font-bold text-slate-600 block">Control de Corte Automático:</label>
-                        <select onchange="CRM.updateBillingField('${emp.id}', { control_corte: this.value === 'true' })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 bg-white font-bold">
-                          <option value="true" ${emp.control_corte !== false ? 'selected' : ''}>✅ Activado (Aplica Reglas 1 y 2)</option>
-                          <option value="false" ${emp.control_corte === false ? 'selected' : ''}>⏸️ Desactivado (Exento)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label class="font-bold text-slate-600 block">Exento / Meses Gratis Hasta:</label>
-                        <input type="date" value="${esc(emp.exento_hasta || '')}" onchange="CRM.updateBillingField('${emp.id}', { exento_hasta: this.value || null })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
-                      </div>
-                    </div>
+                    ` : ''}
 
                     ${!this.isReadOnlyRole() ? `
                     <div class="flex flex-wrap gap-2 pt-1">
@@ -1594,7 +1716,7 @@
         const body = $('crm-body');
         const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
         const rolNorm = String((sesNow && sesNow.rol) || '').trim().toUpperCase();
-        const isSuper = (rolNorm === 'SUPERADMIN');
+        const isSuper = this.isMasterAdmin();
         const canSeeAllTickets = ['SUPERADMIN', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm);
         const isReadOnly = this.isReadOnlyRole();
         const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
@@ -2252,18 +2374,25 @@
       renderStaffView() {
         const body = $('crm-body');
         const isRO = this.isReadOnlyRole();
+        const selMonth = this.staffExcelMonth || new Date().toISOString().slice(0, 7);
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 class="text-sm font-extrabold text-[#073e3b]">🎧 Equipo Interno · Comercial/Cobranzas, Soporte, Facturación, Supervisión y Auditoría (${this.cachedStaff.length})</h3>
-                <p class="text-[11px] text-slate-500">Cada rol accede exclusivamente a las pestañas asignadas a su área.</p>
+                <p class="text-[11px] text-slate-500">Descarga el reporte Excel (.xlsx) individual por mes con el detalle comercial y el VAC de cada asesor.</p>
               </div>
-              ${!isRO ? `
-                <button onclick="CRM.openNewStaffModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
-                  + Crear Colaborador Interno
-                </button>
-              ` : '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-[11px]">👁️ Modo Solo Lectura</span>'}
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="flex items-center gap-1.5 bg-[#f5f8f8] px-2.5 py-1.5 rounded-xl border border-[#dce6e5]">
+                  <span class="text-[10.5px] font-bold text-[#073e3b]">📅 Mes Excel VAC:</span>
+                  <input type="month" value="${esc(selMonth)}" onchange="CRM.staffExcelMonth=this.value;" class="border border-[#d7e1e0] rounded-lg px-2 py-0.5 text-[11px] font-mono bg-white font-bold" />
+                </div>
+                ${!isRO ? `
+                  <button onclick="CRM.openNewStaffModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                    + Crear Colaborador Interno
+                  </button>
+                ` : '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-[11px]">👁️ Modo Solo Lectura</span>'}
+              </div>
             </div>
 
             <div class="space-y-2">
@@ -2278,27 +2407,140 @@
                     </div>
                     <div class="text-[11px] font-mono text-slate-600">Correo: <strong>${esc(st.email)}</strong> ${!isRO ? `· Clave: <strong>${esc(st.clave)}</strong>` : ''}</div>
                   </div>
-                  ${!isRO ? `
-                  <div class="flex items-center gap-2">
-                    <button onclick="CRM.openEditStaffModal(${sIdx})" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
-                      ✏️ Modificar
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="CRM.exportStaffCommercialXlsx('${esc(st.email)}', '${esc(st.nombre_completo || st.email)}')" class="px-3 py-1.5 rounded-lg text-[11px] font-extrabold bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] hover:text-white cursor-pointer">
+                      📊 Excel VAC (.xlsx)
                     </button>
-                    <button onclick="CRM.toggleUserActive('${st.id}', ${!st.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${st.activo ? 'bg-amber-100 text-amber-900' : 'bg-emerald-600 text-white'} cursor-pointer">
-                      ${st.activo ? '⏸️ Pausar' : '✅ Activar'}
-                    </button>
-                    ${rKey !== 'SUPERADMIN' ? `
-                      <button onclick="CRM.deleteUserConfirm('${st.id}', '${esc(st.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-100 text-rose-800 cursor-pointer">
-                        🗑️ Eliminar
+                    ${!isRO ? `
+                      <button onclick="CRM.openEditStaffModal(${sIdx})" class="px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                        ✏️ Modificar
                       </button>
-                    ` : ''}
+                      <button onclick="CRM.toggleUserActive('${st.id}', ${!st.activo})" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold ${st.activo ? 'bg-amber-100 text-amber-900' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        ${st.activo ? '⏸️ Pausar' : '✅ Activar'}
+                      </button>
+                      ${rKey !== 'SUPERADMIN' ? `
+                        <button onclick="CRM.deleteUserConfirm('${st.id}', '${esc(st.email)}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-rose-100 text-rose-800 cursor-pointer">
+                          🗑️ Eliminar
+                        </button>
+                      ` : ''}
+                    ` : `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${st.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${st.activo ? '● Activo' : '● Pausado'}</span>`}
                   </div>
-                  ` : `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${st.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${st.activo ? '● Activo' : '● Pausado'}</span>`}
                 </div>
               `;
               }).join('')}
             </div>
           </div>
         `;
+      },
+
+      async exportStaffCommercialXlsx(staffEmail, staffName) {
+        const targetMonth = this.staffExcelMonth || new Date().toISOString().slice(0, 7);
+        const cleanEmail = String(staffEmail || '').trim().toLowerCase();
+        toast(`⏳ Generando Excel (.xlsx) de ${staffName} (${targetMonth})...`);
+
+        try {
+          const allTks = await crmListarTickets();
+          const userTks = allTks.filter(t => {
+            if (String(t.tipo_solicitud || '').toUpperCase() !== 'ACTIVACION_VENTA') return false;
+            if (t.estado !== 'APROBADO') return false;
+            const d = t.detalle || {};
+            const agent = String(d.agente_email || t.solicitado_por || '').trim().toLowerCase();
+            if (agent !== cleanEmail) return false;
+            const iso = String(d.fecha_iso_local || (t.creado_en ? formatLocalDateTimeCrm(t.creado_en).slice(0, 10) : '')).slice(0, 7);
+            return iso === targetMonth;
+          });
+
+          const excelRows = [];
+          userTks.forEach(t => {
+            const d = t.detalle || {};
+            const dg = d.desglose_gerencial || {};
+            const fechaStr = d.fecha_hora_local || (t.creado_en ? formatLocalDateTimeCrm(t.creado_en) : '');
+            const pushRow = (accion, vacVal) => {
+              excelRows.push({
+                'Nombre de Cliente': t.empresa_nombre || '',
+                'RUC': t.empresa_ruc || '',
+                'Acción Comercial': accion,
+                'VAC (Valor Acción Comercial)': Number(Number(vacVal || 0).toFixed(2)),
+                'Fecha': fechaStr
+              });
+            };
+
+            if (d.es_cobranza) {
+              const vacCob = typeof dg.cobranza_vac_usd === 'number'
+                ? dg.cobranza_vac_usd
+                : Number(d.vac_cobranza_usd || 0);
+              pushRow(dg.cobranza_accion_label || d.concepto_pago || 'Cobranza / Renovación', vacCob);
+              return;
+            }
+
+            let addedAny = false;
+            if (Number(dg.venta_nueva_usd) > 0) {
+              pushRow(`Venta Nueva de Plan (${String(d.plan_nuevo || '').toUpperCase()})`, Number(dg.venta_nueva_usd));
+              addedAny = true;
+            }
+            if (Number(dg.upgrade_plan_usd) > 0) {
+              pushRow(`Upgrade de Plan (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()})`, Number(dg.upgrade_plan_usd));
+              addedAny = true;
+            }
+            if (Number(dg.usuarios_extra_usd) > 0) {
+              pushRow('Usuarios Nuevos Adicionales', Number(dg.usuarios_extra_usd));
+              addedAny = true;
+            }
+            if (Number(dg.modulos_ia_extra_usd) > 0) {
+              pushRow('Módulos Adicionales IA', Number(dg.modulos_ia_extra_usd));
+              addedAny = true;
+            }
+            if (Number(dg.modulo_personalizado_usd) > 0) {
+              pushRow('Módulo Personalizado (A medida)', Number(dg.modulo_personalizado_usd));
+              addedAny = true;
+            }
+            if (Number(dg.downgrade_plan_usd) > 0) {
+              pushRow(`Downgrade de Plan (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()})`, -Math.abs(Number(dg.downgrade_plan_usd)));
+              addedAny = true;
+            }
+            if (Number(dg.baja_usuarios_usd) > 0) {
+              pushRow('Baja de Usuarios de Cobro', -Math.abs(Number(dg.baja_usuarios_usd)));
+              addedAny = true;
+            }
+            if (Number(dg.baja_modulos_usd) > 0) {
+              pushRow('Baja de Módulos IA', -Math.abs(Number(dg.baja_modulos_usd)));
+              addedAny = true;
+            }
+
+            if (!addedAny) {
+              const isBaja = ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(String(d.tipo_operacion || ''));
+              const rawAmt = Number(d.monto_usd || 0);
+              pushRow(d.categoria || d.tipo_operacion || 'Movimiento Comercial', isBaja ? -Math.abs(rawAmt) : rawAmt);
+            }
+          });
+
+          if (excelRows.length === 0) {
+            return toast(`⚠️ ${staffName} no tiene acciones comerciales aprobadas en ${targetMonth}.`);
+          }
+
+          const totalVac = excelRows.reduce((acc, r) => acc + Number(r['VAC (Valor Acción Comercial)'] || 0), 0);
+          excelRows.push({
+            'Nombre de Cliente': 'TOTAL NETO VAC DEL MES',
+            'RUC': '',
+            'Acción Comercial': `${excelRows.length} movimiento(s)`,
+            'VAC (Valor Acción Comercial)': Number(totalVac.toFixed(2)),
+            'Fecha': targetMonth
+          });
+
+          if (typeof XLSX === 'undefined') {
+            return toast('⚠️ Librería Excel aún cargando, intenta nuevamente en 2 segundos.');
+          }
+
+          const ws = XLSX.utils.json_to_sheet(excelRows);
+          ws['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 38 }, { wch: 28 }, { wch: 20 }];
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'VAC_Comercial');
+          const safeFile = `VAC_${String(staffName).replace(/[^a-zA-Z0-9_-]/g, '_')}_${targetMonth}.xlsx`;
+          XLSX.writeFile(wb, safeFile);
+          toast(`✅ Excel "${safeFile}" descargado (${excelRows.length - 1} filas + Total).`);
+        } catch (e) {
+          toast('Error generando Excel: ' + e.message);
+        }
       },
 
       getStaffRoleOptionsHtml(selectedRol = 'COMERCIAL_COBRANZAS') {
@@ -2653,7 +2895,7 @@
       renderActivationsView() {
         const body = $('crm-body');
         const rolNorm = this.getSessionRole();
-        const isSuper = (rolNorm === 'SUPERADMIN');
+        const isSuper = this.isMasterAdmin();
         const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
         const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
 
@@ -3576,7 +3818,7 @@
               packs_ia: packsIa,
               activa: true
             };
-            if (det.tipo_operacion === 'UPGRADE_PLAN' || det.tipo_operacion === 'VENTA_NUEVA_PLAN') {
+            if (det.tipo_operacion === 'UPGRADE_PLAN' || det.tipo_operacion === 'VENTA_NUEVA_PLAN' || det.es_cobranza) {
               patch.fecha_proximo_corte = calcularProximoCorte(periodicidad);
             }
             await crmActualizarEmpresa(emp.id, patch);
@@ -3980,9 +4222,9 @@
           det.facturado_en = nowFormatted();
           det.historial = hist;
 
-          await crmActualizarTicket(tk.id, 'APROBADO', det);
+          await crmActualizarTicket(tk.id, 'PENDIENTE', det);
           V.closeModal();
-          toast(`✅ Factura ${numFact} guardada en el repositorio de documentos.`);
+          toast(`✅ Factura ${numFact} guardada. Pulsa "📲 Enviar Factura al Cliente por WhatsApp" para entregarla y cerrar el pendiente.`);
           await this.loadInvoicingTab();
         } catch (e) {
           toast('Error guardando factura: ' + e.message);
@@ -3994,7 +4236,10 @@
       async sendIssuedInvoiceWhatsApp(ticketId) {
         const tk = this.cachedTickets.find(x => x.id === ticketId);
         if (!tk) return;
-        const det = tk.detalle || {};
+        const det = Object.assign({}, tk.detalle || {});
+        if (!det.factura_emitida_url || !det.numero_factura_emitida) {
+          return toast('⚠️ Primero guarda el número y archivo de la factura emitida antes de enviarla al cliente.');
+        }
         const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(tk.empresa_ruc || '').trim()) || null;
         const rawPhone = String(det.telefono_contacto || (emp && emp.telefono) || '').replace(/\D/g, '');
         if (!rawPhone) {
@@ -4004,56 +4249,189 @@
           ? ('593' + rawPhone.slice(1))
           : rawPhone;
 
-        // Mensaje seguro SIN enlaces externos expuestos; el archivo se descarga para adjuntarlo directo en WhatsApp
         const lines = [
           `Hola *${tk.empresa_nombre}* (RUC: ${tk.empresa_ruc}) 👋`,
           `Te adjuntamos tu comprobante electrónico de *Vozkora SaaS*:`,
           `• *Concepto:* ${det.concepto_pago || 'Suscripción Vozkora'}`,
-          det.numero_factura_emitida ? `• *Factura N°:* ${det.numero_factura_emitida}` : '',
+          `• *Factura N°:* ${det.numero_factura_emitida}`,
           `• *Valor Total:* $${Number(det.monto_usd || 0).toFixed(2)} USD`,
           `¡Gracias por confiar en Vozkora!`
         ].filter(Boolean).join('\n');
 
-        if (det.factura_emitida_url) {
-          try {
-            const resp = await fetch(det.factura_emitida_url);
-            const blob = await resp.blob();
-            const ext = blob.type === 'application/pdf' ? 'pdf' : (blob.type.split('/')[1] || 'jpg');
-            const safeNum = String(det.numero_factura_emitida || tk.empresa_ruc || 'Factura').replace(/[^a-zA-Z0-9_-]/g, '_');
-            const fileName = `Factura_${safeNum}.${ext}`;
+        try {
+          const resp = await fetch(det.factura_emitida_url);
+          const blob = await resp.blob();
+          const ext = blob.type === 'application/pdf' ? 'pdf' : (blob.type.split('/')[1] || 'jpg');
+          const safeNum = String(det.numero_factura_emitida || tk.empresa_ruc || 'Factura').replace(/[^a-zA-Z0-9_-]/g, '_');
+          const fileName = `Factura_${safeNum}.${ext}`;
 
-            const a = document.createElement('a');
-            const objUrl = URL.createObjectURL(blob);
-            a.href = objUrl;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 500);
-            toast(`📥 Factura "${fileName}" descargada. Adjúntala en el chat de WhatsApp que se acaba de abrir.`);
-          } catch (e) {
-            toast('💬 Abriendo WhatsApp (sin enlace expuesto por seguridad). Adjunta tu factura desde tu carpeta local.');
-          }
+          const a = document.createElement('a');
+          const objUrl = URL.createObjectURL(blob);
+          a.href = objUrl;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 500);
+          toast(`📥 Factura "${fileName}" descargada para adjuntar en WhatsApp. Registro cerrado en Facturación.`);
+        } catch (e) {
+          toast('💬 Abriendo WhatsApp para adjuntar factura. Registro cerrado en Facturación.');
         }
 
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { email: 'facturacion@vozkora.com' };
+        const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
+        hist.push({
+          fecha: nowFormatted(),
+          de_estado: '📄 Factura Guardada',
+          a_estado: '🟢 Enviada a Cliente WhatsApp',
+          motivo: `Factura ${det.numero_factura_emitida} enviada por WhatsApp por ${ses.email}`,
+          autor: ses.email
+        });
+        det.factura_enviada_cliente = true;
+        det.factura_enviada_en = nowFormatted();
+        det.historial = hist;
+
+        try {
+          await crmActualizarTicket(tk.id, 'APROBADO', det);
+        } catch (e) {}
+
         window.open(`https://wa.me/${phoneIntl}?text=${encodeURIComponent(lines)}`, '_blank');
+        if (this.currentTab === 'invoicing') {
+          await this.loadInvoicingTab();
+        }
+      },
+
+      computePaymentEngineState() {
+        const ruc = ($('payFormRuc')?.value || '').trim();
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === ruc) || null;
+        const concepto = $('payFormConcept')?.value || 'Renovación Mensual';
+        const isAnual = concepto === 'Renovación Anual VIP';
+        const periodicidad = isAnual ? 'ANUAL' : 'MENSUAL';
+
+        const currentPlan = emp ? this.getPlanObject(emp.plan_activo) : this.getPlanObject('expansion');
+        const currPlanPrice = isAnual ? currentPlan.annualPrice : currentPlan.monthlyPrice;
+        const currIncludedUsers = currentPlan.includedUsers;
+        const currTotalUsers = emp ? (Number(emp.max_usuarios) || currIncludedUsers) : currIncludedUsers;
+        const currPaidExtraUsers = Math.max(0, currTotalUsers - currIncludedUsers);
+        const currPacks = emp && Array.isArray(emp.packs_ia)
+          ? (emp.plan_activo === 'enterprise' ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : emp.packs_ia)
+          : [];
+
+        // Opciones de cambio de plan / bajas al renovar
+        const payChangePlan = !!$('payChkChangePlan')?.checked;
+        const payDownUsers = !!$('payChkDownUsers')?.checked;
+        const payDownMods = !!$('payChkDownMods')?.checked;
+
+        const targetPlanId = payChangePlan ? ($('payFormPlan')?.value || currentPlan.id) : currentPlan.id;
+        const effectivePlan = this.getPlanObject(targetPlanId);
+        const newPlanPrice = isAnual ? effectivePlan.annualPrice : effectivePlan.monthlyPrice;
+
+        // Evaluación por NOMBRE / JERARQUÍA DEL PLAN (no por precio anual vs mensual):
+        // - Si el plan nuevo tiene menor jerarquía (rank < currentPlan.rank) => ES DOWNGRADE DE PLAN
+        // - Si el plan nuevo es el MISMO nombre/jerarquía (rank === currentPlan.rank) aunque cambie de Anual a Mensual => MANTIENE PLAN (NO es downgrade)
+        // - Si el plan nuevo tiene mayor jerarquía (rank > currentPlan.rank) aunque cambie de Anual a Mensual => ES UPGRADE DE PLAN (NO es downgrade)
+        const isPlanDowngrade = effectivePlan.rank < currentPlan.rank;
+        const isPlanUpgrade = effectivePlan.rank > currentPlan.rank;
+        const hasDowngrade = isPlanDowngrade || payDownUsers || payDownMods;
+
+        const qtyUsersDown = payDownUsers ? Math.max(1, parseInt($('payUsersDownQty')?.value, 10) || 1) : 0;
+        const unitExtraUserPrice = isAnual ? 9.60 : 1.00;
+        const newIncludedUsers = effectivePlan.includedUsers;
+        const baseExtraCarry = effectivePlan.id === 'piloto' ? 0 : currPaidExtraUsers;
+        const newPaidExtraUsers = Math.max(0, baseExtraCarry - qtyUsersDown);
+        const newTotalUsers = effectivePlan.id === 'piloto' ? 1 : (newIncludedUsers + newPaidExtraUsers);
+
+        const selectedMods = effectivePlan.id === 'enterprise'
+          ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas']
+          : Array.from(document.querySelectorAll('.pay-mod-chk:checked')).map(x => x.value);
+
+        const newIncludedModsQuota = this.getEffectiveIncludedModulesCount(effectivePlan.id);
+
+        // Valor de suscripción resultante a cobrar al cliente
+        const extraUsersCharge = newPaidExtraUsers * unitExtraUserPrice;
+        const extraModsCharge = selectedMods.slice(newIncludedModsQuota).reduce((sum, mId) => {
+          const pk = SVA_PACKS.find(x => x.id === mId);
+          return sum + (pk ? (isAnual ? pk.annualPrice : pk.monthlyPrice) : 0);
+        }, 0);
+
+        const suggestedCobro = Number((newPlanPrice + extraUsersCharge + extraModsCharge).toFixed(2));
+
+        // Cálculo exacto del VAC de Cobranza basado en JERARQUÍA DE PLAN:
+        // - Recuperación cliente mayor a 60 días -> +100% del valor cobrado (igual que venta nueva)
+        // - Mismo plan (ej. Anual -> Mensual mismo plan) o Upgrade de plan (ej. Anual Plan X -> Mensual Plan Y) sin bajas -> +10% POSITIVO
+        // - Downgrade de plan (baja a plan inferior), baja de usuarios o baja de módulos -> -10% NEGATIVO
+        const vacCobranza = concepto === 'Recuperación cliente mayor a 60 días'
+          ? suggestedCobro
+          : (hasDowngrade ? Number((-suggestedCobro * 0.10).toFixed(2)) : Number((suggestedCobro * 0.10).toFixed(2)));
+
+        // Validaciones
+        const errors = [];
+        if (emp) {
+          const sub = evaluarEstadoSuscripcion(emp);
+          if (concepto === 'Recuperación cliente mayor a 60 días' && sub.diasMora <= 60) {
+            errors.push(`Esta empresa tiene ${sub.diasMora} días de mora. "Recuperación cliente mayor a 60 días" aplica únicamente cuando supera 60 días.`);
+          }
+        }
+        if (payDownUsers) {
+          if (currPaidExtraUsers <= 0) {
+            errors.push(`El cliente tiene ${currIncludedUsers} usuarios incluidos gratis y 0 usuarios de cobro. No se pueden dar de baja usuarios incluidos.`);
+          } else if (qtyUsersDown > currPaidExtraUsers) {
+            errors.push(`Solo puedes dar de baja hasta ${currPaidExtraUsers} usuario(s) adicional(es) de cobro.`);
+          }
+        }
+        if (selectedMods.length > newIncludedModsQuota && hasDowngrade) {
+          errors.push(`El Plan ${effectivePlan.name} solo incluye ${newIncludedModsQuota} módulo(s) IA gratis y tienes ${selectedMods.length} marcados. Desmarca ${selectedMods.length - newIncludedModsQuota} módulo(s).`);
+        }
+        const removedMods = currPacks.filter(m => !selectedMods.includes(m));
+        if (payDownMods && removedMods.length === 0) {
+          errors.push('Marcaste "- Baja de Módulo IA": debes desmarcar el check del módulo que da de baja el cliente.');
+        }
+
+        return {
+          ok: errors.length === 0,
+          errors,
+          emp,
+          concepto,
+          isAnual,
+          periodicidad,
+          currentPlan,
+          currPlanPrice,
+          currIncludedUsers,
+          currTotalUsers,
+          currPaidExtraUsers,
+          currPacks,
+          effectivePlan,
+          newPlanPrice,
+          newIncludedUsers,
+          newPaidExtraUsers,
+          newTotalUsers,
+          selectedMods,
+          newIncludedModsQuota,
+          qtyUsersDown,
+          unitExtraUserPrice,
+          payChangePlan,
+          payDownUsers,
+          payDownMods,
+          isPlanDowngrade,
+          isPlanUpgrade,
+          hasDowngrade,
+          suggestedCobro,
+          vacCobranza
+        };
       },
 
       openPaymentModal(prefillRuc = '') {
         const cleanRuc = String(prefillRuc || '').trim();
         const emp = cleanRuc ? (this.cachedCompanies.find(c => String(c.ruc || '').trim() === cleanRuc) || null) : null;
         const isPrefilled = !!emp;
-        const pl = emp ? (PLANS.find(p => p.id === emp.plan_activo) || PLANS[3]) : PLANS[3];
-        const defaultAmt = emp ? (emp.periodicidad === 'ANUAL' ? pl.annualPrice : pl.monthlyPrice) : 22.99;
+        const basePlan = emp ? emp.plan_activo : 'expansion';
+        const baseUsers = emp ? (Number(emp.max_usuarios) || 5) : 5;
+        const basePacks = emp && Array.isArray(emp.packs_ia)
+          ? (emp.plan_activo === 'enterprise' ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : emp.packs_ia)
+          : [];
 
         V.openModal(
           isPrefilled ? `💳 FACTURAR / PAGO · ${emp.nombre}` : '💳 FACTURAR / PAGO (Cobranzas)',
-          `<div class="space-y-2.5 max-h-[70vh] overflow-y-auto pr-1 text-[11px]">
-             <div class="p-2.5 rounded-xl ${isPrefilled ? 'bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b]' : 'bg-amber-50 border border-amber-200 text-amber-950'} font-semibold">
-               ${isPrefilled
-                 ? `✓ Cliente precargado: <strong>${esc(emp.nombre)}</strong> (Plan ${esc(pl.name)} · ${esc(emp.periodicidad || 'MENSUAL')})`
-                 : 'Ingresa el RUC de la empresa para cargar sus datos o complétalos manualmente.'}
-             </div>
-
+          `<div class="space-y-2.5 max-h-[72vh] overflow-y-auto pr-1 text-[11px]">
              <div class="grid grid-cols-2 gap-2">
                <div>
                  <label class="font-bold">RUC Empresa *</label>
@@ -4067,12 +4445,11 @@
 
              <div class="grid grid-cols-2 gap-2">
                <div>
-                 <label class="font-bold">Concepto de Recaudación *</label>
-                 <select id="payFormConcept" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
-                   <option value="Renovación Mensual">Renovación Mensual</option>
-                   <option value="Renovación Anual VIP" ${(emp && emp.periodicidad === 'ANUAL') ? 'selected' : ''}>Renovación Anual VIP</option>
-                   <option value="Pago Saldo en Mora / Reactivación">Pago Saldo en Mora / Reactivación</option>
-                   <option value="Abono / Factura Pendiente">Abono / Factura Pendiente</option>
+                 <label class="font-bold text-[#073e3b]">Concepto de Recaudación *</label>
+                 <select id="payFormConcept" onchange="CRM.recheckPaymentFormLive(true)" class="w-full border border-[#087e70] rounded-xl p-2 mt-0.5 bg-white font-extrabold text-[#073e3b]">
+                   <option value="Renovación Mensual" ${(!emp || emp.periodicidad !== 'ANUAL') ? 'selected' : ''}>Renovación Mensual (VAC +10% / -10% DG)</option>
+                   <option value="Renovación Anual VIP" ${(emp && emp.periodicidad === 'ANUAL') ? 'selected' : ''}>Renovación Anual VIP (VAC +10% / -10% DG)</option>
+                   <option value="Recuperación cliente mayor a 60 días">Recuperación cliente mayor a 60 días (VAC 100%)</option>
                  </select>
                </div>
                <div>
@@ -4087,30 +4464,141 @@
                </div>
              </div>
 
+             <!-- Opciones de Cambio de Plan o Bajas al renovar -->
+             <div class="p-2.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+               <div class="font-extrabold text-[#073e3b]">⚙️ Condición de Renovación (Evaluada por jerarquía de plan):</div>
+               <div class="grid grid-cols-3 gap-1.5 text-[10.5px]">
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-cyan-50 border border-cyan-300 text-cyan-950 font-bold cursor-pointer">
+                   <input type="checkbox" id="payChkChangePlan" class="accent-[#087e70]" onchange="CRM.recheckPaymentFormLive(true)" />
+                   <span>🔄 Cambiar Plan (Up/Down)</span>
+                 </label>
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-950 font-bold cursor-pointer">
+                   <input type="checkbox" id="payChkDownUsers" class="accent-rose-600" onchange="CRM.recheckPaymentFormLive(true)" />
+                   <span>👥- Baja Usuarios</span>
+                 </label>
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-950 font-bold cursor-pointer">
+                   <input type="checkbox" id="payChkDownMods" class="accent-rose-600" onchange="CRM.recheckPaymentFormLive(true)" />
+                   <span>🤖- Baja Módulos</span>
+                 </label>
+               </div>
+
+               <div id="payBoxDownUsersQty" class="hidden bg-rose-50 p-2 rounded-xl border border-rose-300">
+                 <label class="font-bold text-[10px] text-rose-900 block">Cantidad de Usuarios de Cobro a dar de baja:</label>
+                 <input id="payUsersDownQty" type="number" min="1" max="200" value="1" oninput="CRM.recheckPaymentFormLive(true)" class="w-full border border-rose-300 rounded-lg px-2 py-1 mt-0.5 font-mono font-extrabold bg-white" />
+               </div>
+             </div>
+
+             <!-- Plan y Cupo Total Automático -->
              <div class="grid grid-cols-2 gap-2">
                <div>
-                 <label class="font-bold">Monto Recaudado (USD) *</label>
-                 <input id="payFormAmount" type="number" step="0.01" min="0.01" value="${defaultAmt.toFixed(2)}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-extrabold text-[#087e70]" />
+                 <label class="font-bold">Plan de Renovación *</label>
+                 <select id="payFormPlan" onchange="CRM.recheckPaymentFormLive(true)" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                   ${PLANS.map(pl => `<option value="${pl.id}" ${basePlan === pl.id ? 'selected' : ''}>${pl.name} (${pl.includedUsers} base · $${pl.monthlyPrice}/mes)</option>`).join('')}
+                 </select>
                </div>
                <div>
-                 <label class="font-bold">N° Comprobante / Referencia *</label>
-                 <input id="payFormRef" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="COMP-88412" />
+                 <label class="font-bold text-[#073e3b]">Cupo Total Usuarios (Automático) 🔒</label>
+                 <input id="payFormUsers" type="number" readonly value="${baseUsers}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-black bg-slate-100 text-[#073e3b]" />
+               </div>
+             </div>
+
+             <!-- Módulos IA -->
+             <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+               <div class="flex items-center justify-between">
+                 <label class="font-bold text-[#073e3b]">Módulos IA Activos:</label>
+                 <span id="payModsBanner" class="text-[10px] font-extrabold text-[#087e70]"></span>
+               </div>
+               <div class="grid grid-cols-2 gap-1">
+                 ${SVA_PACKS.map(pk => `
+                   <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-slate-200 text-[10.5px] cursor-pointer">
+                     <input type="checkbox" class="pay-mod-chk accent-[#087e70]" value="${pk.id}" ${basePacks.includes(pk.id) ? 'checked' : ''} onchange="CRM.recheckPaymentFormLive(true)" />
+                     <span>${pk.icon} ${esc(pk.name.replace('Pack ', '').replace(' IA', ''))}</span>
+                   </label>
+                 `).join('')}
+               </div>
+             </div>
+
+             <!-- Comparativo Antes / Después -->
+             <div id="payBeforeAfterBox" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[#087e70]">Monto Recaudado (USD) *</label>
+                 <input id="payFormAmount" type="number" step="0.01" min="0.01" value="${defaultAmt.toFixed(2)}" class="w-full border-2 border-[#087e70] rounded-xl p-2 mt-0.5 font-mono font-black text-[#087e70] bg-[#e7f5f1]/40" />
+                 <div id="payVacHint" class="text-[10px] font-extrabold mt-0.5"></div>
+               </div>
+               <div>
+                 <label class="font-bold text-rose-700">N° Comprobante / Referencia *</label>
+                 <input id="payFormRef" required class="w-full border border-rose-300 rounded-xl p-2 mt-0.5 font-mono font-bold" placeholder="COMP-88412" />
                </div>
              </div>
 
              <div>
-               <label class="font-bold text-[#073e3b]">Observación / Fórmula de Cobro (Obligatorio) *</label>
-               <textarea id="payFormFormula" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Renovación mensual ciclo diciembre sin recargos = $${defaultAmt.toFixed(2)}"></textarea>
+               <label class="font-bold text-[#073e3b]">Fórmula de Cobro (Generada automáticamente — editable) *</label>
+               <textarea id="payFormFormula" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[10.5px]"></textarea>
              </div>
 
              <div>
                <label class="font-bold text-rose-700">Comprobante de Pago (Imagen o PDF Obligatorio) *</label>
                <input id="payFormFile" type="file" accept="image/*,application/pdf,.pdf" class="w-full border border-rose-300 bg-rose-50/40 rounded-xl p-1.5 mt-0.5" />
              </div>
+
+             <div id="payValidationBox" class="space-y-1"></div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           <button id="btnSubmitPayEntry" onclick="CRM.submitPaymentEntry()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">🧾 Enviar a Facturación Pendientes</button>`
+           <button id="btnSubmitPayEntry" onclick="CRM.submitPaymentEntry()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">🚀 Enviar a Activaciones Pendientes</button>`
         );
+        setTimeout(() => this.recheckPaymentFormLive(true), 30);
+      },
+
+      recheckPaymentFormLive(updateAmounts = false) {
+        const st = this.computePaymentEngineState();
+        if ($('payFormPlan')) $('payFormPlan').disabled = !st.payChangePlan;
+        if ($('payBoxDownUsersQty')) $('payBoxDownUsersQty').classList.toggle('hidden', !st.payDownUsers);
+        if ($('payFormUsers')) $('payFormUsers').value = st.newTotalUsers;
+
+        const modBanner = $('payModsBanner');
+        if (modBanner) {
+          modBanner.textContent = `${st.selectedMods.length}/${st.newIncludedModsQuota} incluidos en ${st.effectivePlan.name}`;
+        }
+
+        const baBox = $('payBeforeAfterBox');
+        if (baBox) {
+          baBox.innerHTML = `
+            <div class="p-2 rounded-xl bg-slate-100 border border-slate-300 text-[10.5px]">
+              <div class="font-extrabold text-slate-700">📌 CICLO ANTERIOR:</div>
+              <div>Plan: <strong>${esc(st.currentPlan.name)}</strong> · ${st.currTotalUsers} usu. · ${st.currPacks.length} mód.</div>
+            </div>
+            <div class="p-2 rounded-xl bg-[#e7f5f1] border border-[#087e70] text-[10.5px]">
+              <div class="font-extrabold text-[#073e3b]">✨ RENOVACIÓN A APLICAR:</div>
+              <div>Plan: <strong>${esc(st.effectivePlan.name)}</strong> (${st.periodicidad}) · ${st.newTotalUsers} usu. · ${st.selectedMods.length} mód.</div>
+            </div>
+          `;
+        }
+
+        const condLabel = st.hasDowngrade
+          ? 'CON DOWNGRADE'
+          : (st.isPlanUpgrade ? 'UPGRADE DE PLAN' : 'MISMO PLAN');
+
+        if (updateAmounts) {
+          if ($('payFormAmount')) $('payFormAmount').value = st.suggestedCobro.toFixed(2);
+          if ($('payFormFormula')) {
+            $('payFormFormula').value = `${st.concepto} (${condLabel}) · Plan ${st.effectivePlan.name} (${st.newTotalUsers} usu., ${st.selectedMods.length} mód.) = $${st.suggestedCobro.toFixed(2)} USD`;
+          }
+        }
+        const vacHint = $('payVacHint');
+        if (vacHint) {
+          vacHint.className = st.vacCobranza < 0 ? 'text-[10px] font-extrabold text-rose-700 mt-0.5' : 'text-[10px] font-extrabold text-[#087e70] mt-0.5';
+          vacHint.textContent = `VAC Comisionable (${condLabel}): ${st.vacCobranza >= 0 ? '+' : ''}$${st.vacCobranza.toFixed(2)} USD`;
+        }
+
+        const vBox = $('payValidationBox');
+        if (vBox) {
+          vBox.innerHTML = st.ok
+            ? `<div class="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[10.5px]">✓ Validación correcta (${condLabel}). Viajará a 🚀 Activaciones Pendientes.</div>`
+            : st.errors.map(e => `<div class="p-2 rounded-xl bg-rose-100 border border-rose-300 text-rose-900 font-bold text-[10.5px]">⛔ ${esc(e)}</div>`).join('');
+        }
+        return st;
       },
 
       autofillPaymentModalByRuc(rucVal) {
@@ -4118,17 +4606,21 @@
         const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === clean);
         if (!emp) return;
         if ($('payFormNombre')) $('payFormNombre').value = emp.nombre || '';
-        const pl = PLANS.find(p => p.id === emp.plan_activo) || PLANS[3];
-        const amt = emp.periodicidad === 'ANUAL' ? pl.annualPrice : pl.monthlyPrice;
-        if ($('payFormAmount')) $('payFormAmount').value = amt.toFixed(2);
+        if ($('payFormPlan')) $('payFormPlan').value = emp.plan_activo || 'expansion';
         if ($('payFormConcept') && emp.periodicidad === 'ANUAL') $('payFormConcept').value = 'Renovación Anual VIP';
+        const packs = emp.plan_activo === 'enterprise'
+          ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas']
+          : (Array.isArray(emp.packs_ia) ? emp.packs_ia : []);
+        document.querySelectorAll('.pay-mod-chk').forEach(chk => {
+          chk.checked = packs.includes(chk.value);
+        });
         toast('✓ Empresa detectada: ' + emp.nombre);
+        this.recheckPaymentFormLive(true);
       },
 
       async submitPaymentEntry() {
         const ruc = ($('payFormRuc')?.value || '').trim();
         const nombre = ($('payFormNombre')?.value || '').trim();
-        const concepto = $('payFormConcept')?.value || 'Renovación Mensual';
         const banco = $('payFormBank')?.value || 'Transferencia';
         const montoUsd = parseFloat($('payFormAmount')?.value);
         const refPago = ($('payFormRef')?.value || '').trim();
@@ -4136,12 +4628,16 @@
         const fileObj = $('payFormFile')?.files?.[0] || null;
 
         if (!ruc || !nombre) return toast('Ingresa RUC y Razón Social del cliente.');
+        if (!refPago) return toast('⚠️ El campo N° Comprobante / Referencia * es obligatorio.');
         if (isNaN(montoUsd) || montoUsd <= 0) return toast('Ingresa un monto válido.');
-        if (!formulaCobro) return toast('⚠️ Debes escribir la observación / fórmula de cobro.');
+        if (!formulaCobro) return toast('⚠️ Debes escribir la fórmula de cobro.');
         if (!fileObj) return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF).');
 
+        const st = this.recheckPaymentFormLive(false);
+        if (!st.ok) return toast('⛔ Corrige los errores marcados en rojo antes de continuar.');
+
         const btn = $('btnSubmitPayEntry');
-        if (btn) { btn.textContent = 'Subiendo comprobante...'; btn.disabled = true; }
+        if (btn) { btn.textContent = 'Enviando a Activaciones...'; btn.disabled = true; }
 
         try {
           let compUrl = '';
@@ -4152,31 +4648,55 @@
           const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
           const fechaLocal = nowFormatted();
 
+          const vacFinal = st.concepto === 'Recuperación cliente mayor a 60 días'
+            ? Number(montoUsd.toFixed(2))
+            : (st.hasDowngrade ? Number((-montoUsd * 0.10).toFixed(2)) : Number((montoUsd * 0.10).toFixed(2)));
+
+          const condTag = st.hasDowngrade ? ' (Con Downgrade)' : (st.isPlanUpgrade ? ' (Upgrade de Plan)' : ' (Mismo Plan)');
+          const accionLabel = `${st.concepto}${condTag}`;
+
           await crearTicketVozkora({
             empresa_ruc: ruc,
             empresa_nombre: nombre,
             solicitado_por: ses.email || 'cobranzas@vozkora.com',
-            tipo_solicitud: 'FACTURACION_PAGO',
+            tipo_solicitud: 'ACTIVACION_VENTA',
             estado: 'PENDIENTE',
             detalle: {
-              categoria: `💳 ${concepto}`,
-              concepto_pago: concepto,
+              categoria: `💳 ${accionLabel}`,
+              es_cobranza: true,
+              tipo_operacion: st.isPlanDowngrade ? 'DOWNGRADE_PLAN' : (st.isPlanUpgrade ? 'UPGRADE_PLAN' : (st.payDownUsers ? 'BAJA_USUARIOS_EXTRA' : (st.payDownMods ? 'BAJA_MODULO_IA' : 'RENOVACION_COBRANZA'))),
+              concepto_pago: accionLabel,
               banco_canal: banco,
+              plan_anterior: st.currentPlan.id,
+              plan_anterior_label: st.currentPlan.name,
+              plan_nuevo: st.effectivePlan.id,
+              usuarios_anterior: st.currTotalUsers,
+              usuarios_nuevo: st.newTotalUsers,
+              usuarios_delta: st.newTotalUsers - st.currTotalUsers,
+              periodicidad: st.periodicidad,
+              modulos_finales: st.selectedMods,
               monto_usd: montoUsd,
-              referencia_pago: refPago || 'N/A',
+              vac_cobranza_usd: vacFinal,
+              desglose_gerencial: {
+                cobranza_accion_label: accionLabel,
+                cobranza_vac_usd: vacFinal
+              },
+              referencia_pago: refPago,
               formula_cobro: formulaCobro,
               comprobante_url: compUrl,
+              telefono_contacto: (st.emp && st.emp.telefono) || '',
+              email_contacto: (st.emp && st.emp.email_contacto) || '',
               agente_email: ses.email || '',
               agente_nombre: ses.nombre_completo || ses.email || 'Cobranzas',
-              agente_rol: ses.rol || 'COBRANZAS',
+              agente_rol: ses.rol || 'COMERCIAL_COBRANZAS',
               fecha_hora_local: fechaLocal,
               fecha_iso_local: typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10),
               historial: [
                 {
                   fecha: fechaLocal,
                   de_estado: 'NUEVO',
-                  a_estado: '🟡 Pendiente de Facturar',
-                  motivo: `${concepto} por $${montoUsd.toFixed(2)} (${banco}) — ${formulaCobro}`,
+                  a_estado: '🟡 Pendiente Activación (Cobranza)',
+                  motivo: `${accionLabel} · Cobro: $${montoUsd.toFixed(2)} (VAC: ${vacFinal >= 0 ? '+' : ''}$${vacFinal.toFixed(2)}) · Ref: ${refPago}`,
                   autor: ses.email || 'Cobranzas'
                 }
               ]
@@ -4184,12 +4704,13 @@
           });
 
           V.closeModal();
-          toast('🧾 Pago enviado a Facturación Pendientes.');
-          if (this.currentTab === 'invoicing') await this.loadInvoicingTab();
+          toast('🚀 Cobranza registrada: viajó a Activaciones Pendientes y se retiró de tu cartera pendiente.');
+          if (this.currentTab === 'billing') await this.loadBillingTab();
+          else if (this.currentTab === 'invoicing') await this.loadInvoicingTab();
         } catch (e) {
-          toast('Error registrando pago: ' + e.message);
+          toast('Error registrando cobranza: ' + e.message);
         } finally {
-          if (btn) { btn.textContent = '🧾 Enviar a Facturación Pendientes'; btn.disabled = false; }
+          if (btn) { btn.textContent = '🚀 Enviar a Activaciones Pendientes'; btn.disabled = false; }
         }
       },
 
