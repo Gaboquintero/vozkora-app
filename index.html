@@ -73,7 +73,7 @@
 </head>
 <body class="min-h-screen flex flex-col font-sans antialiased bg-[#f5f8f8] text-[#17343a] selection:bg-emerald-200 selection:text-teal-950">
   <!-- ===================================================================== -->
-  <!-- PANTALLA DE INICIO DE SESIÓN EMPRESARIAL VOZKORA (GOOGLE PLAY READY)   -->
+  <!-- PANTALLA DE INICIO DE SESIÓN EMPRESARIAL VOZKORA                     -->
   <!-- ===================================================================== -->
   <div id="auth-overlay" class="fixed inset-0 z-50 bg-[#f5f8f8] flex flex-col items-center justify-center p-4 overflow-y-auto">
     <div class="w-full max-w-[410px] bg-white rounded-3xl border border-[#dce6e5] shadow-xl overflow-hidden">
@@ -687,10 +687,32 @@
       return parts.join(', ');
     }
 
+    function formatLocalDateTime(dateInput = new Date()) {
+      const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+      if (isNaN(d.getTime())) return String(dateInput || '');
+      try {
+        const parts = new Intl.DateTimeFormat('es-EC', {
+          timeZone: 'America/Guayaquil',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).formatToParts(d);
+        const get = t => (parts.find(p => p.type === t) || {}).value || '00';
+        const hh = get('hour') === '24' ? '00' : get('hour');
+        return `${get('day')}/${get('month')}/${get('year')} ${hh}:${get('minute')}`;
+      } catch (e) {
+        const utcMs = d.getTime() + (d.getTimezoneOffset() * 60000);
+        const loc = new Date(utcMs - (5 * 3600000));
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(loc.getDate())}/${pad(loc.getMonth() + 1)}/${loc.getFullYear()} ${pad(loc.getHours())}:${pad(loc.getMinutes())}`;
+      }
+    }
+
     function nowFormatted() {
-      const d = new Date();
-      const pad = n => String(n).padStart(2, '0');
-      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      return formatLocalDateTime(new Date());
     }
 
     function syncOfflineBadgeUI() {
@@ -1478,17 +1500,28 @@
         ${gerenciaActive ? (() => {
           const bPeriod = appData.briefingFilterPeriod || 'day';
           const bDate = appData.briefingFilterDate || (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10));
-          const bAnalysis = V.computeBriefingConsultingData(bPeriod, bDate);
+          const bKey = bPeriod + '_' + (bPeriod === 'day' ? bDate : (bPeriod === 'year' ? bDate.slice(0, 4) : bDate.slice(0, 7)));
+          if (!appData.briefingCache) appData.briefingCache = {};
+          if (!appData.briefingCache[bKey] && !appData._briefingLoadingKey) {
+            setTimeout(() => V.generateAiBriefing(false), 60);
+          }
+          const bAnalysis = appData.briefingCache[bKey] || V.computeBriefingConsultingData(bPeriod, bDate);
+          const isLoadingBr = appData._briefingLoadingKey === bKey;
           return `
             <div class="bg-[#073e3b] text-white rounded-2xl p-3.5 space-y-2.5 shadow-sm">
               <div class="flex items-center justify-between gap-2">
                 <div>
-                  <div class="text-xs font-extrabold text-[#70d2bd]">🎧 Briefing Gerencial en Audio IA</div>
-                  <div class="text-[10px] text-teal-200">Consultoría ejecutiva + proyección operativa</div>
+                  <div class="text-xs font-extrabold text-[#70d2bd]">🎧 Briefing Consultor Gerencial IA</div>
+                  <div class="text-[10px] text-teal-200">Magíster en Contabilidad, Finanzas e Inventarios</div>
                 </div>
-                <button onclick="V.toggleBriefing()" class="px-3 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#70d2bd] hover:bg-white text-[#073e3b] cursor-pointer shrink-0">
-                  ${appData.briefingPlaying ? '⏸ Detener Audio' : '▶ Escuchar Briefing'}
-                </button>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button onclick="V.generateAiBriefing(true)" class="px-2 py-1.5 rounded-xl text-[10px] font-bold bg-white/15 hover:bg-white/25 text-teal-100 cursor-pointer" title="Generar nuevo análisis consultivo">
+                    ${isLoadingBr ? '⏳' : '🔄'}
+                  </button>
+                  <button onclick="V.toggleBriefing()" class="px-3 py-1.5 rounded-xl text-[10.5px] font-extrabold bg-[#70d2bd] hover:bg-white text-[#073e3b] cursor-pointer">
+                    ${appData.briefingPlaying ? '⏸ Detener' : '▶ Escuchar'}
+                  </button>
+                </div>
               </div>
 
               <!-- Filtro Día, Mes y Año -->
@@ -1514,9 +1547,10 @@
               </div>
 
               <div class="p-2.5 rounded-xl bg-white/10 text-[11px] text-teal-50 leading-relaxed space-y-1.5">
-                <div><strong>📊 Diagnóstico (${esc(bAnalysis.periodLabel)}):</strong> ${esc(bAnalysis.summaryText)}</div>
+                ${isLoadingBr ? `<div class="text-[#70d2bd] font-bold animate-pulse">🧠 Analizando estados financieros, rotación de bodega y cartera del período...</div>` : ''}
+                <div><strong>📊 Dictamen Consultivo (${esc(bAnalysis.periodLabel)}):</strong> ${esc(bAnalysis.summaryText)}</div>
                 <div class="p-2 rounded-lg bg-amber-400/20 border border-amber-300/40 text-amber-100">
-                  <strong>⚠️ Esto puede pasar:</strong> ${esc(bAnalysis.predictionText)}
+                  <strong>🎯 Riesgo & Acción Estratégica:</strong> ${esc(bAnalysis.predictionText)}
                 </div>
               </div>
             </div>
@@ -4014,8 +4048,9 @@ ${renderSearchableClientPicker('quoteClient')}
         m.classList.remove('flex');
       },
 
-      // --- CANAL TÉCNICO WHATSAPP + REGISTRO GARANTIZADO DE LEAD EN SUPABASE (GOOGLE PLAY COMPLIANT) ---
-      async contactTechnicalChannelWhatsapp(moduloLabel = 'Consulta Técnica') {
+      // --- CANAL TÉCNICO WHATSAPP + REGISTRO ÚNICO DE TICKET Y ESTADO DE ENVÍO WHATSAPP ---
+      activePendingWhatsappTicket: null,
+      async contactTechnicalChannelWhatsapp(moduloLabel = 'Consulta Técnica', customOpts = {}) {
         const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {
           empresa_nombre: 'Empresa Vozkora', empresa_ruc: 'N/A', email: 'usuario@empresa.com'
         };
@@ -4023,22 +4058,106 @@ ${renderSearchableClientPicker('quoteClient')}
           ? VOZKORA_CONFIG.ASESOR_VIP_WHATSAPP
           : '573239399953';
 
-        toast('⏳ Conectando con Canal Técnico...');
-        if (typeof registrarInteresModuloVozkora === 'function') {
+        const tipoSolicitud = customOpts.tipoSolicitud || 'CONSULTA_CANAL_TECNICO';
+        const categoria = customOpts.categoria || '📲 Consulta Canal Técnico';
+        const descripcion = customOpts.descripcion || `El cliente solicitó contacto con el área técnica desde: ${moduloLabel}`;
+
+        toast('⏳ Registrando solicitud...');
+        let createdTicket = null;
+        if (typeof crearTicketVozkora === 'function') {
           try {
-            await registrarInteresModuloVozkora(moduloLabel);
+            createdTicket = await crearTicketVozkora({
+              empresa_ruc: ses.empresa_ruc || 'N/A',
+              empresa_nombre: ses.empresa_nombre || 'Empresa Vozkora',
+              solicitado_por: ses.email || 'usuario@empresa.com',
+              tipo_solicitud: tipoSolicitud,
+              estado: 'PENDIENTE',
+              detalle: {
+                categoria,
+                modulo_consultado: moduloLabel,
+                telefono_contacto: ses.empresa_telefono || 'N/A',
+                descripcion,
+                whatsapp_enviado: false,
+                whatsapp_estado: 'NO_ENVIADO',
+                fecha_hora_local: nowFormatted(),
+                historial: [
+                  {
+                    fecha: nowFormatted(),
+                    de_estado: 'NUEVO',
+                    a_estado: '🟡 Abierto (🔴 Pendiente envío WhatsApp)',
+                    motivo: descripcion,
+                    autor: ses.email || 'Cliente'
+                  }
+                ]
+              }
+            });
           } catch (e) {}
         }
 
-        const waMsg = encodeURIComponent(
-          `Hola Canal Técnico Vozkora, solicito asistencia e información sobre la habilitación de:\n` +
-          `• *Módulo / Función:* ${moduloLabel}\n` +
+        const waPlainText =
+          `Hola Canal Técnico Vozkora, solicito asistencia sobre:\n` +
+          `• *Solicitud:* ${moduloLabel}\n` +
           `• *Empresa:* ${ses.empresa_nombre || 'N/A'}\n` +
           `• *RUC:* ${ses.empresa_ruc || 'N/A'}\n` +
-          `• *Usuario:* ${ses.email || 'N/A'}`
+          `• *Usuario:* ${ses.email || 'N/A'}`;
+
+        this.activePendingWhatsappTicket = {
+          ticket: createdTicket,
+          phone,
+          waPlainText,
+          moduloLabel
+        };
+
+        this.openModal(
+          '💬 Continuar por WhatsApp con Área Técnica',
+          `<div class="space-y-2.5 text-[11px] text-slate-700">
+             <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-semibold">
+               ✓ Tu solicitud ya quedó registrada para nuestro equipo (${esc(moduloLabel)}).
+             </div>
+             <p class="text-slate-600 leading-relaxed">
+               Pulsa el botón verde para abrir WhatsApp con el mensaje listo y conversar directamente con un asesor, o cierra esta ventana si prefieres que te contactemos nosotros.
+             </p>
+           </div>`,
+          `<button type="button" onclick="V.closeModal()" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer">
+             Cerrar / Después
+           </button>
+           <button type="button" onclick="V.confirmAndSendPendingWhatsapp()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+             📲 Enviar Mensaje por WhatsApp →
+           </button>`
         );
-        window.open(`https://wa.me/${phone}?text=${waMsg}`, '_blank', 'noopener,noreferrer');
-        toast('💬 Canal Técnico WhatsApp abierto.');
+      },
+
+      async confirmAndSendPendingWhatsapp() {
+        const ctx = this.activePendingWhatsappTicket;
+        if (!ctx) {
+          this.closeModal();
+          return;
+        }
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const tk = ctx.ticket;
+        if (tk && tk.id && typeof crmActualizarTicket === 'function') {
+          try {
+            const det = Object.assign({}, tk.detalle || {}, {
+              whatsapp_enviado: true,
+              whatsapp_estado: 'ENVIADO',
+              whatsapp_enviado_en: nowFormatted()
+            });
+            const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
+            hist.push({
+              fecha: nowFormatted(),
+              de_estado: '🔴 Sin enviar WhatsApp',
+              a_estado: '🟢 Enviado a WhatsApp',
+              motivo: 'El cliente pulsó enviar mensaje por WhatsApp.',
+              autor: ses.email || 'Cliente'
+            });
+            det.historial = hist;
+            await crmActualizarTicket(tk.id, tk.estado || 'PENDIENTE', det);
+          } catch (e) {}
+        }
+        this.activePendingWhatsappTicket = null;
+        this.closeModal();
+        window.open(`https://wa.me/${ctx.phone}?text=${encodeURIComponent(ctx.waPlainText)}`, '_blank', 'noopener,noreferrer');
+        toast('💬 Abriendo WhatsApp con Canal Técnico...');
       },
 
       openPrivacyPolicyModal() {
@@ -4139,7 +4258,7 @@ ${renderSearchableClientPicker('quoteClient')}
       openRealCameraModal(purpose = 'ruc', extraIdx = null) {
         if (!sessionStorage.getItem('vozkora_camera_disclosure_session')) {
           this.openModal(
-            '📷 Autorización de Uso de Cámara (Google Play)',
+            '📷 Autorización de Uso de Cámara',
             `<div class="space-y-2 text-[11px] text-slate-700 leading-relaxed">
                <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-bold">
                  Estás autorizando a Vozkora a usar la cámara de tu dispositivo.
@@ -6021,7 +6140,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
       startVoiceInventoryMic() {
         if (!sessionStorage.getItem('vozkora_mic_disclosure_session')) {
           this.openModal(
-            '🎙️ Autorización de Uso de Micrófono (Google Play)',
+            '🎙️ Autorización de Uso de Micrófono',
             `<div class="space-y-2 text-[11px] text-slate-700 leading-relaxed">
                <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-bold">
                  Estás autorizando a Vozkora a usar el micrófono de tu dispositivo.
@@ -6209,26 +6328,14 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
       },
 
       async requestVipAnnualTicket() {
-        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
-        try {
-          if (typeof crearTicketVozkora === 'function') {
-            await crearTicketVozkora({
-              empresa_ruc: ses.empresa_ruc || 'N/A',
-              empresa_nombre: ses.empresa_nombre || 'Empresa Vozkora',
-              solicitado_por: ses.email || 'usuario@empresa.com',
-              tipo_solicitud: 'VENTAS_UPGRADE',
-              detalle: {
-                categoria: '👑 Solicitud Cambio a Plan Anual (Horario VIP 6am-11pm)',
-                telefono_contacto: ses.empresa_telefono || 'N/A',
-                descripcion: 'El cliente solicita pasar su suscripción mensual a Anual para activar el Horario Especial VIP (6:00 AM a 11:00 PM).',
-                historial: [
-                  { fecha: nowFormatted(), de_estado: 'NUEVO', a_estado: '🟡 Abierto', motivo: 'Solicitud de paso a Plan Anual VIP desde indicador de horario.', autor: ses.email || 'Cliente' }
-                ]
-              }
-            });
+        await this.contactTechnicalChannelWhatsapp(
+          'Cambio a Modalidad Anual — Horario Especial VIP (6:00 AM a 11:00 PM)',
+          {
+            tipoSolicitud: 'VENTAS_UPGRADE',
+            categoria: '👑 Solicitud Cambio a Modalidad Anual (Horario VIP 6am-11pm)',
+            descripcion: 'El cliente solicitó pasar su suscripción mensual a modalidad Anual para activar el Horario Especial VIP (6:00 AM a 11:00 PM).'
           }
-        } catch (e) {}
-        this.contactTechnicalChannelWhatsapp('Quiero pasar mi plan a Anual para activar el Horario VIP (6am - 11pm)');
+        );
       },
 
       sendAiWhatsappCollection(phone) {
@@ -6394,6 +6501,8 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
                 categoria: tituloVisual,
                 telefono_contacto: phone || ses.empresa_telefono || 'N/A',
                 descripcion: desc,
+                whatsapp_enviado: false,
+                fecha_hora_local: nowFormatted(),
                 historial: [
                   { fecha: nowFormatted(), de_estado: 'NUEVO', a_estado: 'ABIERTO', motivo: 'Solicitud creada por el cliente: ' + desc, autor: ses.email }
                 ]
@@ -6452,6 +6561,8 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
                 nombre,
                 email_nuevo: email,
                 perfil,
+                whatsapp_enviado: false,
+                fecha_hora_local: nowFormatted(),
                 descripcion: `Solicita alta de usuario para ${nombre} (${email}) con perfil ${perfil}.`,
                 historial: [
                   { fecha: nowFormatted(), de_estado: 'NUEVO', a_estado: 'ABIERTO', motivo: `Solicitud de usuario nuevo: ${nombre} (${email}) - ${perfil}`, autor: ses.email }
@@ -6497,36 +6608,167 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
         };
 
         const invs = (appData.invoices || []).filter(x => matches(x.date || isoRef));
-        const totalSales = invs.reduce((a, x) => a + Number(x.total || 0), 0);
-        const pendingDebt = (appData.clients || []).reduce((a, c) => a + Number(c.debt || 0), 0);
-        const lowItems = (appData.products || []).filter(p => Number(p.stock || 0) <= 15);
-        const topClient = invs.length > 0 ? invs[0].client : ((appData.clients[0] && appData.clients[0].name) || 'Distribuidora Sol');
-        const critProd = lowItems.length > 0 ? lowItems[0] : (appData.products[0] || { name: 'Atún en lata', stock: 12 });
+        const ncs = (appData.creditNotes || []).filter(x => matches(x.date || isoRef));
+        const quotes = (appData.quotes || []).filter(x => matches(x.date || isoRef));
+        const purchases = (appData.purchases || []).filter(x => matches(x.date || isoRef));
 
-        const periodLabel = period === 'day' ? `Día ${isoRef}` : (period === 'year' ? `Año ${isoRef.slice(0, 4)}` : `Mes ${isoRef.slice(0, 7)}`);
-        const summaryText = `Facturación acumulada de ${appMoney(totalSales)} en ${invs.length} comprobante(s) y cartera por cobrar de ${appMoney(pendingDebt)}. Prioridad operativa: gestionar cobro a ${topClient} y controlar rotación de ${lowItems.length} producto(s) con stock ajustado.`;
-        const predictionText = `Si se agota ${critProd.name} (quedan ${critProd.stock} unid.), podrías perder ventas recurrentes: históricamente clientes como ${topClient} suelen pedir alrededor de 22 unidades en cierres de semana/viernes. Repón hoy mismo para proteger el margen.`;
+        const grossSales = invs.reduce((a, x) => a + Number(x.total || 0), 0);
+        const totalNc = ncs.reduce((a, x) => a + Number(x.amount || 0), 0);
+        const netSales = Math.max(0, grossSales - totalNc);
+        const avgTicket = invs.length > 0 ? (netSales / invs.length) : 0;
+        const openQuotesVal = quotes.filter(q => !q.converted).reduce((a, q) => a + Number(q.total || 0), 0);
+        const ivaVentas = invs.reduce((a, x) => a + Number(x.ivaAmt || 0), 0);
+        const ivaCompras = purchases.filter(c => c.deductible !== false).reduce((a, c) => a + Number(c.ivaAmt || 0), 0);
+
+        const pendingDebt = (appData.clients || []).reduce((a, c) => a + Number(c.debt || 0), 0);
+        const debtorTop = (appData.clients || []).filter(c => c.id !== '9999999999999').sort((a, b) => Number(b.debt || 0) - Number(a.debt || 0))[0];
+
+        const products = appData.products || [];
+        const invCostTotal = products.reduce((a, p) => a + (Number(p.stock || 0) * Number(p.cost || 0)), 0);
+        const invPvpTotal = products.reduce((a, p) => a + (Number(p.stock || 0) * Number(p.price || 0)), 0);
+        const potentialGrossMargin = invPvpTotal > 0 ? (((invPvpTotal - invCostTotal) / invPvpTotal) * 100) : 0;
+        const lowItems = products.filter(p => Number(p.stock || 0) <= 15).sort((a, b) => Number(a.stock || 0) - Number(b.stock || 0));
+        const overStockItems = products.filter(p => Number(p.stock || 0) >= 40).sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0));
+        const topClient = invs.length > 0 ? invs[0].client : ((debtorTop && debtorTop.name) || 'tu cartera activa');
+
+        if (period === 'day') {
+          const periodLabel = `Cierre Diario · ${isoRef}`;
+          const summaryText = invs.length > 0
+            ? `Hoy registras ${invs.length} factura(s) con venta neta de ${appMoney(netSales)} y ticket promedio de ${appMoney(avgTicket)}. Liquidez inmediata por recaudar: ${appMoney(pendingDebt)}${debtorTop && debtorTop.debt > 0 ? ` (mayor saldo en ${debtorTop.name}: ${appMoney(debtorTop.debt)})` : ''}.`
+            : `Aún no registras facturas emitidas el ${isoRef}, pero tienes ${quotes.filter(q => !q.converted).length} proforma(s) abiertas por ${appMoney(openQuotesVal)} listas para cierre inmediato y ${appMoney(pendingDebt)} en cuentas por cobrar.`;
+          const predictionText = lowItems.length > 0
+            ? `Quiebre inminente en ${lowItems[0].name} (${lowItems[0].stock} unid. en bodega): reabastece hoy para no frenar el despacho diario y prioriza cobrar a ${topClient} para oxigenar caja.`
+            : `Tu inventario operativo cubre la demanda diaria (${products.length} SKUs con margen potencial de ${potentialGrossMargin.toFixed(1)}%). Enfoca el turno de hoy en convertir cotizaciones abiertas y cobrar saldos exigibles.`;
+          return { periodLabel, summaryText, predictionText };
+        }
+
+        if (period === 'month') {
+          const ym = isoRef.slice(0, 7);
+          const periodLabel = `Análisis Mensual · ${ym}`;
+          const ivaBalance = Math.max(0, ivaVentas - ivaCompras);
+          const ratioCarteraVentas = netSales > 0 ? ((pendingDebt / netSales) * 100).toFixed(0) : '100';
+          const summaryText = `En ${ym} acumulas ventas netas de ${appMoney(netSales)} (descontando ${appMoney(totalNc)} en notas de crédito) y capital inmovilizado en bodega por ${appMoney(invCostTotal)} al costo (${appMoney(invPvpTotal)} a PVP, margen bruto estimado ${potentialGrossMargin.toFixed(1)}%). Tu cartera por cobrar representa el ${ratioCarteraVentas}% de la facturación mensual.`;
+          const predictionText = `Pre-cierre tributario y capital de trabajo: proyectas ${appMoney(ivaBalance)} de IVA neto tras aplicar ${appMoney(ivaCompras)} de crédito tributario en compras. ${overStockItems.length > 0 ? `Libera liquidez rotando el sobrestock de ${overStockItems[0].name} (${overStockItems[0].stock} unid.) mediante combos comerciales.` : `Ajusta mínimos de compra en ${lowItems.length} producto(s) críticos antes de cierre de mes.`}`;
+          return { periodLabel, summaryText, predictionText };
+        }
+
+        const yyyy = isoRef.slice(0, 4);
+        const periodLabel = `Visión Estratégica Anual · ${yyyy}`;
+        const summaryText = `En el ejercicio ${yyyy} consolidas ${appMoney(netSales)} en ingresos netos auditados, un activo realizable en inventarios de ${appMoney(invCostTotal)} al costo y un margen bruto estructural de ${potentialGrossMargin.toFixed(1)}% sobre el catálogo activo (${products.length} líneas).`;
+        const predictionText = `Diagnóstico de continuidad y rentabilidad anual: mantener ${appMoney(pendingDebt)} en cuentas por cobrar exige políticas de crédito más estrictas (tope 15-30 días) y auditoría trimestral de rotación ABC para evitar obsolescencia y proteger el flujo de caja libre del año ${yyyy}.`;
         return { periodLabel, summaryText, predictionText };
       },
 
-      toggleBriefing() {
-        appData.briefingPlaying = !appData.briefingPlaying;
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          if (appData.briefingPlaying) {
-            const bPeriod = appData.briefingFilterPeriod || 'day';
-            const bDate = appData.briefingFilterDate || new Date().toISOString().slice(0, 10);
-            const info = this.computeBriefingConsultingData(bPeriod, bDate);
-            const utter = new SpeechSynthesisUtterance(
-              `Briefing gerencial Vozkora para ${info.periodLabel}. ${info.summaryText} Atención, esto puede pasar: ${info.predictionText}`
-            );
-            utter.lang = 'es-ES';
-            utter.rate = 1.02;
-            utter.onend = () => { appData.briefingPlaying = false; renderPhone('home'); };
-            window.speechSynthesis.speak(utter);
+      async generateAiBriefing(forceSpeak = false) {
+        const bPeriod = appData.briefingFilterPeriod || 'day';
+        const bDate = appData.briefingFilterDate || (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10));
+        const bKey = bPeriod + '_' + (bPeriod === 'day' ? bDate : (bPeriod === 'year' ? bDate.slice(0, 4) : bDate.slice(0, 7)));
+        if (!appData.briefingCache) appData.briefingCache = {};
+
+        const fallback = this.computeBriefingConsultingData(bPeriod, bDate);
+        if (appData.offline || typeof consultarCopilotoIaVozkora !== 'function') {
+          appData.briefingCache[bKey] = fallback;
+          if (forceSpeak) this.speakBriefingText(fallback);
+          renderPhone('home');
+          return;
+        }
+
+        appData._briefingLoadingKey = bKey;
+        if (appData.currentPage === 'home') renderPhone('home');
+
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+        const periodDesc = bPeriod === 'day'
+          ? `DÍA ESPECÍFICO (${bDate}) — enfoque táctico de caja diaria, quiebres de stock inmediatos y cobros del día`
+          : (bPeriod === 'month'
+            ? `MES COMPLETO (${bDate.slice(0, 7)}) — enfoque contable, margen bruto, crédito tributario IVA, capital de trabajo y rotación de inventario`
+            : `AÑO FISCAL (${bDate.slice(0, 4)}) — enfoque estratégico gerencial, salud financiera anual, estructura de costos, cartera y crecimiento`);
+
+        const promptExpert = [
+          'Actúa como un Consultor Senior de Negocios con Magíster en Contabilidad, Finanzas e Inventarios.',
+          `Analiza los datos reales de la empresa "${ses.empresa_nombre || 'Empresa'}" exclusivamente para el horizonte: ${periodDesc}.`,
+          'REGLAS ESTRICTAS:',
+          '1. Devuelve ÚNICAMENTE un JSON válido sin markdown ni texto extra con esta estructura exacta: {"diagnostico":"...","accion_estrategica":"..."}',
+          '2. Prohibido usar frases genéricas o repetir plantillas. Cita cifras reales, productos exactos, márgenes, rotación o clientes de los datos adjuntos.',
+          '3. El tono debe ser ejecutivo, profundo, concreto y diferente según si el análisis es diario, mensual o anual (máximo 45 palabras por cada campo).'
+        ].join(' ');
+
+        const ctxData = {
+          horizonte: periodDesc,
+          ventas_totales_registradas: (appData.invoices || []).map(i => ({ id: i.id, fecha: i.date, cliente: i.client, subtotal: i.subtotal, iva: i.ivaAmt, total: i.total })),
+          notas_credito: appData.creditNotes || [],
+          proformas: (appData.quotes || []).map(q => ({ id: q.id, cliente: q.client, total: q.total, convertida: q.converted })),
+          inventario_bodegas: (appData.products || []).map(p => ({ nombre: p.name, bodega: p.warehouse, stock: p.stock, costo: p.cost, pvp: p.price })),
+          cartera_clientes: (appData.clients || []).filter(c => c.id !== '9999999999999').map(c => ({ nombre: c.name, saldo: c.debt })),
+          compras_gastos: (appData.purchases || []).map(c => ({ proveedor: c.supplierName, fecha: c.date, iva: c.ivaAmt, total: c.total, deducible: c.deductible }))
+        };
+
+        try {
+          const res = await consultarCopilotoIaVozkora(promptExpert, ctxData);
+          if (res && res.ok && res.respuesta) {
+            const mJson = String(res.respuesta).match(/\{[\s\S]*\}/);
+            if (mJson) {
+              const parsed = JSON.parse(mJson[0]);
+              if (parsed.diagnostico && parsed.accion_estrategica) {
+                appData.briefingCache[bKey] = {
+                  periodLabel: fallback.periodLabel,
+                  summaryText: String(parsed.diagnostico).trim(),
+                  predictionText: String(parsed.accion_estrategica).trim()
+                };
+              } else {
+                appData.briefingCache[bKey] = fallback;
+              }
+            } else {
+              const cleanTxt = String(res.respuesta).replace(/[*#]/g, '').trim();
+              appData.briefingCache[bKey] = {
+                periodLabel: fallback.periodLabel,
+                summaryText: cleanTxt.slice(0, 260),
+                predictionText: fallback.predictionText
+              };
+            }
+          } else {
+            appData.briefingCache[bKey] = fallback;
+          }
+        } catch (e) {
+          appData.briefingCache[bKey] = fallback;
+        } finally {
+          appData._briefingLoadingKey = null;
+          if (appData.currentPage === 'home') renderPhone('home');
+          if (forceSpeak && appData.briefingCache[bKey]) {
+            this.speakBriefingText(appData.briefingCache[bKey]);
           }
         }
-        renderPhone('home');
+      },
+
+      speakBriefingText(info) {
+        if (!('speechSynthesis' in window) || !info) return;
+        window.speechSynthesis.cancel();
+        appData.briefingPlaying = true;
+        const utter = new SpeechSynthesisUtterance(
+          `Informe ejecutivo para ${info.periodLabel}. ${info.summaryText}. Recomendación estratégica: ${info.predictionText}`
+        );
+        utter.lang = 'es-ES';
+        utter.rate = 1.02;
+        utter.onend = () => { appData.briefingPlaying = false; if (appData.currentPage === 'home') renderPhone('home'); };
+        utter.onerror = () => { appData.briefingPlaying = false; if (appData.currentPage === 'home') renderPhone('home'); };
+        window.speechSynthesis.speak(utter);
+        if (appData.currentPage === 'home') renderPhone('home');
+      },
+
+      async toggleBriefing() {
+        if (appData.briefingPlaying) {
+          appData.briefingPlaying = false;
+          if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+          renderPhone('home');
+          return;
+        }
+        const bPeriod = appData.briefingFilterPeriod || 'day';
+        const bDate = appData.briefingFilterDate || (typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10));
+        const bKey = bPeriod + '_' + (bPeriod === 'day' ? bDate : (bPeriod === 'year' ? bDate.slice(0, 4) : bDate.slice(0, 7)));
+        if (appData.briefingCache && appData.briefingCache[bKey]) {
+          this.speakBriefingText(appData.briefingCache[bKey]);
+        } else {
+          await this.generateAiBriefing(true);
+        }
       },
 
       // --- Carrito Facturación ---
@@ -7060,7 +7302,7 @@ ${renderSearchableClientPicker('voucherClientSelect', { excludeMostrador: true }
       startRealMic() {
         if (!sessionStorage.getItem('vozkora_mic_disclosure_session')) {
           this.openModal(
-            '🎙️ Autorización de Uso de Micrófono (Google Play)',
+            '🎙️ Autorización de Uso de Micrófono',
             `<div class="space-y-2 text-[11px] text-slate-700 leading-relaxed">
                <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] font-bold">
                  Estás autorizando a Vozkora a usar el micrófono de tu dispositivo.

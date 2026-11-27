@@ -110,10 +110,35 @@
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => el.classList.add('hidden'), 3200);
     }
+    function formatLocalDateTimeCrm(dateInput = new Date()) {
+      const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+      if (isNaN(d.getTime())) return String(dateInput || '');
+      try {
+        const parts = new Intl.DateTimeFormat('es-EC', {
+          timeZone: 'America/Guayaquil',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).formatToParts(d);
+        const get = t => (parts.find(p => p.type === t) || {}).value || '00';
+        const hh = get('hour') === '24' ? '00' : get('hour');
+        return `${get('year')}-${get('month')}-${get('day')} ${hh}:${get('minute')}`;
+      } catch (e) {
+        const utcMs = d.getTime() + (d.getTimezoneOffset() * 60000);
+        const loc = new Date(utcMs - (5 * 3600000));
+        const pad = n => String(n).padStart(2, '0');
+        return `${loc.getFullYear()}-${pad(loc.getMonth() + 1)}-${pad(loc.getDate())} ${pad(loc.getHours())}:${pad(loc.getMinutes())}`;
+      }
+    }
+
     function nowFormatted() {
-      const d = new Date();
-      const pad = n => String(n).padStart(2, '0');
-      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      const iso = formatLocalDateTimeCrm(new Date());
+      const [ymd, hm] = iso.split(' ');
+      const [y, m, d] = ymd.split('-');
+      return `${d}/${m}/${y} ${hm}`;
     }
     window.V = {
       openModal(title, bodyHtml, actionsHtml) {
@@ -338,6 +363,7 @@
       userSearch: '',
       cachedTickets: [],
       ticketFilterStatus: 'ABIERTOS',
+      ticketWaFilter: 'ALL',
       repoTable: 'repo_facturas',
       repoRows: [],
       repoFilterEmpresa: 'ALL',
@@ -956,9 +982,9 @@
               <p class="text-[11px] text-slate-500">Regla 1: Días 1–5 tras corte = Aviso rojo en App · Regla 2: +5 días tras corte = Bloqueo total con redirección a pasarela.</p>
             </div>
 
-            <!-- Canal Oficial Google Play Compliant (Ticket VENTAS_UPGRADE + WhatsApp Directo) -->
+            <!-- Canal Oficial de Activación y Renovación -->
             <div class="p-3 rounded-2xl bg-[#e7f5f1] border border-[#b9d1cd] text-[11px] text-[#073e3b] flex items-center justify-between gap-2">
-              <span>📲 <strong>Activaciones y Renovaciones (Cumplimiento Google Play):</strong> Toda solicitud desde la App crea automáticamente un ticket <code>VENTAS_UPGRADE</code> y abre WhatsApp oficial <strong>+57 323 939 9953</strong> con el cálculo exacto.</span>
+              <span>📲 <strong>Activaciones y Renovaciones Oficiales:</strong> Toda solicitud desde la App crea automáticamente un ticket <code>VENTAS_UPGRADE</code> y abre WhatsApp oficial <strong>+57 323 939 9953</strong> con el cálculo exacto.</span>
             </div>
 
             <!-- Filtros Semáforo -->
@@ -1485,6 +1511,15 @@
         this.renderTicketsView();
       },
 
+      isTicketWhatsappSent(tk) {
+        const det = (tk && tk.detalle) || {};
+        if (det.whatsapp_enviado === true || String(det.whatsapp_estado || '').toUpperCase() === 'ENVIADO') {
+          return true;
+        }
+        const hist = Array.isArray(det.historial) ? det.historial : [];
+        return hist.some(h => /enviado a whatsapp/i.test(String(h.a_estado || '')));
+      },
+
       renderTicketsView() {
         const body = $('crm-body');
         const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
@@ -1503,6 +1538,8 @@
         const abiertos = baseTickets.filter(t => t.estado === 'PENDIENTE' || t.estado === 'ABIERTO');
         const enProceso = baseTickets.filter(t => t.estado === 'EN_PROCESO');
         const cerrados = baseTickets.filter(t => t.estado === 'APROBADO' || t.estado === 'RECHAZADO');
+        const waNotSentCount = baseTickets.filter(t => !this.isTicketWhatsappSent(t)).length;
+        const waSentCount = baseTickets.filter(t => this.isTicketWhatsappSent(t)).length;
 
         let listToShow = abiertos;
         if (this.ticketFilterStatus === 'EN_PROCESO') listToShow = enProceso;
@@ -1517,6 +1554,12 @@
           }
         }
 
+        if (this.ticketWaFilter === 'WA_SENT') {
+          listToShow = listToShow.filter(t => this.isTicketWhatsappSent(t));
+        } else if (this.ticketWaFilter === 'WA_NOT_SENT') {
+          listToShow = listToShow.filter(t => !this.isTicketWhatsappSent(t));
+        }
+
         if (listToShow.length > 0 && (!this.selectedTicketId || !listToShow.some(x => x.id === this.selectedTicketId))) {
           this.selectedTicketId = listToShow[0].id;
         } else if (listToShow.length === 0) {
@@ -1529,7 +1572,7 @@
           <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
             <div class="text-3xl">🎫</div>
             <div class="text-sm font-extrabold text-[#073e3b]">Selecciona un ticket o lead del listado</div>
-            <p class="text-[11px] max-w-sm">Haz clic sobre el nombre del cliente a la izquierda para ver el detalle completo, el estado de su cuenta SaaS y gestionar respuestas.</p>
+            <p class="text-[11px] max-w-sm">Haz clic sobre el nombre del cliente a la izquierda para ver el detalle completo, si envió o no mensaje a WhatsApp y el estado de su cuenta.</p>
           </div>
         `;
 
@@ -1537,6 +1580,8 @@
           const realIdx = this.cachedTickets.findIndex(x => x.id === selTk.id);
           const det = selTk.detalle || {};
           const hist = Array.isArray(det.historial) ? det.historial : [];
+          const waSent = this.isTicketWhatsappSent(selTk);
+          const localTimeStr = det.fecha_hora_local || (selTk.creado_en ? formatLocalDateTimeCrm(selTk.creado_en) : '');
           const empObj = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(selTk.empresa_ruc || '').trim()) || null;
           const empBadge = empObj
             ? this.getCompanyStatusBadge(empObj)
@@ -1556,7 +1601,7 @@
 
           ticketDetailHtml = `
             <div class="space-y-3">
-              <!-- Encabezado con Estado del Ticket + Estado de Cuenta del Cliente -->
+              <!-- Encabezado con Estado del Ticket + Estado Cuenta + Estado WhatsApp (Verde/Rojo) -->
               <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-2">
                 <div class="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -1570,14 +1615,21 @@
                   </div>
                 </div>
 
+                <!-- Indicador explícito Verde / Rojo de envío a WhatsApp -->
                 <div class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-white/15 text-[10.5px] text-teal-100">
                   <span>Categoría: <strong class="text-white">${esc(det.categoria || selTk.tipo_solicitud)}</strong></span>
-                  <span>📅 ${esc((selTk.creado_en || '').slice(0, 16).replace('T', ' '))}</span>
-                  ${waDigits ? `
-                    <button onclick="window.open('https://wa.me/${esc(waDigits)}','_blank')" class="px-2.5 py-1 rounded-lg bg-[#70d2bd] text-[#073e3b] font-extrabold text-[10px] cursor-pointer">
-                      💬 WhatsApp (${esc(det.telefono_contacto || empObj.telefono)})
-                    </button>
-                  ` : ''}
+                  <span>📅 ${esc(localTimeStr)}</span>
+                  <div class="flex items-center gap-1.5 ml-auto">
+                    ${waSent
+                      ? `<span class="px-2.5 py-1 rounded-lg bg-emerald-500 text-white font-extrabold text-[10px] shadow-xs">🟢 Enviado a WhatsApp${det.whatsapp_enviado_en ? ' (' + esc(det.whatsapp_enviado_en) + ')' : ''}</span>`
+                      : `<span class="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-extrabold text-[10px] shadow-xs">🔴 No envió a WhatsApp (Contactar)</span>`
+                    }
+                    ${waDigits ? `
+                      <button onclick="window.open('https://wa.me/${esc(waDigits)}','_blank')" class="px-2.5 py-1 rounded-lg bg-[#70d2bd] hover:bg-white text-[#073e3b] font-extrabold text-[10px] cursor-pointer">
+                        💬 Abrir Chat (${esc(det.telefono_contacto || empObj.telefono)})
+                      </button>
+                    ` : ''}
+                  </div>
                 </div>
               </div>
 
@@ -1654,7 +1706,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
               <div>
                 <h3 class="text-sm font-extrabold text-[#073e3b]">🔥 ${isSuper ? `Leads & Tickets (${baseTickets.length})` : `Mis Tickets Asignados (${baseTickets.length})`}</h3>
-                <p class="text-[11px] text-slate-500">Haz clic sobre un cliente a la izquierda para ver su estado de cuenta y gestionar su solicitud al frente.</p>
+                <p class="text-[11px] text-slate-500">Filtra por estado o por envío a WhatsApp (🟢 Enviado / 🔴 No envió) para contactar clientes pendientes.</p>
               </div>
               <div class="flex flex-wrap gap-1.5 items-center">
                 <button onclick="CRM.ticketFilterStatus='ABIERTOS'; CRM.renderTicketsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.ticketFilterStatus === 'ABIERTOS' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
@@ -1669,6 +1721,14 @@
                 <button onclick="CRM.ticketFilterStatus='TODOS'; CRM.renderTicketsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer ${this.ticketFilterStatus === 'TODOS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
                   Todos (${baseTickets.length})
                 </button>
+
+                <!-- Filtro por estado de WhatsApp (Verde / Rojo) -->
+                <select onchange="CRM.ticketWaFilter=this.value; CRM.renderTicketsView();" class="border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-extrabold text-[#073e3b]">
+                  <option value="ALL" ${this.ticketWaFilter === 'ALL' ? 'selected' : ''}>📲 WhatsApp: Todos</option>
+                  <option value="WA_NOT_SENT" ${this.ticketWaFilter === 'WA_NOT_SENT' ? 'selected' : ''}>🔴 Sin enviar WhatsApp (${waNotSentCount})</option>
+                  <option value="WA_SENT" ${this.ticketWaFilter === 'WA_SENT' ? 'selected' : ''}>🟢 Enviado a WhatsApp (${waSentCount})</option>
+                </select>
+
                 ${isSuper ? `
                   <select onchange="CRM.ticketAssigneeFilter=this.value; CRM.renderTicketsView();" class="border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-bold text-[#073e3b]">
                     <option value="ALL" ${this.ticketAssigneeFilter === 'ALL' ? 'selected' : ''}>👤 Todos</option>
@@ -1685,6 +1745,8 @@
                 ${listToShow.length === 0 ? '<p class="text-slate-500 text-center py-6 text-[11px]">No hay tickets en esta bandeja.</p>' : listToShow.map(tk => {
                   const isSel = tk.id === this.selectedTicketId;
                   const det = tk.detalle || {};
+                  const waSent = this.isTicketWhatsappSent(tk);
+                  const localTimeStr = det.fecha_hora_local || (tk.creado_en ? formatLocalDateTimeCrm(tk.creado_en) : '');
                   const empObj = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(tk.empresa_ruc || '').trim()) || null;
                   const empBadge = empObj ? this.getCompanyStatusBadge(empObj) : { cls: 'bg-slate-100 text-slate-600 border-slate-200', shortLabel: '⚪ Lead' };
                   const tkDot = tk.estado === 'PENDIENTE' ? '🟡' : (tk.estado === 'EN_PROCESO' ? '🔵' : (tk.estado === 'APROBADO' ? '🟢' : '🔴'));
@@ -1697,11 +1759,16 @@
                           ${empBadge.shortLabel}
                         </span>
                       </div>
-                      <div class="text-[10.5px] font-semibold truncate ${isSel ? 'text-teal-100' : 'text-slate-600'}">
-                        ${esc(det.categoria || tk.tipo_solicitud)}
+                      <div class="flex items-center justify-between gap-1.5">
+                        <span class="text-[10.5px] font-semibold truncate ${isSel ? 'text-teal-100' : 'text-slate-600'}">
+                          ${esc(det.categoria || tk.tipo_solicitud)}
+                        </span>
+                        <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold shrink-0 ${waSent ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : 'bg-rose-500/20 text-rose-300 border border-rose-400/30'} ${!isSel ? (waSent ? '!bg-emerald-100 !text-emerald-800 !border-emerald-200' : '!bg-rose-100 !text-rose-800 !border-rose-200') : ''}">
+                          ${waSent ? '🟢 WA' : '🔴 Sin WA'}
+                        </span>
                       </div>
                       <div class="text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">
-                        ${esc((tk.creado_en || '').slice(0, 16).replace('T', ' '))}
+                        📅 ${esc(localTimeStr)}
                       </div>
                     </button>
                   `;

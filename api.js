@@ -28,6 +28,30 @@ function supaHeaders(extra = {}) {
   }, extra);
 }
 
+function formatearFechaHoraLocalVozkora(fechaInput = new Date()) {
+  const d = fechaInput instanceof Date ? fechaInput : new Date(fechaInput);
+  if (isNaN(d.getTime())) return String(fechaInput || '');
+  try {
+    const parts = new Intl.DateTimeFormat('es-EC', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).formatToParts(d);
+    const get = t => (parts.find(p => p.type === t) || {}).value || '00';
+    const hh = get('hour') === '24' ? '00' : get('hour');
+    return `${get('day')}/${get('month')}/${get('year')} ${hh}:${get('minute')}`;
+  } catch (e) {
+    const utcMs = d.getTime() + (d.getTimezoneOffset() * 60000);
+    const loc = new Date(utcMs - (5 * 3600000));
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(loc.getDate())}/${pad(loc.getMonth() + 1)}/${loc.getFullYear()} ${pad(loc.getHours())}:${pad(loc.getMinutes())}`;
+  }
+}
+
 function obtenerDeviceIdLocal() {
   let did = localStorage.getItem(VOZKORA_CONFIG.STORAGE_KEYS.DEVICE_ID);
   if (!did) {
@@ -195,57 +219,33 @@ async function registrarInteresModuloVozkora(moduloNombre) {
   const empNom = ses.empresa_nombre || 'Empresa Vozkora';
   const userMail = ses.email || 'usuario@empresa.com';
   const modLabel = moduloNombre || 'Módulo Empresarial';
+  const fechaStr = formatearFechaHoraLocalVozkora(new Date());
 
-  try {
-    const rpcResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/rpc/registrar_interes_modulo_vozkora`, {
-      method: 'POST',
-      headers: supaHeaders(),
-      keepalive: true,
-      body: JSON.stringify({
-        p_empresa_ruc: empRuc,
-        p_empresa_nombre: empNom,
-        p_email: userMail,
-        p_modulo_nombre: modLabel
-      })
-    });
-    if (rpcResp.ok) return true;
-  } catch (e) {}
-
-  try {
-    const d = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const fechaStr = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    const insResp = await fetch(`${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_tickets`, {
-      method: 'POST',
-      headers: supaHeaders(),
-      keepalive: true,
-      body: JSON.stringify({
-        empresa_ruc: empRuc,
-        empresa_nombre: empNom,
-        solicitado_por: userMail,
-        tipo_solicitud: 'CONSULTA_CANAL_TECNICO',
-        estado: 'PENDIENTE',
-        detalle: {
-          categoria: '📲 Consulta Canal Técnico WhatsApp',
-          modulo_consultado: modLabel,
-          telefono_contacto: ses.empresa_telefono || 'N/A',
-          descripcion: `El cliente tocó "Consultar con Canal Técnico WhatsApp" desde el módulo: ${modLabel}`,
-          historial: [
-            {
-              fecha: fechaStr,
-              de_estado: 'NUEVO',
-              a_estado: '🟡 Abierto',
-              motivo: `Lead generado en vivo al abrir WhatsApp desde ${modLabel}`,
-              autor: userMail
-            }
-          ]
+  return await crearTicketVozkora({
+    empresa_ruc: empRuc,
+    empresa_nombre: empNom,
+    solicitado_por: userMail,
+    tipo_solicitud: 'CONSULTA_CANAL_TECNICO',
+    estado: 'PENDIENTE',
+    detalle: {
+      categoria: '📲 Consulta Canal Técnico WhatsApp',
+      modulo_consultado: modLabel,
+      telefono_contacto: ses.empresa_telefono || 'N/A',
+      descripcion: `El cliente solicitó contacto con el área técnica desde: ${modLabel}`,
+      whatsapp_enviado: false,
+      whatsapp_estado: 'NO_ENVIADO',
+      fecha_hora_local: fechaStr,
+      historial: [
+        {
+          fecha: fechaStr,
+          de_estado: 'NUEVO',
+          a_estado: '🟡 Abierto (🔴 Pendiente envío WhatsApp)',
+          motivo: `Solicitud creada desde ${modLabel}`,
+          autor: userMail
         }
-      })
-    });
-    return insResp.ok;
-  } catch (e2) {
-    return false;
-  }
+      ]
+    }
+  });
 }
 
 async function crmListarColaboradoresInternos() {
@@ -412,11 +412,21 @@ async function crmEliminarUsuario(id) {
 }
 
 async function crearTicketVozkora(ticketPayload) {
+  const fechaLocal = formatearFechaHoraLocalVozkora(new Date());
+  const det = Object.assign({
+    whatsapp_enviado: false,
+    whatsapp_estado: 'NO_ENVIADO',
+    fecha_hora_local: fechaLocal
+  }, (ticketPayload && ticketPayload.detalle) || {});
+  if (typeof det.whatsapp_enviado !== 'boolean') {
+    det.whatsapp_enviado = false;
+  }
+  const body = Object.assign({}, ticketPayload, { detalle: det });
   const url = `${VOZKORA_CONFIG.SUPABASE_URL}/vozkora_tickets`;
   const resp = await fetch(url, {
     method: 'POST',
     headers: supaHeaders(),
-    body: JSON.stringify(ticketPayload)
+    body: JSON.stringify(body)
   });
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.message || 'Error enviando ticket');
@@ -847,11 +857,24 @@ async function listarVisitasRutaSupabase(empresaRuc) {
 }
 
 function obtenerFechaLocalISO(offsetDays = 0) {
-  const d = new Date(Date.now() + offsetDays * 86400000);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const target = new Date(Date.now() + offsetDays * 86400000);
+  try {
+    const parts = new Intl.DateTimeFormat('es-EC', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(target);
+    const get = t => (parts.find(p => p.type === t) || {}).value || '01';
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  } catch (e) {
+    const utcMs = target.getTime() + (target.getTimezoneOffset() * 60000);
+    const loc = new Date(utcMs - (5 * 3600000));
+    const y = loc.getFullYear();
+    const m = String(loc.getMonth() + 1).padStart(2, '0');
+    const day = String(loc.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
 }
 
 function guardarRutasLocalStorage(empresaRuc, visitas) {
@@ -1252,8 +1275,9 @@ async function consultarCopilotoIaVozkora(pregunta, contextoEmpresa = {}) {
   const empId = (ses && ses.empresa_id) ? ses.empresa_id : VOZKORA_CONFIG.EMPRESA_ID;
   const endpoint = `${VOZKORA_CONFIG.PUENTE_URL}/api/ia/consultar`;
   const promptCompleto = [
-    'Eres el Copiloto Gerencial y Contable de Vozkora (Ecuador).',
+    'Eres el Copiloto Gerencial, Financiero y Contable de Vozkora (Ecuador).',
     'Responde de forma clara, directa, accionable y con cifras exactas basadas ÚNICAMENTE en los datos reales proporcionados de la empresa.',
+    'Si la consulta solicita un formato JSON específico, devuelve exclusivamente el JSON válido sin bloques de código markdown.',
     'Si preguntan por una bodega específica (ej. Bodega Norte, Bodega Principal), cuenta exactamente cuántos productos distintos y cuántas unidades físicas existen en esa bodega.',
     'DATOS EN TIEMPO REAL DE LA EMPRESA:',
     JSON.stringify(contextoEmpresa),
