@@ -3749,18 +3749,39 @@
           ? this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length
           : 0;
 
-        const check = this.evaluateSaleBusinessRules({
-          tipoOperacion: det.tipo_operacion,
-          existingEmp: emp,
-          planNuevoId: det.plan_nuevo,
-          usuariosNuevo: Number(det.usuarios_nuevo) || 1,
-          modulosFinales: Array.isArray(det.modulos_finales) ? det.modulos_finales : [],
-          activeUsersInDb
-        });
+        const targetPlan = this.getPlanObject(det.plan_nuevo || 'expansion');
+        const currentPlan = emp ? this.getPlanObject(emp.plan_activo) : null;
+        const usuariosNuevo = Math.max(1, Number(det.usuarios_nuevo) || 1);
+        const modulosFinales = Array.isArray(det.modulos_finales) ? det.modulos_finales : [];
+        const errors = [];
+        const warnings = [];
 
-        const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion };
-        const planNuevoObj = PLANS.find(p => p.id === det.plan_nuevo) || PLANS[0];
-        const planAnteriorNombre = emp ? (PLANS.find(p => p.id === emp.plan_activo)?.name || emp.plan_activo) : 'Sin plan (Cliente Nuevo)';
+        if (!emp && det.tipo_operacion !== 'VENTA_NUEVA_PLAN' && !det.es_cobranza) {
+          errors.push('Este RUC aún no existe como empresa SaaS. Debe registrarse como "Venta Nueva de Plan".');
+        }
+        if (emp && det.tipo_operacion === 'VENTA_NUEVA_PLAN') {
+          errors.push(`La empresa ${emp.nombre} ya existe (Plan ${currentPlan.name}).`);
+        }
+        if (targetPlan.id === 'piloto' && usuariosNuevo > 1) {
+          errors.push(`El Plan Piloto admite máximo 1 usuario (se intenta asignar ${usuariosNuevo}).`);
+        }
+        if (usuariosNuevo < targetPlan.includedUsers) {
+          errors.push(`El Plan ${targetPlan.name} incluye ${targetPlan.includedUsers} usuarios base; el cupo no puede ser menor.`);
+        }
+        if (activeUsersInDb > usuariosNuevo) {
+          const nonAdmins = emp
+            ? this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo && !['ADMIN_EMPRESA', 'SUPERADMIN'].includes(String(u.rol || '').toUpperCase())).length
+            : 0;
+          const excess = activeUsersInDb - usuariosNuevo;
+          if (nonAdmins < excess) {
+            errors.push(`La empresa tiene ${activeUsersInDb} usuarios activos y solo ${nonAdmins} operador(es) suspendible(s) (el Administrador no se suspende).`);
+          } else {
+            warnings.push(`Se suspenderán automáticamente al azar ${excess} usuario(s) operador(es) para ajustar al nuevo cupo de ${usuariosNuevo} (el Administrador queda protegido).`);
+          }
+        }
+
+        const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.concepto_pago || det.categoria || det.tipo_operacion || 'Activación SaaS' };
+        const planAnteriorNombre = currentPlan ? currentPlan.name : 'Sin plan (Cliente Nuevo)';
 
         V.openModal(
           '🧠 Confirmación Inteligente de Activación SaaS',
@@ -3772,25 +3793,32 @@
                </p>
                <ul class="space-y-1 text-teal-100 pl-2">
                  <li>• <strong>Operación:</strong> ${esc(opMeta.label)}</li>
-                 <li>• <strong>Cambio de Plan:</strong> ${esc(planAnteriorNombre)} → <strong class="text-white">${esc(planNuevoObj.name)} (${esc(det.periodicidad || 'MENSUAL')})</strong></li>
-                 <li>• <strong>Cupo de Usuarios:</strong> ${emp ? emp.max_usuarios : 0} → <strong class="text-white">${Number(det.usuarios_nuevo) || 1} usuarios</strong> (Activos actuales: ${activeUsersInDb})</li>
+                 <li>• <strong>Plan Resultante:</strong> ${esc(planAnteriorNombre)} → <strong class="text-white">${esc(targetPlan.name)} (${esc(det.periodicidad || 'MENSUAL')})</strong></li>
+                 <li>• <strong>Cupo de Usuarios:</strong> ${emp ? emp.max_usuarios : 0} → <strong class="text-white">${usuariosNuevo} usuarios</strong> (Activos actuales: ${activeUsersInDb})</li>
+                 <li>• <strong>Módulos IA:</strong> ${modulosFinales.length > 0 ? esc(modulosFinales.join(', ')) : 'Ninguno'}</li>
                  <li>• <strong>Cobro Validado:</strong> <strong class="text-[#70d2bd] font-mono">$${Number(det.monto_usd || 0).toFixed(2)} USD</strong></li>
                </ul>
              </div>
 
-             ${!check.ok ? `
+             ${warnings.map(w => `
+               <div class="p-2.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-950 font-bold">
+                 ⚠️ ${esc(w)}
+               </div>
+             `).join('')}
+
+             ${errors.length > 0 ? `
                <div class="p-2.5 rounded-xl bg-rose-100 border border-rose-300 text-rose-900 font-bold space-y-1">
-                 <div>⛔ BLOQUEO INTELIGENTE DETECTADO:</div>
-                 ${check.errors.map(e => `<div>• ${esc(e)}</div>`).join('')}
+                 <div>⛔ BLOQUEO DETECTADO:</div>
+                 ${errors.map(e => `<div>• ${esc(e)}</div>`).join('')}
                </div>
              ` : `
                <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
-                 ✓ Validación superada: No hay conflictos de cupo ni jerarquía de planes.
+                 ✓ Validación superada: Listo para activar el servicio y enviar a 🧾 Facturación Pendientes.
                </div>
              `}
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
-           ${check.ok ? `<button onclick="CRM.executeSmartActivation('${tk.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white shadow cursor-pointer">✅ Confirmar y Activar Ahora</button>` : ''}`
+           ${errors.length === 0 ? `<button onclick="CRM.executeSmartActivation('${tk.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white shadow cursor-pointer">✅ Confirmar y Activar Ahora</button>` : ''}`
         );
       },
 
