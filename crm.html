@@ -3579,7 +3579,7 @@
         }
       },
 
-      sendIssuedInvoiceWhatsApp(ticketId) {
+      async sendIssuedInvoiceWhatsApp(ticketId) {
         const tk = this.cachedTickets.find(x => x.id === ticketId);
         if (!tk) return;
         const det = tk.detalle || {};
@@ -3592,15 +3592,36 @@
           ? ('593' + rawPhone.slice(1))
           : rawPhone;
 
+        // Mensaje seguro SIN enlaces externos expuestos; el archivo se descarga para adjuntarlo directo en WhatsApp
         const lines = [
           `Hola *${tk.empresa_nombre}* (RUC: ${tk.empresa_ruc}) 👋`,
-          `Te enviamos tu comprobante electrónico de *Vozkora SaaS*:`,
+          `Te adjuntamos tu comprobante electrónico de *Vozkora SaaS*:`,
           `• *Concepto:* ${det.concepto_pago || 'Suscripción Vozkora'}`,
           det.numero_factura_emitida ? `• *Factura N°:* ${det.numero_factura_emitida}` : '',
           `• *Valor Total:* $${Number(det.monto_usd || 0).toFixed(2)} USD`,
-          det.factura_emitida_url ? `• *Descarga tu Factura (PDF/Imagen):* ${det.factura_emitida_url}` : '',
           `¡Gracias por confiar en Vozkora!`
         ].filter(Boolean).join('\n');
+
+        if (det.factura_emitida_url) {
+          try {
+            const resp = await fetch(det.factura_emitida_url);
+            const blob = await resp.blob();
+            const ext = blob.type === 'application/pdf' ? 'pdf' : (blob.type.split('/')[1] || 'jpg');
+            const safeNum = String(det.numero_factura_emitida || tk.empresa_ruc || 'Factura').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const fileName = `Factura_${safeNum}.${ext}`;
+
+            const a = document.createElement('a');
+            const objUrl = URL.createObjectURL(blob);
+            a.href = objUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 500);
+            toast(`📥 Factura "${fileName}" descargada. Adjúntala en el chat de WhatsApp que se acaba de abrir.`);
+          } catch (e) {
+            toast('💬 Abriendo WhatsApp (sin enlace expuesto por seguridad). Adjunta tu factura desde tu carpeta local.');
+          }
+        }
 
         window.open(`https://wa.me/${phoneIntl}?text=${encodeURIComponent(lines)}`, '_blank');
       },
