@@ -3321,7 +3321,7 @@
              <div class="grid grid-cols-2 gap-2">
                <div>
                  <label class="font-bold">RUC Empresa *</label>
-                 <input id="payFormRuc" maxlength="13" value="${esc(emp ? emp.ruc : '')}" ${isPrefilled ? 'readonly class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold bg-slate-100"' : 'onblur="const e=CRM.cachedCompanies.find(x=>x.ruc===this.value.trim()); if(e&&$('payFormNombre'))$('payFormNombre').value=e.nombre;" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold"'} placeholder="1790012345001" />
+                 <input id="payFormRuc" maxlength="13" value="${esc(emp ? emp.ruc : '')}" ${isPrefilled ? 'readonly class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold bg-slate-100"' : 'onblur="CRM.autofillPaymentModalByRuc(this.value)" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold"'} placeholder="1790012345001" />
                </div>
                <div>
                  <label class="font-bold">Razón Social / Empresa *</label>
@@ -3375,6 +3375,18 @@
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
            <button id="btnSubmitPayEntry" onclick="CRM.submitPaymentEntry()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">🧾 Enviar a Facturación Pendientes</button>`
         );
+      },
+
+      autofillPaymentModalByRuc(rucVal) {
+        const clean = String(rucVal || '').trim();
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === clean);
+        if (!emp) return;
+        if ($('payFormNombre')) $('payFormNombre').value = emp.nombre || '';
+        const pl = PLANS.find(p => p.id === emp.plan_activo) || PLANS[3];
+        const amt = emp.periodicidad === 'ANUAL' ? pl.annualPrice : pl.monthlyPrice;
+        if ($('payFormAmount')) $('payFormAmount').value = amt.toFixed(2);
+        if ($('payFormConcept') && emp.periodicidad === 'ANUAL') $('payFormConcept').value = 'Renovación Anual VIP';
+        toast('✓ Empresa detectada: ' + emp.nombre);
       },
 
       async submitPaymentEntry() {
@@ -3761,9 +3773,10 @@
             err.classList.remove('hidden');
             return;
           }
-          if (!CRM.isInternalRole(res.user.rol)) {
+          const cleanRol = String((res.user && res.user.rol) || '').trim().toUpperCase();
+          if (!CRM.isInternalRole(cleanRol)) {
             cerrarSesionVozkora();
-            err.textContent = '⛔ Acceso denegado: Esta consola es exclusiva para Súper-Administradores de Vozkora.';
+            err.textContent = `⛔ Acceso denegado: Tu rol (${cleanRol || 'SIN_ROL'}) no tiene permisos para ingresar a Control CRM.`;
             err.classList.remove('hidden');
             return;
           }

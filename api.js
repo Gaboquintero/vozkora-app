@@ -169,7 +169,10 @@ async function loginVozkora(email, clave) {
     return { ok: false, error: (data && data.error) ? data.error : 'Credenciales incorrectas.' };
   }
 
-  const isExempt = ['DEMO', 'SUPERADMIN'].includes(String(data.user.rol || '').toUpperCase());
+  if (data && data.user && data.user.rol) {
+    data.user.rol = String(data.user.rol).trim().toUpperCase();
+  }
+  const isExempt = ['DEMO', 'SUPERADMIN'].includes(String((data.user && data.user.rol) || '').trim().toUpperCase());
   if (!isExempt && data.user.session_token && data.user.session_token !== localDevId) {
     return {
       ok: false,
