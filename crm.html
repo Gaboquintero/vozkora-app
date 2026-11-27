@@ -1054,6 +1054,8 @@
       // PESTAÑA COBRANZAS Y CORTES AUTOMÁTICOS (DÍA 01 / GRACIA 1-5 / BLOQUEO +5)
       // -------------------------------------------------------------------
       billingFilter: 'ALL',
+      billingSearch: '',
+      selectedBillingId: '',
       async loadBillingTab() {
         const body = $('crm-body');
         body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Calculando estado de cartera, asignaciones y fechas de corte...</div>';
@@ -1181,9 +1183,15 @@
         if (badge) badge.textContent = `${this.selectedBillingRucs.length} seleccionada(s)`;
       },
 
+      selectBillingMaster(empId) {
+        this.selectedBillingId = empId;
+        this.renderBillingView();
+      },
+
       renderBillingView() {
         const body = $('crm-body');
         const isMaster = this.isMasterAdmin();
+        const isRO = this.isReadOnlyRole();
         const myEmail = this.getSessionEmail();
         const assignMap = this.getBillingAssignmentsMap();
 
@@ -1195,7 +1203,7 @@
         );
 
         let baseCompanies = this.cachedCompanies;
-        if (!isMaster && !this.isReadOnlyRole()) {
+        if (!isMaster && !isRO) {
           baseCompanies = baseCompanies.filter(emp => {
             const ruc = String(emp.ruc || '').trim();
             const asg = assignMap[ruc];
@@ -1216,31 +1224,164 @@
         const bloqueados5To60Count = enriched.filter(x => x.subStatus.estado === 'BLOQUEADO_CORTE' && x.subStatus.diasMora <= 60).length;
         const bloqueadosPlus60Count = enriched.filter(x => x.subStatus.estado === 'BLOQUEADO_CORTE' && x.subStatus.diasMora > 60).length;
 
+        const q = (this.billingSearch || '').toLowerCase();
         const filtered = enriched.filter(x => {
-          if (this.billingFilter === 'GRACIA') return x.subStatus.estado === 'PENDIENTE_RENOVACION';
-          if (this.billingFilter === 'BLOQUEADOS') return x.subStatus.estado === 'BLOQUEADO_CORTE' && x.subStatus.diasMora <= 60;
-          if (this.billingFilter === 'BLOQUEADOS_60') return x.subStatus.estado === 'BLOQUEADO_CORTE' && x.subStatus.diasMora > 60;
-          if (this.billingFilter === 'AL_DIA') return x.subStatus.estado === 'AL_DIA' || x.subStatus.estado.startsWith('EXENTO');
+          if (this.billingFilter === 'GRACIA' && x.subStatus.estado !== 'PENDIENTE_RENOVACION') return false;
+          if (this.billingFilter === 'BLOQUEADOS' && !(x.subStatus.estado === 'BLOQUEADO_CORTE' && x.subStatus.diasMora <= 60)) return false;
+          if (this.billingFilter === 'BLOQUEADOS_60' && !(x.subStatus.estado === 'BLOQUEADO_CORTE' && x.subStatus.diasMora > 60)) return false;
+          if (this.billingFilter === 'AL_DIA' && !(x.subStatus.estado === 'AL_DIA' || x.subStatus.estado.startsWith('EXENTO'))) return false;
+          if (q && !(
+            (x.emp.nombre || '').toLowerCase().includes(q) ||
+            (x.emp.ruc || '').toLowerCase().includes(q)
+          )) return false;
           return true;
         });
+
+        if (filtered.length > 0 && (!this.selectedBillingId || !filtered.some(x => x.emp.id === this.selectedBillingId))) {
+          this.selectedBillingId = filtered[0].emp.id;
+        } else if (filtered.length === 0) {
+          this.selectedBillingId = '';
+        }
+
+        const selItem = filtered.find(x => x.emp.id === this.selectedBillingId) || null;
 
         const commercialStaff = (this.cachedStaff || []).filter(u =>
           ['COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION', 'COBRANZAS'].includes(String(u.rol || '').toUpperCase()) && u.activo
         );
 
+        let detailHtml = `
+          <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
+            <div class="text-3xl">💳</div>
+            <div class="text-sm font-extrabold text-[#073e3b]">Selecciona una empresa del listado izquierdo</div>
+            <p class="text-[11px] max-w-sm">Haz clic sobre cualquier cliente para gestionar su fecha de corte, estado de mora, exención o registrar su pago con comprobante.</p>
+          </div>
+        `;
+
+        if (selItem) {
+          const { emp, subStatus, assignedTo } = selItem;
+          const pl = PLANS.find(p => p.id === emp.plan_activo) || PLANS[3];
+          const isAnual = String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
+          const monto = isAnual ? pl.annualPrice : pl.monthlyPrice;
+          const isPlus60 = subStatus.estado === 'BLOQUEADO_CORTE' && subStatus.diasMora > 60;
+
+          const badgeCls = isPlus60
+            ? 'bg-purple-100 text-purple-900 border-purple-200'
+            : (subStatus.estado === 'BLOQUEADO_CORTE'
+              ? 'bg-rose-100 text-rose-800 border-rose-200'
+              : (subStatus.estado === 'PENDIENTE_RENOVACION'
+                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-emerald-100 text-emerald-800 border-emerald-200'));
+
+          const badgeTxt = isPlus60
+            ? `🟣 Bloqueada +60d (${subStatus.diasMora} días mora)`
+            : (subStatus.estado === 'BLOQUEADO_CORTE'
+              ? `🔴 Bloqueada (${subStatus.diasMora} días mora)`
+              : (subStatus.estado === 'PENDIENTE_RENOVACION'
+                ? `🟡 En Días de Gracia (${subStatus.diasMora} días tras corte)`
+                : (subStatus.estado === 'EXENTO' ? '⚪ Control Corte Desactivado' : (subStatus.estado === 'EXENTO_HASTA' ? `🎁 Exento hasta ${subStatus.exentoHasta}` : '🟢 Al día y Activa'))));
+
+          detailHtml = `
+            <div class="space-y-3">
+              <!-- Cabecera ejecutiva idéntica a Empresas SaaS -->
+              <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-1.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h4 class="text-base font-black">${esc(emp.nombre)}</h4>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/15 text-[#70d2bd]">${esc(emp.entorno || 'PRODUCCION')}</span>
+                    </div>
+                    <div class="text-[11px] font-mono text-teal-100 mt-0.5">
+                      RUC: <strong>${esc(emp.ruc)}</strong> · Tel: ${esc(emp.telefono || 'N/A')} · ${esc(emp.email_contacto || 'Sin correo')}
+                    </div>
+                  </div>
+                  <span class="px-3 py-1 rounded-full text-[11px] font-extrabold border ${badgeCls}">
+                    ${badgeTxt}
+                  </span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 pt-1 text-[10.5px] text-teal-100 border-t border-white/15">
+                  <span class="px-2 py-0.5 rounded bg-white/10 font-bold">
+                    ${isAnual ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
+                  </span>
+                  <span>Próximo corte: <strong class="font-mono text-white">${esc(emp.fecha_proximo_corte || '01 del mes')}</strong></span>
+                  <span>· Control corte: <strong>${emp.control_corte === false ? 'Exento' : 'Activo'}</strong></span>
+                  ${assignedTo ? `<span class="ml-auto px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-100 font-bold">👤 Gestor: ${esc(assignedTo.nombre)}</span>` : ''}
+                </div>
+              </div>
+
+              <!-- KPIs Compactos de Cartera -->
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Plan Suscrito</div>
+                  <div class="text-sm font-black text-[#073e3b] uppercase mt-0.5">${esc(pl.name)}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Tarifa Base Ciclo</div>
+                  <div class="text-sm font-black font-mono text-[#087e70] mt-0.5">$${monto.toFixed(2)}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Días Mora / Gracia</div>
+                  <div class="text-sm font-black font-mono ${subStatus.diasMora > 5 ? 'text-rose-700' : (subStatus.diasMora > 0 ? 'text-amber-700' : 'text-[#073e3b]')} mt-0.5">${subStatus.diasMora || 0} días</div>
+                </div>
+              </div>
+
+              ${isMaster ? `
+                <!-- Configuración de Corte y Exenciones (Solo Master Admin) -->
+                <div class="p-3 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                  <div class="font-extrabold text-[#073e3b] text-[11px]">⚙️ Gobierno de Corte y Exenciones de Cartera</div>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                    <div>
+                      <label class="text-[10px] font-bold text-slate-600 block">Fecha Próximo Corte (Día 01):</label>
+                      <input type="date" value="${esc(emp.fecha_proximo_corte || '')}" onchange="CRM.updateBillingField('${emp.id}', { fecha_proximo_corte: this.value })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 mt-0.5 bg-white font-mono" />
+                    </div>
+                    <div>
+                      <label class="text-[10px] font-bold text-slate-600 block">Control de Corte Automático:</label>
+                      <select onchange="CRM.updateBillingField('${emp.id}', { control_corte: this.value === 'true' })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 mt-0.5 bg-white font-bold">
+                        <option value="true" ${emp.control_corte !== false ? 'selected' : ''}>✅ Activado (Aplica Reglas 1 y 2)</option>
+                        <option value="false" ${emp.control_corte === false ? 'selected' : ''}>⏸️ Desactivado (Exento)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="text-[10px] font-bold text-slate-600 block">Exento / Meses Gratis Hasta:</label>
+                      <input type="date" value="${esc(emp.exento_hasta || '')}" onchange="CRM.updateBillingField('${emp.id}', { exento_hasta: this.value || null })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1.5 mt-0.5 bg-white font-mono" />
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+
+              ${!isRO ? `
+                <!-- Acciones Operativas de Cobranza -->
+                <div class="p-3 rounded-xl bg-white border border-slate-200 space-y-2">
+                  <div class="font-extrabold text-[#073e3b] text-[11px]">🚀 Acciones Rápidas de Recaudación y Seguimiento</div>
+                  <div class="flex flex-wrap items-center gap-2 pt-1">
+                    <button onclick="CRM.openPaymentModal('${esc(emp.ruc)}')" class="px-4 py-2 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                      💳 FACTURAR / PAGO (Con Comprobante)
+                    </button>
+                    <button onclick="CRM.openClient360ByRuc('${esc(emp.ruc)}')" class="px-3.5 py-2 rounded-xl text-[11px] font-bold bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
+                      🗂️ Hoja de Vida 360°
+                    </button>
+                    <button onclick="const msg=encodeURIComponent('Hola ${esc(emp.nombre)}, te recordamos que tu suscripción Vozkora (${isAnual ? 'Anual' : 'Mensual'}) tiene corte el ${esc(emp.fecha_proximo_corte || 'día 01')}.'); window.open('https://wa.me/${esc((emp.telefono || '').replace(/\D/g,''))}?text='+msg, '_blank');" class="ml-auto px-3.5 py-2 rounded-xl text-[11px] font-extrabold bg-emerald-100 hover:bg-emerald-200 text-emerald-900 cursor-pointer">
+                      💬 Recordatorio WhatsApp
+                    </button>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
               <div>
-                <h3 class="text-sm font-extrabold text-[#073e3b]">💳 Cobranzas Automáticas, Asignación de Cartera y Cortes</h3>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">💳 Cobranzas Automáticas, Asignación de Cartera y Cortes (${enriched.length})</h3>
                 <p class="text-[11px] text-slate-500">
                   ${isMaster
-                    ? 'Solo puedes asignar cartera en 🟡 Días de gracia 1–5, 🔴 Bloqueadas +5 días o 🟣 Bloqueadas +60 días. Las empresas al día/activas no se asignan.'
-                    : 'Bandeja de cartera asignada a tu gestión. Al registrar el pago, se retira de tu bandeja y viaja a 🚀 Activaciones Pendientes.'}
+                    ? 'Selecciona una empresa a la izquierda para gestionar cortes o marca los checks para asignar cartera vencida.'
+                    : 'Selecciona una empresa asignada a tu gestión en la lista izquierda para registrar su pago.'}
                 </p>
               </div>
-              ${!this.isReadOnlyRole() ? `
-                <button onclick="CRM.openPaymentModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+              ${!isRO ? `
+                <button onclick="CRM.openPaymentModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                   💳 + FACTURAR / PAGO
                 </button>
               ` : '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-[11px]">👁️ Modo Solo Lectura</span>'}
@@ -1264,108 +1405,80 @@
               </div>
             ` : ''}
 
-            <div class="flex flex-wrap gap-1.5 border-b border-slate-100 pb-2.5">
-              <button onclick="CRM.billingFilter='ALL'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-700 border border-[#dce6e5]'}">
-                Todas (${enriched.length})
-              </button>
-              ${isMaster ? `
-                <button onclick="CRM.billingFilter='AL_DIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'AL_DIA' ? 'bg-[#087e70] text-white' : 'bg-emerald-50 text-emerald-900 border border-emerald-200'}">
-                  🟢 Al día / Exentas (${alDiaCount})
-                </button>
-              ` : ''}
-              <button onclick="CRM.billingFilter='GRACIA'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'GRACIA' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
-                🟡 En días de gracia 1–5 (${moraGraciaCount})
-              </button>
-              <button onclick="CRM.billingFilter='BLOQUEADOS'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'BLOQUEADOS' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-900 border border-rose-200'}">
-                🔴 Bloqueadas +5 días (${bloqueados5To60Count})
-              </button>
-              <button onclick="CRM.billingFilter='BLOQUEADOS_60'; CRM.renderBillingView();" class="px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${this.billingFilter === 'BLOQUEADOS_60' ? 'bg-purple-700 text-white' : 'bg-purple-50 text-purple-900 border border-purple-300'}">
-                🟣 Bloqueadas +60 días (${bloqueadosPlus60Count})
-              </button>
-            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <!-- PANEL IZQUIERDO: LISTADO COMPACTO DE CARTERA -->
+              <div class="lg:col-span-4 bg-[#f5f8f8] rounded-2xl p-3 border border-[#dce6e5] space-y-2.5">
+                <input type="text" value="${esc(this.billingSearch)}" oninput="CRM.billingSearch=this.value; CRM.renderBillingView();" placeholder="🔍 Buscar empresa o RUC..." class="w-full px-3 py-2 rounded-xl border border-[#d7e1e0] bg-white text-[11px] focus:outline-none focus:border-[#087e70]" />
 
-            <div class="space-y-2.5">
-              ${filtered.length === 0 ? '<p class="text-slate-500 text-center py-8 text-[11px]">No hay empresas en esta clasificación de cartera.</p>' : filtered.map(({ emp, subStatus, assignedTo }) => {
-                const pl = PLANS.find(p => p.id === emp.plan_activo) || PLANS[3];
-                const isAnual = String(emp.periodicidad || 'MENSUAL').toUpperCase() === 'ANUAL';
-                const monto = isAnual ? pl.annualPrice : pl.monthlyPrice;
-                const canBeAssigned = this.isCompanyInOverduePortfolio(emp, subStatus);
-                const isChecked = canBeAssigned && this.selectedBillingRucs.includes(String(emp.ruc || '').trim());
-                const isPlus60 = subStatus.estado === 'BLOQUEADO_CORTE' && subStatus.diasMora > 60;
+                <div class="flex flex-wrap gap-1">
+                  <button onclick="CRM.billingFilter='ALL'; CRM.renderBillingView();" class="px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${this.billingFilter === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-white text-slate-600 border border-[#dce6e5]'}">
+                    Todas (${enriched.length})
+                  </button>
+                  ${isMaster ? `
+                    <button onclick="CRM.billingFilter='AL_DIA'; CRM.renderBillingView();" class="px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${this.billingFilter === 'AL_DIA' ? 'bg-[#087e70] text-white' : 'bg-white text-emerald-900 border border-[#dce6e5]'}">
+                      🟢 Al día (${alDiaCount})
+                    </button>
+                  ` : ''}
+                  <button onclick="CRM.billingFilter='GRACIA'; CRM.renderBillingView();" class="px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${this.billingFilter === 'GRACIA' ? 'bg-amber-500 text-white' : 'bg-white text-amber-900 border border-[#dce6e5]'}">
+                    🟡 Gracia (${moraGraciaCount})
+                  </button>
+                  <button onclick="CRM.billingFilter='BLOQUEADOS'; CRM.renderBillingView();" class="px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${this.billingFilter === 'BLOQUEADOS' ? 'bg-rose-600 text-white' : 'bg-white text-rose-900 border border-[#dce6e5]'}">
+                    🔴 +5d (${bloqueados5To60Count})
+                  </button>
+                  <button onclick="CRM.billingFilter='BLOQUEADOS_60'; CRM.renderBillingView();" class="px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${this.billingFilter === 'BLOQUEADOS_60' ? 'bg-purple-700 text-white' : 'bg-white text-purple-900 border border-[#dce6e5]'}">
+                    🟣 +60d (${bloqueadosPlus60Count})
+                  </button>
+                </div>
 
-                const badgeCls = isPlus60
-                  ? 'bg-purple-100 text-purple-900'
-                  : (subStatus.estado === 'BLOQUEADO_CORTE'
-                    ? 'bg-rose-100 text-rose-800'
-                    : (subStatus.estado === 'PENDIENTE_RENOVACION'
-                      ? 'bg-amber-100 text-amber-900'
-                      : 'bg-emerald-100 text-emerald-800'));
+                <div class="max-h-[62vh] overflow-y-auto crm-scroll space-y-1.5 pr-1">
+                  ${filtered.length === 0 ? '<p class="text-[11px] text-slate-500 text-center py-6">No hay empresas en esta clasificación.</p>' : filtered.map(({ emp, subStatus, assignedTo }) => {
+                    const isSel = emp.id === this.selectedBillingId;
+                    const canBeAssigned = this.isCompanyInOverduePortfolio(emp, subStatus);
+                    const isChecked = canBeAssigned && this.selectedBillingRucs.includes(String(emp.ruc || '').trim());
+                    const isPlus60 = subStatus.estado === 'BLOQUEADO_CORTE' && subStatus.diasMora > 60;
 
-                const badgeTxt = isPlus60
-                  ? `🟣 Bloqueada +60d (${subStatus.diasMora} días mora)`
-                  : (subStatus.estado === 'BLOQUEADO_CORTE'
-                    ? `🔴 Bloqueada (${subStatus.diasMora} días mora)`
-                    : (subStatus.estado === 'PENDIENTE_RENOVACION'
-                      ? `🟡 Aviso Rojo (${subStatus.diasMora} días tras corte)`
-                      : (subStatus.estado === 'EXENTO' ? '⚪ Control Corte Desactivado' : (subStatus.estado === 'EXENTO_HASTA' ? `🎁 Exento hasta ${subStatus.exentoHasta}` : '🟢 Al día'))));
+                    const shortCls = isPlus60
+                      ? 'bg-purple-100 text-purple-900 border-purple-200'
+                      : (subStatus.estado === 'BLOQUEADO_CORTE'
+                        ? 'bg-rose-100 text-rose-800 border-rose-200'
+                        : (subStatus.estado === 'PENDIENTE_RENOVACION'
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : 'bg-emerald-100 text-emerald-800 border-emerald-200'));
 
-                return `
-                  <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border ${isChecked ? 'border-[#087e70] ring-1 ring-[#087e70]' : 'border-[#dce6e5]'} space-y-2">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <div class="flex items-center gap-2">
-                        ${isMaster ? (
-                          canBeAssigned
-                            ? `<input type="checkbox" ${isChecked ? 'checked' : ''} onchange="CRM.toggleBillingSelectRuc('${esc(emp.ruc)}', this.checked)" class="w-4 h-4 accent-[#087e70] cursor-pointer" title="Seleccionar para asignar cartera" />`
-                            : `<span class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 text-[9.5px] font-bold" title="Las empresas activas/al día no se asignan a cartera">🔒 Al día</span>`
-                        ) : ''}
-                        <div>
-                          <strong class="text-sm text-[#073e3b]">${esc(emp.nombre)}</strong>
-                          <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isAnual ? 'bg-amber-100 text-amber-900' : 'bg-cyan-50 text-cyan-900'}">
-                            ${isAnual ? '👑 ANUAL (VIP)' : '📅 MENSUAL'}
-                          </span>
-                          <span class="ml-1 font-mono text-[11px] font-bold text-[#087e70]">Plan ${esc(pl.name)} ($${monto.toFixed(2)})</span>
-                          ${assignedTo ? `<span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-900">👤 Asignada a: ${esc(assignedTo.nombre)}</span>` : ''}
+                    const shortTxt = isPlus60
+                      ? `🟣 +${subStatus.diasMora}d`
+                      : (subStatus.estado === 'BLOQUEADO_CORTE'
+                        ? `🔴 +${subStatus.diasMora}d`
+                        : (subStatus.estado === 'PENDIENTE_RENOVACION'
+                          ? `🟡 Gracia ${subStatus.diasMora}d`
+                          : '🟢 Al día'));
+
+                    return `
+                      <div onclick="CRM.selectBillingMaster('${emp.id}')" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
+                        <div class="flex items-center gap-2 min-w-0">
+                          ${isMaster && canBeAssigned ? `
+                            <input type="checkbox" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation();" onchange="CRM.toggleBillingSelectRuc('${esc(emp.ruc)}', this.checked)" class="w-4 h-4 accent-[#087e70] cursor-pointer shrink-0" title="Seleccionar para asignar cartera" />
+                          ` : ''}
+                          <div class="min-w-0">
+                            <div class="font-extrabold text-xs truncate">${esc(emp.nombre)}</div>
+                            <div class="text-[10px] font-mono ${isSel ? 'text-teal-200' : 'text-slate-500'} truncate">
+                              ${esc(emp.ruc)} · ${esc(String(emp.plan_activo || '').toUpperCase())}${assignedTo ? ' · 👤 ' + esc(assignedTo.nombre) : ''}
+                            </div>
+                          </div>
                         </div>
+                        <span class="px-2 py-0.5 rounded-full text-[9.5px] font-extrabold border shrink-0 ${isSel ? 'bg-white/15 text-[#70d2bd] border-white/20' : shortCls}">
+                          ${shortTxt}
+                        </span>
                       </div>
-                      <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${badgeCls}">${badgeTxt}</span>
-                    </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
 
-                    ${isMaster ? `
-                      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] bg-white p-2.5 rounded-xl border border-slate-200">
-                        <div>
-                          <label class="font-bold text-slate-600 block">Fecha Próximo Corte (Día 01):</label>
-                          <input type="date" value="${esc(emp.fecha_proximo_corte || '')}" onchange="CRM.updateBillingField('${emp.id}', { fecha_proximo_corte: this.value })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
-                        </div>
-                        <div>
-                          <label class="font-bold text-slate-600 block">Control de Corte Automático:</label>
-                          <select onchange="CRM.updateBillingField('${emp.id}', { control_corte: this.value === 'true' })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 bg-white font-bold">
-                            <option value="true" ${emp.control_corte !== false ? 'selected' : ''}>✅ Activado (Aplica Reglas 1 y 2)</option>
-                            <option value="false" ${emp.control_corte === false ? 'selected' : ''}>⏸️ Desactivado (Exento)</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label class="font-bold text-slate-600 block">Exento / Meses Gratis Hasta:</label>
-                          <input type="date" value="${esc(emp.exento_hasta || '')}" onchange="CRM.updateBillingField('${emp.id}', { exento_hasta: this.value || null })" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono" />
-                        </div>
-                      </div>
-                    ` : ''}
-
-                    ${!this.isReadOnlyRole() ? `
-                    <div class="flex flex-wrap gap-2 pt-1">
-                      <button onclick="CRM.openPaymentModal('${esc(emp.ruc)}')" class="px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
-                        💳 FACTURAR / PAGO (Con Comprobante)
-                      </button>
-                      <button onclick="CRM.openClient360ByRuc('${esc(emp.ruc)}')" class="px-3.5 py-1.5 rounded-xl text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
-                        🗂️ Hoja de Vida 360°
-                      </button>
-                      <button onclick="const msg=encodeURIComponent('Hola ${esc(emp.nombre)}, te recordamos que tu suscripción Vozkora (${isAnual ? 'Anual' : 'Mensual'}) tiene corte el ${esc(emp.fecha_proximo_corte || 'día 01')}.'); window.open('https://wa.me/${esc((emp.telefono || '').replace(/\D/g,''))}?text='+msg, '_blank');" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-100 text-emerald-900 cursor-pointer">
-                        💬 Recordatorio WhatsApp
-                      </button>
-                    </div>
-                    ` : ''}
-                  </div>
-                `;
-              }).join('')}
+              <!-- PANEL DERECHO: CUADRO DE DETALLE CON SCROLL INTERNO -->
+              <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] max-h-[72vh] overflow-y-auto crm-scroll">
+                ${detailHtml}
+              </div>
             </div>
           </div>
         `;
