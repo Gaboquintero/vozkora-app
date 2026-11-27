@@ -4127,7 +4127,8 @@
       renderInvoicingView() {
         const body = $('crm-body');
         const rolNorm = this.getSessionRole();
-        const canEmitInvoice = ['SUPERADMIN', 'FACTURACION'].includes(rolNorm);
+        const isSuper = this.isMasterAdmin();
+        const canEmitInvoice = isSuper || ['SUPERADMIN', 'FACTURACION'].includes(rolNorm);
         const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
         const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
 
