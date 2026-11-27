@@ -394,7 +394,9 @@
       companyFilterStatus: 'ALL',
       selectedTicketId: '',
       cachedUsers: [],
+      selectedUserId: '',
       userFilterEmpresa: 'ALL',
+      userFilterStatus: 'ALL',
       userSearch: '',
       cachedTickets: [],
       ticketFilterStatus: 'ABIERTOS',
@@ -1522,11 +1524,25 @@
         }
       },
 
+      selectUserMaster(userId) {
+        this.selectedUserId = userId;
+        this.renderUsersView();
+      },
+
       renderUsersView() {
         const body = $('crm-body');
         const q = (this.userSearch || '').toLowerCase();
-        const filtered = this.cachedUsers.filter(u => {
+        const byCompany = this.cachedUsers.filter(u => {
           if (this.userFilterEmpresa !== 'ALL' && u.empresa_ruc !== this.userFilterEmpresa) return false;
+          return true;
+        });
+
+        const activosCount = byCompany.filter(u => u.activo).length;
+        const bloqueadosCount = byCompany.filter(u => !u.activo).length;
+
+        const filtered = byCompany.filter(u => {
+          if (this.userFilterStatus === 'ACTIVOS' && !u.activo) return false;
+          if (this.userFilterStatus === 'BLOQUEADOS' && u.activo) return false;
           if (q && !(
             (u.nombre_completo || '').toLowerCase().includes(q) ||
             (u.email || '').toLowerCase().includes(q) ||
@@ -1536,72 +1552,201 @@
           return true;
         });
 
+        if (filtered.length > 0 && (!this.selectedUserId || !filtered.some(x => x.id === this.selectedUserId))) {
+          this.selectedUserId = filtered[0].id;
+        } else if (filtered.length === 0) {
+          this.selectedUserId = '';
+        }
+
+        const selUser = filtered.find(x => x.id === this.selectedUserId) || null;
+
+        let detailHtml = `
+          <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
+            <div class="text-3xl">👥</div>
+            <div class="text-sm font-extrabold text-[#073e3b]">Selecciona un usuario del listado izquierdo</div>
+            <p class="text-[11px] max-w-sm">Haz clic sobre cualquier usuario para editar sus datos, gestionar sus permisos, liberar su dispositivo o bloquear su acceso.</p>
+          </div>
+        `;
+
+        if (selUser) {
+          const realIdx = this.cachedUsers.findIndex(x => x.id === selUser.id);
+          const hasDeviceLock = !!selUser.session_token;
+          const empObj = this.cachedCompanies.find(c => c.id === selUser.empresa_id || c.ruc === selUser.empresa_ruc) || null;
+          const empActiveUsers = empObj
+            ? this.cachedUsers.filter(u => (u.empresa_id === empObj.id || u.empresa_ruc === empObj.ruc) && u.activo).length
+            : 0;
+          const empMaxUsers = empObj ? (Number(empObj.max_usuarios) || 1) : 1;
+          const permsObj = selUser.permisos || {};
+          const permEntries = [
+            ['facturar', 'Emitir Facturas'],
+            ['proformas', 'Crear Proformas'],
+            ['clientes', 'Crear Clientes'],
+            ['inventario_ver', 'Ver Inventario'],
+            ['inventario_editar', 'Editar Bodega'],
+            ['cobranza', 'Cobrar Cartera'],
+            ['bancos', 'Ver Bancos'],
+            ['programador_ruta', 'Programador Ruta GPS'],
+            ['admin_tickets', 'Admin. OT'],
+            ['reportes', 'Ver Reportes'],
+            ['configuracion', 'Entrenar IA']
+          ];
+          const activePermsCount = permEntries.filter(([k]) => !!permsObj[k]).length;
+
+          detailHtml = `
+            <div class="space-y-3">
+              <!-- Cabecera ejecutiva idéntica a Empresas SaaS y Cobranzas -->
+              <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-1.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h4 class="text-base font-black">${esc(selUser.nombre_completo || selUser.email)}</h4>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/15 text-[#70d2bd]">${esc(selUser.rol)}</span>
+                    </div>
+                    <div class="text-[11px] font-mono text-teal-100 mt-0.5">
+                      Correo: <strong>${esc(selUser.email)}</strong> · Clave: <strong>${esc(selUser.clave)}</strong>
+                    </div>
+                  </div>
+                  <span class="px-3 py-1 rounded-full text-[11px] font-extrabold border ${selUser.activo ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-rose-100 text-rose-800 border-rose-200'}">
+                    ${selUser.activo ? '🟢 Usuario Activo' : '🔴 Usuario Bloqueado'}
+                  </span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 pt-1 text-[10.5px] text-teal-100 border-t border-white/15">
+                  <span>🏢 Empresa: <strong class="text-white">${esc(selUser.empresa_nombre || 'Sin asignar')}</strong></span>
+                  <span>· RUC: <strong class="font-mono text-white">${esc(selUser.empresa_ruc || 'N/A')}</strong></span>
+                  <span class="ml-auto px-2 py-0.5 rounded font-bold ${hasDeviceLock ? 'bg-cyan-500/25 text-cyan-200' : 'bg-white/10 text-teal-100'}">
+                    ${hasDeviceLock ? `📱 En uso (${esc(selUser.dispositivo_info || '1 disp.')})` : '⚪ Dispositivo libre'}
+                  </span>
+                </div>
+              </div>
+
+              <!-- KPIs Compactos -->
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Rol Operativo</div>
+                  <div class="text-sm font-black text-[#073e3b] uppercase mt-0.5">${esc(selUser.rol)}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Cupo Empresa</div>
+                  <div class="text-sm font-black font-mono ${empActiveUsers >= empMaxUsers ? 'text-amber-700' : 'text-[#087e70]'} mt-0.5">${empActiveUsers} / ${empMaxUsers}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5]">
+                  <div class="text-[10px] text-slate-500 font-bold">Permisos Activos</div>
+                  <div class="text-sm font-black font-mono text-[#073e3b] mt-0.5">${activePermsCount} / ${permEntries.length}</div>
+                </div>
+              </div>
+
+              <!-- Resumen visual de permisos -->
+              <div class="p-3 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                <div class="flex items-center justify-between text-[10.5px]">
+                  <span class="font-extrabold text-[#073e3b]">🛡️ Permisos Asignados en la App</span>
+                  <button onclick="CRM.openEditPermsModal(${realIdx})" class="px-2.5 py-1 rounded-lg bg-[#073e3b] hover:bg-[#087e70] text-[#70d2bd] hover:text-white font-extrabold text-[10px] cursor-pointer">
+                    Configurar Permisos
+                  </button>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${permEntries.map(([k, lbl]) => {
+                    const has = !!permsObj[k];
+                    return `<span class="px-2 py-0.5 rounded-lg text-[10px] font-bold ${has ? 'bg-[#087e70] text-white' : 'bg-white border border-slate-200 text-slate-400'}">
+                      ${has ? '✓' : '✕'} ${esc(lbl)}
+                    </span>`;
+                  }).join('')}
+                </div>
+              </div>
+
+              <!-- Acciones de Gobierno de Usuario -->
+              <div class="p-3 rounded-xl bg-white border border-slate-200 space-y-2">
+                <div class="font-extrabold text-[#073e3b] text-[11px]">⚙️ Administración de Cuenta y Dispositivo</div>
+                <div class="flex flex-wrap items-center gap-2 pt-1">
+                  <button onclick="CRM.openEditUserModal(${realIdx})" class="px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                    ✏️ Editar Usuario
+                  </button>
+                  <button onclick="CRM.openEditPermsModal(${realIdx})" class="px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                    🛡️ Permisos
+                  </button>
+                  ${hasDeviceLock ? `
+                    <button onclick="CRM.releaseUserDevice('${selUser.id}', '${esc(selUser.email)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 cursor-pointer">
+                      🔓 Liberar Dispositivo
+                    </button>
+                  ` : ''}
+                  <button onclick="CRM.toggleUserActive('${selUser.id}', ${!selUser.activo})" class="px-3 py-1.5 rounded-xl text-[11px] font-bold ${selUser.activo ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-600 text-white'} cursor-pointer">
+                    ${selUser.activo ? '⏸️ Bloquear Usuario' : '✅ Activar / Reactivar'}
+                  </button>
+                  ${selUser.rol !== 'SUPERADMIN' ? `
+                    <button onclick="CRM.deleteUserConfirm('${selUser.id}', '${esc(selUser.email)}')" class="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-rose-100 hover:bg-rose-600 text-rose-800 hover:text-white cursor-pointer">
+                      🗑️ Eliminar
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
               <div>
                 <h3 class="text-sm font-extrabold text-[#073e3b]">👥 Usuarios de Acceso a la App (${this.cachedUsers.length})</h3>
-                <p class="text-[11px] text-slate-500">Cada usuario opera exclusivamente sobre su empresa asignada, respeta el cupo del plan y solo entra en 1 dispositivo.</p>
+                <p class="text-[11px] text-slate-500">Selecciona un usuario en la lista izquierda para gestionar sus credenciales, permisos, dispositivo y estado.</p>
               </div>
-              <button onclick="CRM.openNewUserForm()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+              <button onclick="CRM.openNewUserForm()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                 + Crear Usuario en Empresa
               </button>
             </div>
 
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
-              <select onchange="CRM.userFilterEmpresa=this.value; CRM.renderUsersView();" class="border border-[#d7e1e0] rounded-xl px-3 py-1.5 bg-[#f5f8f8] text-[11px] font-bold">
-                <option value="ALL">Todas las empresas (${this.cachedUsers.length} usuarios)</option>
-                ${this.cachedCompanies.map(emp => {
-                  const cnt = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
-                  return `<option value="${esc(emp.ruc)}" ${this.userFilterEmpresa === emp.ruc ? 'selected' : ''}>${esc(emp.nombre)} — Cupo: ${cnt}/${emp.max_usuarios}</option>`;
-                }).join('')}
-              </select>
-              <input type="text" value="${esc(this.userSearch)}" oninput="CRM.userSearch=this.value; CRM.renderUsersView();" placeholder="🔍 Buscar por usuario, correo, empresa o RUC..." class="w-full sm:w-64 px-3 py-1.5 rounded-xl border border-[#d7e1e0] text-[11px]" />
-            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <!-- PANEL IZQUIERDO: LISTADO COMPACTO DE USUARIOS -->
+              <div class="lg:col-span-4 bg-[#f5f8f8] rounded-2xl p-3 border border-[#dce6e5] space-y-2.5">
+                <select onchange="CRM.userFilterEmpresa=this.value; CRM.renderUsersView();" class="w-full border border-[#d7e1e0] rounded-xl px-2.5 py-2 bg-white text-[11px] font-bold text-[#073e3b]">
+                  <option value="ALL">🏢 Todas las empresas (${this.cachedUsers.length})</option>
+                  ${this.cachedCompanies.map(emp => {
+                    const cnt = this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length;
+                    return `<option value="${esc(emp.ruc)}" ${this.userFilterEmpresa === emp.ruc ? 'selected' : ''}>${esc(emp.nombre)} (${cnt}/${emp.max_usuarios})</option>`;
+                  }).join('')}
+                </select>
 
-            <div class="space-y-2.5">
-              ${filtered.map(u => {
-                const realIdx = this.cachedUsers.findIndex(x => x.id === u.id);
-                const hasDeviceLock = !!u.session_token;
-                return `
-                  <div class="p-3 rounded-2xl bg-[#f5f8f8] border ${u.activo ? 'border-[#dce6e5]' : 'border-rose-300 bg-rose-50/50'} space-y-2">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <span class="font-extrabold text-sm text-[#073e3b]">${esc(u.nombre_completo || u.email)}</span>
-                        <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#073e3b] text-[#70d2bd]">${esc(u.rol)}</span>
-                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-white border border-slate-200">🏢 ${esc(u.empresa_nombre)}</span>
-                      </div>
-                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${hasDeviceLock ? 'bg-cyan-100 text-cyan-900' : 'bg-slate-200 text-slate-700'}">
-                        ${hasDeviceLock ? `📱 En uso (${esc(u.dispositivo_info || '1 disp.')})` : '⚪ Dispositivo libre'}
-                      </span>
-                    </div>
-                    <div class="text-[11px] text-slate-600 font-mono">
-                      Correo: <strong>${esc(u.email)}</strong> · Clave: <strong>${esc(u.clave)}</strong> · RUC Empresa: ${esc(u.empresa_ruc)}
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2 pt-1">
-                      <button onclick="CRM.openEditUserModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#087e70] text-white hover:bg-[#073e3b] cursor-pointer">
-                        ✏️ Editar Usuario
+                <input type="text" value="${esc(this.userSearch)}" oninput="CRM.userSearch=this.value; CRM.renderUsersView();" placeholder="🔍 Buscar usuario, correo o RUC..." class="w-full px-3 py-2 rounded-xl border border-[#d7e1e0] bg-white text-[11px] focus:outline-none focus:border-[#087e70]" />
+
+                <div class="flex gap-1">
+                  <button onclick="CRM.userFilterStatus='ALL'; CRM.renderUsersView();" class="flex-1 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer ${this.userFilterStatus === 'ALL' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-white text-slate-600 border border-[#dce6e5]'}">
+                    Todos (${byCompany.length})
+                  </button>
+                  <button onclick="CRM.userFilterStatus='ACTIVOS'; CRM.renderUsersView();" class="flex-1 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer ${this.userFilterStatus === 'ACTIVOS' ? 'bg-[#087e70] text-white' : 'bg-white text-slate-600 border border-[#dce6e5]'}">
+                    Activos (${activosCount})
+                  </button>
+                  <button onclick="CRM.userFilterStatus='BLOQUEADOS'; CRM.renderUsersView();" class="flex-1 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer ${this.userFilterStatus === 'BLOQUEADOS' ? 'bg-rose-600 text-white' : 'bg-white text-slate-600 border border-[#dce6e5]'}">
+                    Bloq. (${bloqueadosCount})
+                  </button>
+                </div>
+
+                <div class="max-h-[58vh] overflow-y-auto crm-scroll space-y-1.5 pr-1">
+                  ${filtered.length === 0 ? '<p class="text-[11px] text-slate-500 text-center py-6">Sin usuarios que coincidan.</p>' : filtered.map(u => {
+                    const isSel = u.id === this.selectedUserId;
+                    const badgeCls = u.activo
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      : 'bg-rose-100 text-rose-800 border-rose-200';
+                    const badgeTxt = u.activo ? '🟢 Activo' : '🔴 Bloq.';
+                    return `
+                      <button type="button" onclick="CRM.selectUserMaster('${u.id}')" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
+                        <div class="min-w-0">
+                          <div class="font-extrabold text-xs truncate">${esc(u.nombre_completo || u.email)}</div>
+                          <div class="text-[10px] font-mono ${isSel ? 'text-teal-200' : 'text-slate-500'} truncate">
+                            ${esc(u.empresa_nombre || '')} · ${esc(u.rol)}
+                          </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[9.5px] font-extrabold border shrink-0 ${isSel ? 'bg-white/15 text-[#70d2bd] border-white/20' : badgeCls}">
+                          ${badgeTxt}
+                        </span>
                       </button>
-                      <button onclick="CRM.openEditPermsModal(${realIdx})" class="px-3 py-1 rounded-lg text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
-                        🛡️ Permisos
-                      </button>
-                      ${hasDeviceLock ? `
-                        <button onclick="CRM.releaseUserDevice('${u.id}', '${esc(u.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer">
-                          🔓 Liberar Dispositivo
-                        </button>
-                      ` : ''}
-                      <button onclick="CRM.toggleUserActive('${u.id}', ${!u.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${u.activo ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-600 text-white'} cursor-pointer">
-                        ${u.activo ? '⏸️ Bloquear Usuario' : '✅ Activar / Reactivar'}
-                      </button>
-                      ${u.rol !== 'SUPERADMIN' ? `
-                        <button onclick="CRM.deleteUserConfirm('${u.id}', '${esc(u.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-100 hover:bg-rose-600 text-rose-800 hover:text-white cursor-pointer">
-                          🗑️ Eliminar
-                        </button>
-                      ` : ''}
-                    </div>
-                  </div>
-                `;
-              }).join('')}
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+
+              <!-- PANEL DERECHO: CUADRO DE DETALLE CON SCROLL INTERNO -->
+              <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] max-h-[72vh] overflow-y-auto crm-scroll">
+                ${detailHtml}
+              </div>
             </div>
           </div>
         `;
