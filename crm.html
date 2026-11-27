@@ -3600,8 +3600,7 @@
           `• *Valor Total:* $${Number(det.monto_usd || 0).toFixed(2)} USD`,
           det.factura_emitida_url ? `• *Descarga tu Factura (PDF/Imagen):* ${det.factura_emitida_url}` : '',
           `¡Gracias por confiar en Vozkora!`
-        ].filter(Boolean).join('
-');
+        ].filter(Boolean).join('\n');
 
         window.open(`https://wa.me/${phoneIntl}?text=${encodeURIComponent(lines)}`, '_blank');
       },
