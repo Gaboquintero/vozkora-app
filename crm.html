@@ -430,6 +430,41 @@
         return em === 'admin@vozkora.com' || ['SUPERADMIN', 'ADMIN', 'SUPER_ADMIN', 'ADMINISTRADOR'].includes(r);
       },
 
+      getCurrentMonthIsoPrefix() {
+        const iso = typeof obtenerFechaLocalISO === 'function'
+          ? obtenerFechaLocalISO(0)
+          : new Date().toISOString().slice(0, 10);
+        return String(iso).slice(0, 7);
+      },
+
+      isTicketInCurrentMonth(tk) {
+        if (!tk) return false;
+        const curMonth = this.getCurrentMonthIsoPrefix();
+        const det = tk.detalle || {};
+        if (det.fecha_iso_local) {
+          return String(det.fecha_iso_local).slice(0, 7) === curMonth;
+        }
+        if (tk.creado_en) {
+          return formatLocalDateTimeCrm(tk.creado_en).slice(0, 7) === curMonth;
+        }
+        const fLocal = String(det.fecha_hora_local || '');
+        const m = fLocal.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+        if (m) {
+          return `${m[3]}-${m[2]}` === curMonth;
+        }
+        return true;
+      },
+
+      isDateStringInCurrentMonth(dateStr) {
+        if (!dateStr) return false;
+        const curMonth = this.getCurrentMonthIsoPrefix();
+        const s = String(dateStr).trim();
+        if (/^\d{4}-\d{2}/.test(s)) return s.slice(0, 7) === curMonth;
+        const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+        if (m) return `${m[3]}-${m[2]}` === curMonth;
+        return false;
+      },
+
       getSessionRole() {
         const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
         return String((ses && ses.rol) || '').trim().toUpperCase();
@@ -1810,14 +1845,18 @@
 
         const abiertos = baseTickets.filter(t => t.estado === 'PENDIENTE' || t.estado === 'ABIERTO');
         const enProceso = baseTickets.filter(t => t.estado === 'EN_PROCESO');
-        const cerrados = baseTickets.filter(t => t.estado === 'APROBADO' || t.estado === 'RECHAZADO');
+        const cerrados = baseTickets.filter(t => {
+          if (t.estado !== 'APROBADO' && t.estado !== 'RECHAZADO') return false;
+          if (!canSeeAllTickets) return this.isTicketInCurrentMonth(t);
+          return true;
+        });
         const waNotSentCount = baseTickets.filter(t => !this.isTicketWhatsappSent(t)).length;
         const waSentCount = baseTickets.filter(t => this.isTicketWhatsappSent(t)).length;
 
         let listToShow = abiertos;
         if (this.ticketFilterStatus === 'EN_PROCESO') listToShow = enProceso;
         else if (this.ticketFilterStatus === 'CERRADOS') listToShow = cerrados;
-        else if (this.ticketFilterStatus === 'TODOS') listToShow = baseTickets;
+        else if (this.ticketFilterStatus === 'TODOS') listToShow = canSeeAllTickets ? baseTickets : [...abiertos, ...enProceso, ...cerrados];
 
         if (canSeeAllTickets) {
           if (this.ticketAssigneeFilter === 'MINE' && sesNow) {
@@ -2802,8 +2841,20 @@
           hist360 = await crmObtenerHojaVidaCliente360(selEmp.ruc);
         }
 
+        const restrict360ToCurMonth = !this.isMasterAdmin() && !['SUPERVISOR', 'AUDITOR'].includes(this.getSessionRole());
         const empUsers = selEmp ? this.cachedUsers.filter(u => u.empresa_ruc === selEmp.ruc || u.empresa_id === selEmp.id) : [];
-        const empTickets = selEmp ? this.cachedTickets.filter(t => t.empresa_ruc === selEmp.ruc) : [];
+        const empTickets = selEmp ? this.cachedTickets.filter(t => {
+          if (t.empresa_ruc !== selEmp.ruc) return false;
+          if (restrict360ToCurMonth && (t.estado === 'APROBADO' || t.estado === 'RECHAZADO')) {
+            return this.isTicketInCurrentMonth(t);
+          }
+          return true;
+        }) : [];
+        if (restrict360ToCurMonth) {
+          hist360.facturas = (hist360.facturas || []).filter(f => this.isDateStringInCurrentMonth(f.fecha_operacion_real || f.creado_en));
+          hist360.cobros = (hist360.cobros || []).filter(c => this.isDateStringInCurrentMonth(c.creado_en));
+          hist360.proformas = (hist360.proformas || []).filter(p => this.isDateStringInCurrentMonth(p.creado_en));
+        }
         const totalFacturado = (hist360.facturas || []).reduce((a, f) => a + Number(f.total || 0), 0);
         const totalCobrado = (hist360.cobros || []).reduce((a, c) => a + Number(c.monto || 0), 0);
 
@@ -2982,9 +3033,17 @@
           const d = t.detalle || {};
           return tipo === 'ACTIVACION_VENTA' || Object.prototype.hasOwnProperty.call(SALE_OPERATION_TYPES, String(d.tipo_operacion || '').toUpperCase());
         });
-        const visibleActs = (['SUPERADMIN', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm))
+        const canSeeAllActs = isSuper || ['SUPERADMIN', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm);
+        const visibleActs = canSeeAllActs
           ? allActs
-          : allActs.filter(t => String(t.solicitado_por || '').trim().toLowerCase() === myEmail);
+          : allActs.filter(t => {
+              const owner = String((t.detalle && t.detalle.agente_email) || t.solicitado_por || '').trim().toLowerCase();
+              if (owner !== myEmail) return false;
+              if (t.estado === 'APROBADO' || t.estado === 'RECHAZADO') {
+                return this.isTicketInCurrentMonth(t);
+              }
+              return true;
+            });
 
         const pend = visibleActs.filter(t => t.estado === 'PENDIENTE');
         const aprob = visibleActs.filter(t => t.estado === 'APROBADO');
@@ -4073,9 +4132,17 @@
         const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
 
         const allPays = this.cachedTickets.filter(t => String(t.tipo_solicitud || '').toUpperCase() === 'FACTURACION_PAGO');
-        const visiblePays = (['SUPERADMIN', 'FACTURACION', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm))
+        const canSeeAllPays = isSuper || ['SUPERADMIN', 'FACTURACION', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm);
+        const visiblePays = canSeeAllPays
           ? allPays
-          : allPays.filter(t => String(t.solicitado_por || '').trim().toLowerCase() === myEmail);
+          : allPays.filter(t => {
+              const owner = String((t.detalle && t.detalle.agente_email) || t.solicitado_por || '').trim().toLowerCase();
+              if (owner !== myEmail) return false;
+              if (t.estado === 'APROBADO') {
+                return this.isTicketInCurrentMonth(t);
+              }
+              return true;
+            });
 
         const pend = visiblePays.filter(t => t.estado === 'PENDIENTE');
         const fact = visiblePays.filter(t => t.estado === 'APROBADO');
@@ -4534,6 +4601,8 @@
         const basePacks = emp && Array.isArray(emp.packs_ia)
           ? (emp.plan_activo === 'enterprise' ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : emp.packs_ia)
           : [];
+        const plInit = this.getPlanObject(basePlan);
+        const defaultAmt = emp ? (String(emp.periodicidad || '').toUpperCase() === 'ANUAL' ? plInit.annualPrice : plInit.monthlyPrice) : 22.99;
 
         V.openModal(
           isPrefilled ? `💳 FACTURAR / PAGO · ${emp.nombre}` : '💳 FACTURAR / PAGO (Cobranzas)',
