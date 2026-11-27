@@ -2048,7 +2048,8 @@
           this.cachedTickets = tks;
           this.cachedCompanies = emps;
           this.cachedUsers = usrs;
-          this.cachedStaff = usrs.filter(u => ['SUPERADMIN', 'SOPORTE', 'VENTAS'].includes(String(u.rol || '').toUpperCase()));
+          const assignableRoles = ['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'SOPORTE', 'FACTURACION', 'VENTAS', 'RETENCION', 'COBRANZAS'];
+          this.cachedStaff = usrs.filter(u => assignableRoles.includes(String(u.rol || '').trim().toUpperCase()) && u.activo !== false);
           this.renderTicketsView();
         } catch (e) {
           body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
@@ -2224,10 +2225,23 @@
                   ${isSuper ? `
                     <select onchange="CRM.assignTicketStaff('${selTk.id}', this.value)" class="border border-[#d7e1e0] rounded-lg px-2 py-1 bg-[#f5f8f8] font-bold text-[#073e3b]">
                       <option value="">-- Sin asignar --</option>
-                      ${(this.cachedStaff || []).map(st => {
-                        const currAssigned = selTk.asignado_a || det.asignado_a_email || '';
-                        return `<option value="${esc(st.email)}" ${currAssigned === st.email ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(st.rol)}]</option>`;
-                      }).join('')}
+                      ${(() => {
+                        const currAssigned = String(selTk.asignado_a || det.asignado_a_email || '').trim();
+                        const activeList = this.cachedStaff || [];
+                        const opts = activeList.map(st => {
+                          const rKey = String(st.rol || '').trim().toUpperCase();
+                          const rMeta = INTERNAL_ROLES_META[rKey];
+                          const rLabel = rMeta ? rMeta.label : rKey;
+                          const isMatch = currAssigned.toLowerCase() === String(st.email || '').trim().toLowerCase();
+                          return `<option value="${esc(st.email)}" ${isMatch ? 'selected' : ''}>${esc(st.nombre_completo || st.email)} [${esc(rLabel)}]</option>`;
+                        });
+                        if (currAssigned && !activeList.some(s => String(s.email || '').trim().toLowerCase() === currAssigned.toLowerCase())) {
+                          const inactiveUser = (this.cachedUsers || []).find(u => String(u.email || '').trim().toLowerCase() === currAssigned.toLowerCase());
+                          const labelInactive = inactiveUser ? `${inactiveUser.nombre_completo || inactiveUser.email} (Inactivo)` : `${currAssigned} (Inactivo)`;
+                          opts.unshift(`<option value="${esc(currAssigned)}" selected>${esc(labelInactive)}</option>`);
+                        }
+                        return opts.join('');
+                      })()}
                     </select>
                   ` : `<span class="px-2 py-0.5 rounded-lg bg-[#e7f5f1] text-[#073e3b] font-bold">${esc(sesNow?.nombre_completo || myEmail)}</span>`}
                 </div>
