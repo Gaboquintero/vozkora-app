@@ -2683,65 +2683,18 @@
           const excelRows = [];
           userTks.forEach(t => {
             const d = t.detalle || {};
-            const dg = d.desglose_gerencial || {};
             const fechaStr = d.fecha_hora_local || (t.creado_en ? formatLocalDateTimeCrm(t.creado_en) : '');
-            const pushRow = (accion, vacVal) => {
+            const vacInfo = this.computeTicketVacBreakdown(t);
+            vacInfo.items.forEach(it => {
               excelRows.push({
                 'Nombre de Cliente': t.empresa_nombre || '',
                 'RUC': t.empresa_ruc || '',
-                'Acción Comercial': accion,
-                'VAC (Valor Acción Comercial)': Number(Number(vacVal || 0).toFixed(2)),
+                'Acción Comercial': it.accion,
+                'VAC (Valor Acción Comercial)': Number(Number(it.vac || 0).toFixed(2)),
+                'Explicación Cálculo VAC': it.formula,
                 'Fecha': fechaStr
               });
-            };
-
-            if (d.es_cobranza) {
-              const vacCob = typeof dg.cobranza_vac_usd === 'number'
-                ? dg.cobranza_vac_usd
-                : Number(d.vac_cobranza_usd || 0);
-              pushRow(dg.cobranza_accion_label || d.concepto_pago || 'Cobranza / Renovación', vacCob);
-              return;
-            }
-
-            let addedAny = false;
-            if (Number(dg.venta_nueva_usd) > 0) {
-              pushRow(`Venta Nueva de Plan (${String(d.plan_nuevo || '').toUpperCase()})`, Number(dg.venta_nueva_usd));
-              addedAny = true;
-            }
-            if (Number(dg.upgrade_plan_usd) > 0) {
-              pushRow(`Upgrade de Plan (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()})`, Number(dg.upgrade_plan_usd));
-              addedAny = true;
-            }
-            if (Number(dg.usuarios_extra_usd) > 0) {
-              pushRow('Usuarios Nuevos Adicionales', Number(dg.usuarios_extra_usd));
-              addedAny = true;
-            }
-            if (Number(dg.modulos_ia_extra_usd) > 0) {
-              pushRow('Módulos Adicionales IA', Number(dg.modulos_ia_extra_usd));
-              addedAny = true;
-            }
-            if (Number(dg.modulo_personalizado_usd) > 0) {
-              pushRow('Módulo Personalizado (A medida)', Number(dg.modulo_personalizado_usd));
-              addedAny = true;
-            }
-            if (Number(dg.downgrade_plan_usd) > 0) {
-              pushRow(`Downgrade de Plan (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()})`, -Math.abs(Number(dg.downgrade_plan_usd)));
-              addedAny = true;
-            }
-            if (Number(dg.baja_usuarios_usd) > 0) {
-              pushRow('Baja de Usuarios de Cobro', -Math.abs(Number(dg.baja_usuarios_usd)));
-              addedAny = true;
-            }
-            if (Number(dg.baja_modulos_usd) > 0) {
-              pushRow('Baja de Módulos IA', -Math.abs(Number(dg.baja_modulos_usd)));
-              addedAny = true;
-            }
-
-            if (!addedAny) {
-              const isBaja = ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(String(d.tipo_operacion || ''));
-              const rawAmt = Number(d.monto_usd || 0);
-              pushRow(d.categoria || d.tipo_operacion || 'Movimiento Comercial', isBaja ? -Math.abs(rawAmt) : rawAmt);
-            }
+            });
           });
 
           if (excelRows.length === 0) {
@@ -2754,6 +2707,7 @@
             'RUC': '',
             'Acción Comercial': `${excelRows.length} movimiento(s)`,
             'VAC (Valor Acción Comercial)': Number(totalVac.toFixed(2)),
+            'Explicación Cálculo VAC': 'Suma neta de metas VAC del período',
             'Fecha': targetMonth
           });
 
@@ -2762,7 +2716,7 @@
           }
 
           const ws = XLSX.utils.json_to_sheet(excelRows);
-          ws['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 38 }, { wch: 28 }, { wch: 20 }];
+          ws['!cols'] = [{ wch: 34 }, { wch: 16 }, { wch: 38 }, { wch: 26 }, { wch: 48 }, { wch: 20 }];
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, ws, 'VAC_Comercial');
           const safeFile = `VAC_${String(staffName).replace(/[^a-zA-Z0-9_-]/g, '_')}_${targetMonth}.xlsx`;
@@ -3134,6 +3088,132 @@
         }
       },
 
+      computeTicketVacBreakdown(tk) {
+        const d = (tk && tk.detalle) || {};
+        const dg = d.desglose_gerencial || {};
+        const monto = Number(d.monto_usd || 0);
+        const items = [];
+        let totalVac = 0;
+
+        if (d.es_cobranza) {
+          const vacCob = typeof dg.cobranza_vac_usd === 'number'
+            ? Number(dg.cobranza_vac_usd)
+            : Number(d.vac_cobranza_usd || 0);
+          const lbl = dg.cobranza_accion_label || d.concepto_pago || 'Cobranza / Renovación';
+          let formula = '';
+          if (String(d.concepto_pago || '').includes('Recuperación cliente mayor a 60 días')) {
+            formula = `Recuperación >60d: 100% de $${monto.toFixed(2)} = +$${vacCob.toFixed(2)}`;
+          } else if (vacCob < 0) {
+            formula = `Cobranza con Downgrade/Baja: -10% de $${monto.toFixed(2)} = -$${Math.abs(vacCob).toFixed(2)}`;
+          } else {
+            formula = `Renovación / Upgrade sin bajas: +10% de $${monto.toFixed(2)} = +$${vacCob.toFixed(2)}`;
+          }
+          items.push({
+            accion: lbl,
+            vac: Number(vacCob.toFixed(2)),
+            formula
+          });
+          totalVac = Number(vacCob.toFixed(2));
+          return { totalVac, items, explanation: formula };
+        }
+
+        const addPart = (accion, val, formulaText) => {
+          const v = Number(Number(val || 0).toFixed(2));
+          if (v === 0) return;
+          items.push({ accion, vac: v, formula: formulaText });
+          totalVac = Number((totalVac + v).toFixed(2));
+        };
+
+        if (Number(dg.venta_nueva_usd) > 0) {
+          const v = Number(dg.venta_nueva_usd);
+          addPart(
+            `Venta Nueva de Plan (${String(d.plan_nuevo || '').toUpperCase()})`,
+            v,
+            `100% Venta Nueva Plan ${String(d.plan_nuevo || '').toUpperCase()} = +$${v.toFixed(2)}`
+          );
+        }
+        if (Number(dg.upgrade_plan_usd) > 0) {
+          const v = Number(dg.upgrade_plan_usd);
+          addPart(
+            `Upgrade de Plan (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()})`,
+            v,
+            `100% Upgrade a ${String(d.plan_nuevo || '').toUpperCase()} = +$${v.toFixed(2)}`
+          );
+        }
+        if (Number(dg.usuarios_extra_usd) > 0) {
+          const v = Number(dg.usuarios_extra_usd);
+          const unit = String(d.periodicidad || '').toUpperCase() === 'ANUAL' ? 9.60 : 1.00;
+          const qty = Math.round(v / unit);
+          addPart(
+            'Usuarios Nuevos Adicionales',
+            v,
+            `100% Usuarios Extra (${qty} × $${unit.toFixed(2)}) = +$${v.toFixed(2)}`
+          );
+        }
+        if (Number(dg.modulos_ia_extra_usd) > 0) {
+          const v = Number(dg.modulos_ia_extra_usd);
+          addPart(
+            'Módulos Adicionales IA',
+            v,
+            `100% Módulos Adicionales IA = +$${v.toFixed(2)}`
+          );
+        }
+        if (Number(dg.modulo_personalizado_usd) > 0) {
+          const v = Number(dg.modulo_personalizado_usd);
+          addPart(
+            'Módulo Personalizado (A medida)',
+            v,
+            `100% Módulo Personalizado = +$${v.toFixed(2)}`
+          );
+        }
+        if (Number(dg.downgrade_plan_usd) > 0) {
+          const v = -Math.abs(Number(dg.downgrade_plan_usd));
+          addPart(
+            `Downgrade de Plan (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()})`,
+            v,
+            `Diferencia negativa por Downgrade (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()}) = -$${Math.abs(v).toFixed(2)}`
+          );
+        }
+        if (Number(dg.baja_usuarios_usd) > 0) {
+          const v = -Math.abs(Number(dg.baja_usuarios_usd));
+          const unit = String(d.periodicidad || '').toUpperCase() === 'ANUAL' ? 9.60 : 1.00;
+          const qty = Math.round(Math.abs(v) / unit);
+          addPart(
+            'Baja de Usuarios de Cobro',
+            v,
+            `Baja de Usuarios (${qty} × $${unit.toFixed(2)}) = -$${Math.abs(v).toFixed(2)}`
+          );
+        }
+        if (Number(dg.baja_modulos_usd) > 0) {
+          const v = -Math.abs(Number(dg.baja_modulos_usd));
+          addPart(
+            'Baja de Módulos IA',
+            v,
+            `Baja de Módulos IA = -$${Math.abs(v).toFixed(2)}`
+          );
+        }
+
+        if (items.length === 0) {
+          const isBaja = ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(String(d.tipo_operacion || ''));
+          const v = isBaja ? -Math.abs(monto) : monto;
+          const f = isBaja
+            ? `Movimiento de baja (-100% del ajuste) = -$${Math.abs(v).toFixed(2)}`
+            : `100% del movimiento comercial = +$${v.toFixed(2)}`;
+          addPart(d.categoria || d.tipo_operacion || 'Movimiento Comercial', v, f);
+        }
+
+        // Si el asesor ajustó manualmente el monto cobrado (por ejemplo prorrateo por días) y solo hay 1 línea de alta, reflejarlo claramente
+        if (items.length === 1 && items[0].vac > 0 && Math.abs(monto - items[0].vac) >= 0.01 && !d.es_cobranza) {
+          const diffNote = `Valor cobrado ajustado/prorrateado: $${monto.toFixed(2)} (Tarifa lista base: $${items[0].vac.toFixed(2)})`;
+          items[0].vac = Number(monto.toFixed(2));
+          items[0].formula = diffNote;
+          totalVac = Number(monto.toFixed(2));
+        }
+
+        const explanation = items.map(it => it.formula).join('  |  ');
+        return { totalVac, items, explanation };
+      },
+
       renderActivationsView() {
         const body = $('crm-body');
         const rolNorm = this.getSessionRole();
@@ -3245,6 +3325,25 @@
                 ${det.descripcion_personalizada ? `<div class="pt-1 border-t border-slate-200">• <strong>Alcance Personalizado:</strong> ${esc(det.descripcion_personalizada)}</div>` : ''}
               </div>
 
+              <!-- Tarjeta de VAC (Meta del Asesor) y Cálculo Matemático -->
+              ${(() => {
+                const vacInfo = this.computeTicketVacBreakdown(selAct);
+                const isNeg = vacInfo.totalVac < 0;
+                return `
+                  <div class="p-3 rounded-xl ${isNeg ? 'bg-rose-50 border border-rose-300' : 'bg-[#e7f5f1] border border-[#087e70]'} space-y-1 text-[11px]">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <span class="font-extrabold ${isNeg ? 'text-rose-950' : 'text-[#073e3b]'}">🎯 VAC Comisionable (Meta del Asesor):</span>
+                      <span class="px-2.5 py-0.5 rounded-lg font-mono font-black text-xs ${isNeg ? 'bg-rose-600 text-white' : 'bg-[#073e3b] text-[#70d2bd]'}">
+                        ${vacInfo.totalVac >= 0 ? '+' : '-'}$${Math.abs(vacInfo.totalVac).toFixed(2)} USD
+                      </span>
+                    </div>
+                    <div class="font-mono text-[10.5px] ${isNeg ? 'text-rose-900' : 'text-[#087e70]'} font-bold">
+                      📐 Cálculo VAC: ${esc(vacInfo.explanation)}
+                    </div>
+                  </div>
+                `;
+              })()}
+
               <!-- Fórmula de Cobro / Prorrateo -->
               <div class="p-3 rounded-xl bg-amber-50/80 border border-amber-200 space-y-1 text-[11px]">
                 <div class="font-extrabold text-amber-950">🧮 Fórmula de Cálculo / Prorrateo Justificada por el Asesor:</div>
@@ -3331,7 +3430,10 @@
                       <div class="text-[10.5px] font-semibold truncate ${isSel ? 'text-teal-100' : 'text-slate-600'}">${esc(opMeta.label)}</div>
                       <div class="flex items-center justify-between text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">
                         <span>Por: ${esc(det.agente_nombre || tk.solicitado_por)}</span>
-                        ${isBaja ? '<span class="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 font-bold">01-05</span>' : ''}
+                        ${(() => {
+                          const vLeft = this.computeTicketVacBreakdown(tk).totalVac;
+                          return `<span class="px-1.5 py-0.2 rounded font-bold ${vLeft < 0 ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'} ${!isSel ? (vLeft < 0 ? '!bg-rose-100 !text-rose-800' : '!bg-emerald-100 !text-emerald-800') : ''}">VAC: ${vLeft >= 0 ? '+' : '-'}$${Math.abs(vLeft).toFixed(2)}</span>`;
+                        })()}
                       </div>
                     </button>
                   `;
