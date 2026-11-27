@@ -3299,9 +3299,10 @@
         const unitExtraUserPrice = isAnual ? 9.60 : 1.00;
         const usersAddCost = qtyUsersAdd * unitExtraUserPrice;
 
-        // Módulos nuevos agregados respecto a los que ya tenía
+        // Módulos nuevos agregados respecto a los que ya tenía (respetando la cuota incluida gratuita del plan resultante)
         const newlyAddedMods = selectedMods.filter(m => !currPacks.includes(m));
-        const freeSlotsAvailable = Math.max(0, newIncludedModsQuota - currPacks.filter(m => selectedMods.includes(m)).length);
+        const keptModsCount = currPacks.filter(m => selectedMods.includes(m)).length;
+        const freeSlotsAvailable = Math.max(0, newIncludedModsQuota - keptModsCount);
         const chargeableNewMods = newlyAddedMods.slice(freeSlotsAvailable);
         const modsAddCost = chargeableNewMods.reduce((sum, mId) => {
           const pk = SVA_PACKS.find(x => x.id === mId);
@@ -3581,7 +3582,7 @@
              <div class="grid grid-cols-2 gap-2">
                <div>
                  <label class="font-bold text-[#087e70]">Valor a Cobrar / Ajustado (USD) *</label>
-                 <input id="saleFormAmount" type="number" step="0.01" min="0" value="22.99" class="w-full border-2 border-[#087e70] rounded-xl p-2 mt-0.5 font-mono font-black text-[#087e70] bg-[#e7f5f1]/40" />
+                 <input id="saleFormAmount" type="number" step="0.01" min="0" value="22.99" oninput="CRM.onSaleManualAmountInput()" class="w-full border-2 border-[#087e70] rounded-xl p-2 mt-0.5 font-mono font-black text-[#087e70] bg-[#e7f5f1]/40" />
                  <div id="saleSuggestedPriceHint" class="text-[10px] font-bold text-slate-500 mt-0.5"></div>
                </div>
                <div>
@@ -3618,6 +3619,14 @@
         if ($('cartChkUsersDown')) $('cartChkUsersDown').checked = (op === 'BAJA_USUARIOS_EXTRA');
         if ($('cartChkModsDown')) $('cartChkModsDown').checked = (op === 'BAJA_MODULO_IA');
         this.recheckSaleFormLive(true);
+      },
+
+      onSaleManualAmountInput() {
+        const st = this.computeSaleEngineState();
+        const manualVal = Math.max(0, parseFloat($('saleFormAmount')?.value) || 0);
+        if ($('saleSuggestedPriceHint')) {
+          $('saleSuggestedPriceHint').textContent = `Tarifa lista: $${st.suggestedCharge.toFixed(2)} USD · Valor a cobrar ingresado: $${manualVal.toFixed(2)} USD`;
+        }
       },
 
       onSalePlanSelectChange() {
@@ -4700,7 +4709,7 @@
              <div class="grid grid-cols-2 gap-2">
                <div>
                  <label class="font-bold text-[#087e70]">Monto Recaudado (USD) *</label>
-                 <input id="payFormAmount" type="number" step="0.01" min="0.01" value="${defaultAmt.toFixed(2)}" class="w-full border-2 border-[#087e70] rounded-xl p-2 mt-0.5 font-mono font-black text-[#087e70] bg-[#e7f5f1]/40" />
+                 <input id="payFormAmount" type="number" step="0.01" min="0.01" value="${defaultAmt.toFixed(2)}" oninput="CRM.recheckPaymentFormLive(false)" class="w-full border-2 border-[#087e70] rounded-xl p-2 mt-0.5 font-mono font-black text-[#087e70] bg-[#e7f5f1]/40" />
                  <div id="payVacHint" class="text-[10px] font-extrabold mt-0.5"></div>
                </div>
                <div>
@@ -4758,14 +4767,24 @@
 
         if (updateAmounts) {
           if ($('payFormAmount')) $('payFormAmount').value = st.suggestedCobro.toFixed(2);
-          if ($('payFormFormula')) {
-            $('payFormFormula').value = `${st.concepto} (${condLabel}) · Plan ${st.effectivePlan.name} (${st.newTotalUsers} usu., ${st.selectedMods.length} mód.) = $${st.suggestedCobro.toFixed(2)} USD`;
-          }
+        }
+        const liveMontoCobrado = Math.max(0, parseFloat($('payFormAmount')?.value) || 0);
+        const liveVacCobranza = st.concepto === 'Recuperación cliente mayor a 60 días'
+          ? Number(liveMontoCobrado.toFixed(2))
+          : (st.hasDowngrade ? Number((-liveMontoCobranza * 0.10).toFixed(2)) : Number((liveMontoCobranza * 0.10).toFixed(2)));
+
+        if ($('payFormFormula')) {
+          const desgloseParts = [
+            `Plan ${st.effectivePlan.name}: $${st.newPlanPrice.toFixed(2)}`,
+            st.newPaidExtraUsers > 0 ? `${st.newPaidExtraUsers} usu. extra × $${st.unitExtraUserPrice.toFixed(2)} = $${(st.newPaidExtraUsers * st.unitExtraUserPrice).toFixed(2)}` : '',
+            st.selectedMods.length > st.newIncludedModsQuota ? `${st.selectedMods.length - st.newIncludedModsQuota} mód. IA extra` : ''
+          ].filter(Boolean).join(' + ');
+          $('payFormFormula').value = `${st.concepto} (${condLabel}) · ${desgloseParts} (${st.newTotalUsers} usu., ${st.selectedMods.length} mód.) = $${liveMontoCobranza.toFixed(2)} USD`;
         }
         const vacHint = $('payVacHint');
         if (vacHint) {
-          vacHint.className = st.vacCobranza < 0 ? 'text-[10px] font-extrabold text-rose-700 mt-0.5' : 'text-[10px] font-extrabold text-[#087e70] mt-0.5';
-          vacHint.textContent = `VAC Comisionable (${condLabel}): ${st.vacCobranza >= 0 ? '+' : ''}$${st.vacCobranza.toFixed(2)} USD`;
+          vacHint.className = liveVacCobranza < 0 ? 'text-[10px] font-extrabold text-rose-700 mt-0.5' : 'text-[10px] font-extrabold text-[#087e70] mt-0.5';
+          vacHint.textContent = `Tarifa lista: $${st.suggestedCobro.toFixed(2)} · VAC (${condLabel}): ${liveVacCobranza >= 0 ? '+' : ''}$${liveVacCobranza.toFixed(2)} USD`;
         }
 
         const vBox = $('payValidationBox');
