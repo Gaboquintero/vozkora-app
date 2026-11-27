@@ -109,7 +109,7 @@
 
   <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] hidden bg-[#073e3b] text-white border border-[#70d2bd]/40 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold max-w-[92vw] text-center"></div>
 
-  <script src="api.js"></script>
+  <script src="api.js?v=20261127_1400"></script>
   <script>
     const $ = id => document.getElementById(id);
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -359,13 +359,14 @@
 
 
     const INTERNAL_ROLES_META = {
-      SUPERADMIN: { label: 'Súper-Admin', badgeCls: 'bg-[#073e3b] text-[#70d2bd]', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'invoicing', 'billing', 'analytics', 'companies', 'users', 'staff', 'repo'] },
-      VENTAS:     { label: 'Asesor Comercial / Ventas', badgeCls: 'bg-amber-100 text-amber-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations'] },
-      SOPORTE:    { label: 'Ingeniero Soporte Técnico', badgeCls: 'bg-cyan-100 text-cyan-900', readOnly: false, tabs: ['tickets', 'crm360'] },
-      RETENCION:  { label: 'Atención al Cliente / Retención', badgeCls: 'bg-purple-100 text-purple-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations'] },
-      COBRANZAS:  { label: 'Gestor de Cobranzas', badgeCls: 'bg-emerald-100 text-emerald-900', readOnly: false, tabs: ['billing', 'invoicing', 'crm360'] },
-      SUPERVISOR: { label: 'Supervisor/a (Solo Lectura)', badgeCls: 'bg-indigo-100 text-indigo-900', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics'] },
-      AUDITOR:    { label: 'Auditor/a (Solo Lectura)', badgeCls: 'bg-slate-200 text-slate-800', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics'] }
+      SUPERADMIN:  { label: 'Súper-Admin', badgeCls: 'bg-[#073e3b] text-[#70d2bd]', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'invoicing', 'billing', 'analytics', 'companies', 'users', 'staff', 'repo'] },
+      VENTAS:      { label: 'Asesor Comercial / Ventas', badgeCls: 'bg-amber-100 text-amber-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations'] },
+      SOPORTE:     { label: 'Ingeniero Soporte Técnico', badgeCls: 'bg-cyan-100 text-cyan-900', readOnly: false, tabs: ['tickets', 'crm360'] },
+      RETENCION:   { label: 'Atención al Cliente / Retención', badgeCls: 'bg-purple-100 text-purple-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations'] },
+      COBRANZAS:   { label: 'Gestor de Cobranzas', badgeCls: 'bg-emerald-100 text-emerald-900', readOnly: false, tabs: ['billing', 'invoicing', 'crm360'] },
+      FACTURACION: { label: 'Facturación y Emisión SRI', badgeCls: 'bg-teal-100 text-teal-900', readOnly: false, tabs: ['invoicing', 'crm360', 'repo'] },
+      SUPERVISOR:  { label: 'Supervisor/a (Solo Lectura)', badgeCls: 'bg-indigo-100 text-indigo-900', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics', 'repo'] },
+      AUDITOR:     { label: 'Auditor/a (Solo Lectura)', badgeCls: 'bg-slate-200 text-slate-800', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics', 'repo'] }
     };
 
     const SALE_OPERATION_TYPES = {
@@ -396,9 +397,12 @@
       cachedTickets: [],
       ticketFilterStatus: 'ABIERTOS',
       ticketWaFilter: 'ALL',
+      ticketTypeFilter: 'ALL',
       activationFilter: 'PENDIENTES',
+      activationTypeFilter: 'ALL',
       selectedActivationId: '',
       invoicingFilter: 'PENDIENTES',
+      invoicingOriginFilter: 'ALL',
       selectedInvoicingId: '',
       analyticsPeriod: 'month',
       analyticsDate: new Date().toISOString().slice(0, 10),
@@ -1628,6 +1632,14 @@
           listToShow = listToShow.filter(t => !this.isTicketWhatsappSent(t));
         }
 
+        if (this.ticketTypeFilter && this.ticketTypeFilter !== 'ALL') {
+          listToShow = listToShow.filter(t => {
+            const d = t.detalle || {};
+            const code = String(d.tipo_operacion || t.tipo_solicitud || '').toUpperCase();
+            return code === this.ticketTypeFilter;
+          });
+        }
+
         if (listToShow.length > 0 && (!this.selectedTicketId || !listToShow.some(x => x.id === this.selectedTicketId))) {
           this.selectedTicketId = listToShow[0].id;
         } else if (listToShow.length === 0) {
@@ -1790,6 +1802,16 @@
                 <button onclick="CRM.ticketFilterStatus='TODOS'; CRM.renderTicketsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer ${this.ticketFilterStatus === 'TODOS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
                   Todos (${baseTickets.length})
                 </button>
+
+                <!-- Filtro por Tipo de Solicitud -->
+                <select onchange="CRM.ticketTypeFilter=this.value; CRM.renderTicketsView();" class="border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-extrabold text-[#073e3b]">
+                  <option value="ALL" ${this.ticketTypeFilter === 'ALL' ? 'selected' : ''}>📋 Tipo Solicitud: Todos</option>
+                  <option value="VENTAS_UPGRADE" ${this.ticketTypeFilter === 'VENTAS_UPGRADE' ? 'selected' : ''}>⬆️ Solicitud Upgrade App</option>
+                  <option value="NUEVO_USUARIO" ${this.ticketTypeFilter === 'NUEVO_USUARIO' ? 'selected' : ''}>👤 Alta Nuevo Usuario</option>
+                  <option value="SOPORTE_TECNICO" ${this.ticketTypeFilter === 'SOPORTE_TECNICO' ? 'selected' : ''}>🛠️ Soporte Técnico</option>
+                  <option value="CONSULTA_CANAL_TECNICO" ${this.ticketTypeFilter === 'CONSULTA_CANAL_TECNICO' ? 'selected' : ''}>📲 Consulta Canal Técnico</option>
+                  <option value="SOLICITUD_ELIMINACION_CUENTA" ${this.ticketTypeFilter === 'SOLICITUD_ELIMINACION_CUENTA' ? 'selected' : ''}>⚠️ Eliminación de Cuenta</option>
+                </select>
 
                 <!-- Filtro por estado de WhatsApp (Verde / Rojo) -->
                 <select onchange="CRM.ticketWaFilter=this.value; CRM.renderTicketsView();" class="border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-extrabold text-[#073e3b]">
@@ -2059,9 +2081,36 @@
       async loadRepo(tabla) {
         this.repoTable = tabla;
         const body = $('crm-body');
-        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Consultando hoja de auditoría en Supabase...</div>';
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Consultando repositorio de auditoría y documentos en Supabase...</div>';
         try {
-          this.repoRows = await consultarRepositorio(tabla);
+          if (tabla === 'repo_pagos_documentos_saas') {
+            const tks = await crmListarTickets();
+            this.cachedTickets = tks;
+            this.repoRows = tks
+              .filter(t => ['ACTIVACION_VENTA', 'FACTURACION_PAGO'].includes(String(t.tipo_solicitud || '').toUpperCase()))
+              .map(t => {
+                const d = t.detalle || {};
+                return {
+                  creado_en: d.fecha_hora_local || (t.creado_en || '').slice(0, 16).replace('T', ' '),
+                  empresa_ruc: t.empresa_ruc,
+                  empresa_nombre: t.empresa_nombre,
+                  entorno: 'PRODUCCION',
+                  tipo_registro: t.tipo_solicitud === 'ACTIVACION_VENTA' ? 'ACTIVACION / VENTA' : 'PAGO / FACTURACION',
+                  operacion_concepto: d.concepto_pago || d.categoria || t.tipo_solicitud,
+                  monto_usd: Number(d.monto_usd || 0).toFixed(2),
+                  referencia_bancaria: d.referencia_pago || 'N/A',
+                  banco_canal: d.banco_canal || 'Transferencia',
+                  numero_factura_sri: d.numero_factura_emitida || 'PENDIENTE',
+                  estado: t.estado,
+                  responsable: d.agente_nombre || t.solicitado_por || '',
+                  formula_cobro: d.formula_cobro || '',
+                  link_comprobante_pago: d.comprobante_url || '',
+                  link_factura_emitida: d.factura_emitida_url || ''
+                };
+              });
+          } else {
+            this.repoRows = await consultarRepositorio(tabla);
+          }
           this.renderRepoView();
         } catch (e) {
           body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
@@ -2087,6 +2136,7 @@
       renderRepoView() {
         const body = $('crm-body');
         const sheets = [
+          ['repo_pagos_documentos_saas', '💳 Pagos, Vouchers y Facturas SaaS'],
           ['repo_facturas', '🧾 Facturas SRI'],
           ['repo_clientes', '👥 Clientes'],
           ['repo_notas_credito', '↩️ Notas Crédito'],
@@ -2170,7 +2220,7 @@
                   <tbody>
                     ${filteredRows.map(r => `
                       <tr class="border-b border-slate-100 hover:bg-[#f5f8f8]">
-                        ${cols.map(c => `<td class="p-2 whitespace-nowrap font-mono">${esc(r[c] ?? '')}</td>`).join('')}
+                        ${cols.map(c => { const val = r[c] ?? ''; if ((c === 'link_comprobante_pago' || c === 'link_factura_emitida') && String(val).startsWith('http')) { return `<td class="p-2 whitespace-nowrap"><button onclick="CRM.openEvidencePreviewModal('${esc(val)}', '${esc(c)}')" class="px-2 py-0.5 rounded bg-[#087e70] text-white font-bold text-[10px] cursor-pointer">👁️ Abrir Doc</button></td>`; } return `<td class="p-2 whitespace-nowrap font-mono">${esc(val)}</td>`; }).join('')}
                       </tr>
                     `).join('')}
                   </tbody>
@@ -2272,6 +2322,7 @@
                  <option value="SOPORTE">🛠️ Ingeniero Soporte Técnico (Leads + Tickets + Hoja de Vida 360°)</option>
                  <option value="RETENCION">🤝 Atención al Cliente / Retención (Leads + Tickets + Hoja de Vida 360° + Ingresar Venta)</option>
                  <option value="COBRANZAS">💳 Cobranzas (Cobranzas y Cortes + Hoja de Vida 360° + Facturar/Pago)</option>
+                 <option value="FACTURACION">🧾 Facturación y Emisión SRI (Facturación Pendientes + Subir Factura + WhatsApp + Repositorio)</option>
                  <option value="SUPERVISOR">👁️ Supervisor/a (Leads & Tickets + Hoja de Vida 360° + Equipo + Cobranzas · Solo Lectura)</option>
                  <option value="AUDITOR">🔍 Auditor/a (Leads & Tickets + Hoja de Vida 360° + Equipo + Cobranzas · Solo Lectura)</option>
                </select>
@@ -2538,7 +2589,11 @@
         const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
         const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
 
-        const allActs = this.cachedTickets.filter(t => String(t.tipo_solicitud || '').toUpperCase() === 'ACTIVACION_VENTA');
+        const allActs = this.cachedTickets.filter(t => {
+          const tipo = String(t.tipo_solicitud || '').toUpperCase();
+          const d = t.detalle || {};
+          return tipo === 'ACTIVACION_VENTA' || Object.prototype.hasOwnProperty.call(SALE_OPERATION_TYPES, String(d.tipo_operacion || '').toUpperCase());
+        });
         const visibleActs = (['SUPERADMIN', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm))
           ? allActs
           : allActs.filter(t => String(t.solicitado_por || '').trim().toLowerCase() === myEmail);
@@ -2552,6 +2607,16 @@
         else if (this.activationFilter === 'RECHAZADAS') list = rech;
         else if (this.activationFilter === 'TODAS') list = visibleActs;
 
+        if (this.activationTypeFilter && this.activationTypeFilter !== 'ALL') {
+          list = list.filter(t => {
+            const d = t.detalle || {};
+            if (this.activationTypeFilter === 'SOLO_BAJAS') {
+              return ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(String(d.tipo_operacion || ''));
+            }
+            return String(d.tipo_operacion || '') === this.activationTypeFilter;
+          });
+        }
+
         if (list.length > 0 && (!this.selectedActivationId || !list.some(x => x.id === this.selectedActivationId))) {
           this.selectedActivationId = list[0].id;
         } else if (list.length === 0) {
@@ -2563,13 +2628,14 @@
           <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
             <div class="text-3xl">🚀</div>
             <div class="text-sm font-extrabold text-[#073e3b]">Selecciona una solicitud de activación</div>
-            <p class="text-[11px] max-w-sm">Haz clic a la izquierda para revisar la fórmula de cobro, el comprobante de pago adjunto y aplicar la activación automática en el sistema.</p>
+            <p class="text-[11px] max-w-sm">Haz clic a la izquierda para revisar la fórmula de cobro, el comprobante de pago adjunto y aplicar la activación automática (y envío a Facturación Pendientes).</p>
           </div>
         `;
 
         if (selAct) {
           const det = selAct.detalle || {};
-          const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Venta', badgeCls: 'bg-slate-100 text-slate-800' };
+          const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Venta', badgeCls: 'bg-slate-100 text-slate-800', group: 'ALTA' };
+          const isDowngradeOrBaja = ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(String(det.tipo_operacion || ''));
           const empObj = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(selAct.empresa_ruc || '').trim()) || null;
           const localTime = det.fecha_hora_local || (selAct.creado_en ? formatLocalDateTimeCrm(selAct.creado_en) : '');
           const stBadge = selAct.estado === 'APROBADO'
@@ -2581,13 +2647,16 @@
               <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-1.5">
                 <div class="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${opMeta.badgeCls}">${esc(opMeta.label)}</span>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${opMeta.badgeCls}">${esc(opMeta.label)}</span>
+                      ${isDowngradeOrBaja ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-400 text-[#073e3b]">📅 Ventana Aplicación: 01 al 05 de cada mes</span>' : ''}
+                    </div>
                     <h4 class="text-base font-black mt-1">${esc(selAct.empresa_nombre)}</h4>
-                    <div class="text-[11px] font-mono text-teal-100">RUC: <strong>${esc(selAct.empresa_ruc)}</strong> · Asesor: ${esc(det.agente_nombre || selAct.solicitado_por)}</div>
+                    <div class="text-[11px] font-mono text-teal-100">RUC: <strong>${esc(selAct.empresa_ruc)}</strong> · Asesor: ${esc(det.agente_nombre || selAct.solicitado_por)} (${esc(det.agente_rol || 'ASESOR')})</div>
                   </div>
                   <div class="text-right space-y-1">
                     <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${stBadge}">
-                      ${selAct.estado === 'APROBADO' ? '🟢 Activada en SaaS' : (selAct.estado === 'RECHAZADO' ? '🔴 Rechazada' : '🟡 Pendiente Activación')}
+                      ${selAct.estado === 'APROBADO' ? '🟢 Activada + Enviada a Facturación' : (selAct.estado === 'RECHAZADO' ? '🔴 Rechazada' : '🟡 Pendiente Activación')}
                     </span>
                     <div class="text-lg font-black font-mono text-[#70d2bd]">$${Number(det.monto_usd || 0).toFixed(2)} USD</div>
                   </div>
@@ -2597,6 +2666,12 @@
                   <span>Periodicidad: <strong class="text-white">${esc(det.periodicidad || 'MENSUAL')}</strong></span>
                 </div>
               </div>
+
+              ${isDowngradeOrBaja && selAct.estado === 'PENDIENTE' ? `
+                <div class="p-2.5 rounded-xl bg-orange-50 border border-orange-300 text-orange-950 text-[11px] font-bold">
+                  📅 Recordatorio de Gobierno SaaS: Los Downgrades y Bajas se cobran por el nuevo plan/configuración al que baja el cliente y se ejecutan en la ventana del <strong>01 al 05 de cada mes</strong>. Al aprobar, viajará automáticamente a <strong>🧾 Facturación Pendientes</strong>.
+                </div>
+              ` : ''}
 
               <!-- Resumen Técnico de lo que se aplicará -->
               <div class="p-3 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5 text-[11px]">
@@ -2636,7 +2711,7 @@
                     ✕ Rechazar Solicitud
                   </button>
                   <button onclick="CRM.openSmartApproveActivationModal('${selAct.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
-                    ✅ Validar y Activar Automáticamente →
+                    ✅ Validar, Activar y Enviar a Facturación →
                   </button>
                 </div>
               ` : ''}
@@ -2649,7 +2724,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
               <div>
                 <h3 class="text-sm font-extrabold text-[#073e3b]">🚀 Activaciones Pendientes (${visibleActs.length})</h3>
-                <p class="text-[11px] text-slate-500">Bandeja alimentada por <strong>INGRESAR VENTA</strong> (Ventas y Retención) con validación inteligente antes de activar.</p>
+                <p class="text-[11px] text-slate-500">Recibe solicitudes de <strong>Ventas y Retención</strong>. Al autorizar, activa el servicio y viaja automáticamente a <strong>🧾 Facturación Pendientes</strong>.</p>
               </div>
               <div class="flex flex-wrap items-center gap-1.5">
                 <button onclick="CRM.activationFilter='PENDIENTES'; CRM.renderActivationsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.activationFilter === 'PENDIENTES' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
@@ -2661,8 +2736,18 @@
                 <button onclick="CRM.activationFilter='RECHAZADAS'; CRM.renderActivationsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer ${this.activationFilter === 'RECHAZADAS' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-800 border border-rose-200'}">
                   🔴 Rechazadas (${rech.length})
                 </button>
+
+                <!-- Filtro por Tipo de Solicitud (Incluye Downgrades / Bajas del 01 al 05) -->
+                <select onchange="CRM.activationTypeFilter=this.value; CRM.renderActivationsView();" class="border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-extrabold text-[#073e3b]">
+                  <option value="ALL" ${this.activationTypeFilter === 'ALL' ? 'selected' : ''}>📋 Tipo Solicitud: Todos</option>
+                  <option value="SOLO_BAJAS" ${this.activationTypeFilter === 'SOLO_BAJAS' ? 'selected' : ''}>📅 Todos los Downgrades y Bajas (01 al 05)</option>
+                  ${Object.entries(SALE_OPERATION_TYPES).map(([k, v]) => `
+                    <option value="${k}" ${this.activationTypeFilter === k ? 'selected' : ''}>${esc(v.label)}</option>
+                  `).join('')}
+                </select>
+
                 ${['SUPERADMIN', 'VENTAS', 'RETENCION'].includes(rolNorm) ? `
-                  <button onclick="CRM.openSaleEntryModal()" class="ml-2 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                  <button onclick="CRM.openSaleEntryModal()" class="ml-1 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                     🚀 + INGRESAR VENTA
                   </button>
                 ` : ''}
@@ -2675,6 +2760,7 @@
                   const isSel = tk.id === this.selectedActivationId;
                   const det = tk.detalle || {};
                   const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Venta', badgeCls: 'bg-slate-100 text-slate-800' };
+                  const isBaja = ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(String(det.tipo_operacion || ''));
                   const dot = tk.estado === 'APROBADO' ? '🟢' : (tk.estado === 'RECHAZADO' ? '🔴' : '🟡');
                   return `
                     <button type="button" onclick="CRM.selectedActivationId='${tk.id}'; CRM.renderActivationsView();" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer space-y-1 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
@@ -2683,7 +2769,10 @@
                         <span class="font-mono font-black text-[11px] ${isSel ? 'text-[#70d2bd]' : 'text-[#087e70]'} shrink-0">$${Number(det.monto_usd || 0).toFixed(2)}</span>
                       </div>
                       <div class="text-[10.5px] font-semibold truncate ${isSel ? 'text-teal-100' : 'text-slate-600'}">${esc(opMeta.label)}</div>
-                      <div class="text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">Por: ${esc(det.agente_nombre || tk.solicitado_por)}</div>
+                      <div class="flex items-center justify-between text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">
+                        <span>Por: ${esc(det.agente_nombre || tk.solicitado_por)}</span>
+                        ${isBaja ? '<span class="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 font-bold">01-05</span>' : ''}
+                      </div>
                     </button>
                   `;
                 }).join('')}
@@ -2942,10 +3031,10 @@
         const fileObj = $('saleFormFile')?.files?.[0] || null;
 
         if (!ruc || !nombre) return toast('Ingresa RUC y Razón Social de la empresa.');
-        if (isNaN(montoUsd) || montoUsd < 0) return toast('Ingresa el valor cobrado en USD.');
+        if (isNaN(montoUsd) || montoUsd <= 0) return toast('⚠️ Debes ingresar el valor cobrado en USD (en Downgrade/Baja se cobra el plan al que baja el cliente).');
         if (!formulaCobro) return toast('⚠️ Debes escribir obligatoriamente la fórmula de cálculo / prorrateo utilizada.');
-        if (!fileObj && tipoOperacion !== 'DOWNGRADE_PLAN' && tipoOperacion !== 'BAJA_USUARIOS_EXTRA' && tipoOperacion !== 'BAJA_MODULO_IA') {
-          return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF).');
+        if (!fileObj) {
+          return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF) para todas las operaciones.');
         }
 
         const check = this.recheckSaleFormLive();
@@ -3130,8 +3219,49 @@
           det.activado_por = ses.email;
 
           await crmActualizarTicket(tk.id, 'APROBADO', det);
+
+          // Puente automático hacia 🧾 Facturación Pendientes (para emisión de factura SRI y envío WhatsApp)
+          const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Activación SaaS' };
+          const fechaFact = nowFormatted();
+          await crearTicketVozkora({
+            empresa_ruc: tk.empresa_ruc,
+            empresa_nombre: tk.empresa_nombre,
+            solicitado_por: det.agente_email || tk.solicitado_por || 'ventas@vozkora.com',
+            tipo_solicitud: 'FACTURACION_PAGO',
+            estado: 'PENDIENTE',
+            detalle: {
+              categoria: `🚀 ${opMeta.label}`,
+              origen_modulo: 'ACTIVACIONES_VENTAS',
+              ticket_activacion_id: tk.id,
+              concepto_pago: `${opMeta.label} · Plan ${planId.toUpperCase()} (${periodicidad})`,
+              banco_canal: det.banco_canal || 'Transferencia / Comprobante Venta',
+              monto_usd: Number(det.monto_usd || 0),
+              referencia_pago: det.referencia_pago || 'N/A',
+              formula_cobro: det.formula_cobro || '',
+              comprobante_url: det.comprobante_url || '',
+              telefono_contacto: det.telefono_contacto || (emp ? emp.telefono : '') || '',
+              email_contacto: det.email_contacto || (emp ? emp.email_contacto : '') || '',
+              agente_email: det.agente_email || tk.solicitado_por || '',
+              agente_nombre: det.agente_nombre || tk.solicitado_por || 'Asesor Comercial',
+              agente_rol: det.agente_rol || 'VENTAS',
+              autorizado_por: ses.email,
+              autorizado_en: fechaFact,
+              fecha_hora_local: fechaFact,
+              fecha_iso_local: typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10),
+              historial: [
+                {
+                  fecha: fechaFact,
+                  de_estado: '🟢 Activación Autorizada',
+                  a_estado: '🟡 Pendiente de Facturar',
+                  motivo: `Transferido automáticamente tras autorización de ${opMeta.label} ($${Number(det.monto_usd || 0).toFixed(2)}) por ${ses.email}`,
+                  autor: ses.email
+                }
+              ]
+            }
+          });
+
           V.closeModal();
-          toast(`✅ Activación aplicada automáticamente a ${tk.empresa_nombre}.`);
+          toast(`✅ Activación aplicada a ${tk.empresa_nombre} y enviada automáticamente a 🧾 Facturación Pendientes.`);
           await this.loadActivationsTab();
         } catch (e) {
           toast('Error aplicando activación: ' + e.message);
@@ -3178,12 +3308,12 @@
       renderInvoicingView() {
         const body = $('crm-body');
         const rolNorm = this.getSessionRole();
-        const isSuper = (rolNorm === 'SUPERADMIN');
+        const canEmitInvoice = ['SUPERADMIN', 'FACTURACION'].includes(rolNorm);
         const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
         const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
 
         const allPays = this.cachedTickets.filter(t => String(t.tipo_solicitud || '').toUpperCase() === 'FACTURACION_PAGO');
-        const visiblePays = (['SUPERADMIN', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm))
+        const visiblePays = (['SUPERADMIN', 'FACTURACION', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm))
           ? allPays
           : allPays.filter(t => String(t.solicitado_por || '').trim().toLowerCase() === myEmail);
 
@@ -3193,6 +3323,13 @@
         let list = pend;
         if (this.invoicingFilter === 'FACTURADAS') list = fact;
         else if (this.invoicingFilter === 'TODAS') list = visiblePays;
+
+        if (this.invoicingOriginFilter && this.invoicingOriginFilter !== 'ALL') {
+          list = list.filter(t => {
+            const orig = String((t.detalle && t.detalle.origen_modulo) || 'COBRANZAS').toUpperCase();
+            return orig === this.invoicingOriginFilter;
+          });
+        }
 
         if (list.length > 0 && (!this.selectedInvoicingId || !list.some(x => x.id === this.selectedInvoicingId))) {
           this.selectedInvoicingId = list[0].id;
@@ -3204,60 +3341,87 @@
         let detailHtml = `
           <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
             <div class="text-3xl">🧾</div>
-            <div class="text-sm font-extrabold text-[#073e3b]">Selecciona un reporte de pago / facturación</div>
-            <p class="text-[11px] max-w-sm">Revisa el comprobante bancario reportado por Cobranzas, valida la fórmula y renueva el ciclo SaaS en 1 clic.</p>
+            <div class="text-sm font-extrabold text-[#073e3b]">Selecciona una solicitud pendiente de facturar</div>
+            <p class="text-[11px] max-w-sm">Aquí llegan tanto las activaciones autorizadas de Ventas/Retención como los pagos de Cobranzas para subir la factura emitida y enviarla por WhatsApp al cliente.</p>
           </div>
         `;
 
         if (selPay) {
           const det = selPay.detalle || {};
+          const empObj = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(selPay.empresa_ruc || '').trim()) || null;
           const localTime = det.fecha_hora_local || (selPay.creado_en ? formatLocalDateTimeCrm(selPay.creado_en) : '');
+          const isFromSales = String(det.origen_modulo || '').toUpperCase() === 'ACTIVACIONES_VENTAS';
+          const hasFacturaFile = !!det.factura_emitida_url;
+          const clientPhone = det.telefono_contacto || (empObj && empObj.telefono) || '';
+
           detailHtml = `
             <div class="space-y-3">
               <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-1.5">
                 <div class="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/15 text-[#70d2bd]">${esc(det.concepto_pago || 'Renovación / Pago')}</span>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isFromSales ? 'bg-amber-400 text-[#073e3b]' : 'bg-cyan-200 text-[#073e3b]'}">
+                        ${isFromSales ? '🚀 Origen: Activaciones (Ventas / Retención)' : '💳 Origen: Cobranzas y Cortes'}
+                      </span>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/15 text-[#70d2bd]">${esc(det.concepto_pago || 'Suscripción Vozkora')}</span>
+                    </div>
                     <h4 class="text-base font-black mt-1">${esc(selPay.empresa_nombre)}</h4>
-                    <div class="text-[11px] font-mono text-teal-100">RUC: <strong>${esc(selPay.empresa_ruc)}</strong> · Gestor: ${esc(det.agente_nombre || selPay.solicitado_por)}</div>
+                    <div class="text-[11px] font-mono text-teal-100">RUC: <strong>${esc(selPay.empresa_ruc)}</strong> · Tel: <strong>${esc(clientPhone || 'N/A')}</strong></div>
                   </div>
                   <div class="text-right space-y-1">
                     <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${selPay.estado === 'APROBADO' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">
-                      ${selPay.estado === 'APROBADO' ? '🟢 Facturado y Ciclo Renovado' : '🟡 Pendiente Facturar'}
+                      ${selPay.estado === 'APROBADO' ? `🟢 Facturada (${esc(det.numero_factura_emitida || 'OK')})` : '🟡 Pendiente Emitir Factura'}
                     </span>
                     <div class="text-lg font-black font-mono text-[#70d2bd]">$${Number(det.monto_usd || 0).toFixed(2)} USD</div>
                   </div>
                 </div>
-                <div class="text-[10.5px] text-teal-100 pt-1 border-t border-white/15 flex justify-between">
-                  <span>📅 Reportado: ${esc(localTime)}</span>
-                  <span>Banco / Canal: <strong class="text-white">${esc(det.banco_canal || 'Transferencia')}</strong></span>
+                <div class="text-[10.5px] text-teal-100 pt-1 border-t border-white/15 flex flex-wrap justify-between gap-2">
+                  <span>📅 Fecha: ${esc(localTime)}</span>
+                  <span>Asesor/Gestor: <strong class="text-white">${esc(det.agente_nombre || selPay.solicitado_por)}</strong></span>
+                  <span>Canal: <strong class="text-white">${esc(det.banco_canal || 'Transferencia')}</strong></span>
                 </div>
               </div>
 
               <div class="p-3 rounded-xl bg-amber-50/80 border border-amber-200 space-y-1 text-[11px]">
-                <div class="font-extrabold text-amber-950">🧮 Detalle y Fórmula de Cobro Aplicada:</div>
+                <div class="font-extrabold text-amber-950">🧮 Fórmula de Cobro / Detalle para Facturación:</div>
                 <div class="text-amber-900">${esc(det.formula_cobro || 'Pago completo de ciclo')}</div>
               </div>
 
-              <div class="p-3 rounded-xl bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <div>
-                  <div class="font-extrabold text-[#073e3b]">🧾 Comprobante Bancario Adjunto</div>
-                  <div class="text-[10px] text-slate-500">Referencia: <strong class="font-mono">${esc(det.referencia_pago || 'N/A')}</strong></div>
+              <!-- Documentos del Expediente: 1) Voucher Pago Cliente + 2) Factura Emitida -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
+                <div class="p-3 rounded-xl bg-white border border-slate-200 space-y-1.5">
+                  <div class="font-extrabold text-[#073e3b]">1️⃣ Comprobante Pago del Cliente</div>
+                  <div class="text-[10px] text-slate-500">Ref. Bancaria: <strong class="font-mono">${esc(det.referencia_pago || 'N/A')}</strong></div>
+                  ${det.comprobante_url ? `
+                    <button onclick="CRM.openEvidencePreviewModal('${esc(det.comprobante_url)}', 'Comprobante Pago · ${esc(selPay.empresa_nombre)}')" class="w-full py-1.5 px-3 rounded-xl text-xs font-extrabold bg-[#e7f5f1] hover:bg-[#087e70] text-[#073e3b] hover:text-white border border-[#b9d1cd] cursor-pointer">
+                      👁️ Ver Voucher de Pago
+                    </button>
+                  ` : '<span class="text-rose-600 font-bold text-[10px]">⚠️ Sin voucher adjunto</span>'}
                 </div>
-                ${det.comprobante_url ? `
-                  <button onclick="CRM.openEvidencePreviewModal('${esc(det.comprobante_url)}', 'Voucher · ${esc(selPay.empresa_nombre)}')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
-                    👁️ Ver Comprobante
-                  </button>
-                ` : '<span class="text-rose-600 font-bold">Sin comprobante</span>'}
+
+                <div class="p-3 rounded-xl bg-white border ${hasFacturaFile ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200'} space-y-1.5">
+                  <div class="font-extrabold text-[#073e3b]">2️⃣ Factura Emitida al Cliente</div>
+                  <div class="text-[10px] text-slate-500">N° Factura: <strong class="font-mono text-[#087e70]">${esc(det.numero_factura_emitida || 'Aún sin guardar')}</strong></div>
+                  ${hasFacturaFile ? `
+                    <button onclick="CRM.openEvidencePreviewModal('${esc(det.factura_emitida_url)}', 'Factura Emitida ${esc(det.numero_factura_emitida || '')} · ${esc(selPay.empresa_nombre)}')" class="w-full py-1.5 px-3 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                      📄 Ver Factura Guardada
+                    </button>
+                  ` : '<span class="text-amber-800 font-bold text-[10px]">⏳ Pendiente subir PDF/Imagen</span>'}
+                </div>
               </div>
 
-              ${isSuper && selPay.estado === 'PENDIENTE' ? `
-                <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                  <button onclick="CRM.approveInvoicingAndRenew('${selPay.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
-                    ✅ Validar Pago, Facturar y Renovar Próximo Ciclo →
+              <!-- BOTONES OBLIGATORIOS DE FACTURACIÓN: GUARDAR FACTURA + ENVIAR POR WHATSAPP -->
+              <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] flex flex-wrap items-center justify-between gap-2">
+                ${canEmitInvoice ? `
+                  <button onclick="CRM.openSaveIssuedInvoiceModal('${selPay.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                    📎 ${hasFacturaFile ? 'Actualizar Factura Guardada' : 'Guardar Factura Emitida (PDF / Imagen)'}
                   </button>
-                </div>
-              ` : ''}
+                ` : '<span class="text-[10.5px] font-bold text-slate-500">👁️ Vista de consulta de facturación</span>'}
+
+                <button onclick="CRM.sendIssuedInvoiceWhatsApp('${selPay.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow cursor-pointer">
+                  📲 Enviar Factura al Cliente por WhatsApp
+                </button>
+              </div>
             </div>
           `;
         }
@@ -3267,7 +3431,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
               <div>
                 <h3 class="text-sm font-extrabold text-[#073e3b]">🧾 Facturación Pendientes (${visiblePays.length})</h3>
-                <p class="text-[11px] text-slate-500">Pagos y renovaciones ingresados desde <strong>FACTURAR/PAGO</strong> por Cobranzas.</p>
+                <p class="text-[11px] text-slate-500">Centraliza pagos de <strong>Cobranzas</strong> y activaciones autorizadas de <strong>Ventas/Retención</strong> para emitir, guardar y enviar factura por WhatsApp.</p>
               </div>
               <div class="flex flex-wrap items-center gap-1.5">
                 <button onclick="CRM.invoicingFilter='PENDIENTES'; CRM.renderInvoicingView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.invoicingFilter === 'PENDIENTES' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
@@ -3276,8 +3440,18 @@
                 <button onclick="CRM.invoicingFilter='FACTURADAS'; CRM.renderInvoicingView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.invoicingFilter === 'FACTURADAS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">
                   🟢 Facturadas (${fact.length})
                 </button>
+                <button onclick="CRM.invoicingFilter='TODAS'; CRM.renderInvoicingView();" class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer ${this.invoicingFilter === 'TODAS' ? 'bg-[#073e3b] text-[#70d2bd]' : 'bg-[#f5f8f8] text-slate-600 border border-[#dce6e5]'}">
+                  Todas (${visiblePays.length})
+                </button>
+
+                <select onchange="CRM.invoicingOriginFilter=this.value; CRM.renderInvoicingView();" class="border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-extrabold text-[#073e3b]">
+                  <option value="ALL" ${this.invoicingOriginFilter === 'ALL' ? 'selected' : ''}>📂 Origen: Todos</option>
+                  <option value="ACTIVACIONES_VENTAS" ${this.invoicingOriginFilter === 'ACTIVACIONES_VENTAS' ? 'selected' : ''}>🚀 Activaciones Ventas/Retención</option>
+                  <option value="COBRANZAS" ${this.invoicingOriginFilter === 'COBRANZAS' ? 'selected' : ''}>💳 Cobranzas y Cortes</option>
+                </select>
+
                 ${['SUPERADMIN', 'COBRANZAS'].includes(rolNorm) ? `
-                  <button onclick="CRM.openPaymentModal()" class="ml-2 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                  <button onclick="CRM.openPaymentModal()" class="ml-1 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                     💳 + FACTURAR / PAGO
                   </button>
                 ` : ''}
@@ -3286,9 +3460,10 @@
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
               <div class="lg:col-span-4 bg-[#f5f8f8] rounded-2xl p-3 border border-[#dce6e5] max-h-[68vh] overflow-y-auto crm-scroll space-y-1.5">
-                ${list.length === 0 ? '<p class="text-slate-500 text-center py-6 text-[11px]">No hay pagos pendientes en esta bandeja.</p>' : list.map(tk => {
+                ${list.length === 0 ? '<p class="text-slate-500 text-center py-6 text-[11px]">No hay solicitudes en esta bandeja.</p>' : list.map(tk => {
                   const isSel = tk.id === this.selectedInvoicingId;
                   const det = tk.detalle || {};
+                  const isSales = String(det.origen_modulo || '').toUpperCase() === 'ACTIVACIONES_VENTAS';
                   const dot = tk.estado === 'APROBADO' ? '🟢' : '🟡';
                   return `
                     <button type="button" onclick="CRM.selectedInvoicingId='${tk.id}'; CRM.renderInvoicingView();" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer space-y-1 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
@@ -3297,7 +3472,10 @@
                         <span class="font-mono font-black text-[11px] ${isSel ? 'text-[#70d2bd]' : 'text-[#087e70]'} shrink-0">$${Number(det.monto_usd || 0).toFixed(2)}</span>
                       </div>
                       <div class="text-[10.5px] font-semibold truncate ${isSel ? 'text-teal-100' : 'text-slate-600'}">${esc(det.concepto_pago || 'Renovación')}</div>
-                      <div class="text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">Por: ${esc(det.agente_nombre || tk.solicitado_por)}</div>
+                      <div class="flex items-center justify-between text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">
+                        <span>${isSales ? '🚀 Venta/Ret.' : '💳 Cobranza'}</span>
+                        <span>${det.numero_factura_emitida ? '📄 ' + esc(det.numero_factura_emitida) : '⏳ Sin fact.'}</span>
+                      </div>
                     </button>
                   `;
                 }).join('')}
@@ -3308,6 +3486,124 @@
             </div>
           </div>
         `;
+      },
+
+      openSaveIssuedInvoiceModal(ticketId) {
+        const tk = this.cachedTickets.find(x => x.id === ticketId);
+        if (!tk) return;
+        const det = tk.detalle || {};
+        V.openModal(
+          `📎 Guardar Factura Emitida · ${tk.empresa_nombre}`,
+          `<div class="space-y-2.5 text-[11px]">
+             <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b]">
+               <strong>Cliente:</strong> ${esc(tk.empresa_nombre)} (RUC: <span class="font-mono">${esc(tk.empresa_ruc)}</span>)<br/>
+               <strong>Concepto:</strong> ${esc(det.concepto_pago || '')} · <strong>Monto:</strong> $${Number(det.monto_usd || 0).toFixed(2)} USD
+             </div>
+             <div>
+               <label class="font-bold text-[#073e3b]">Número de Factura Emitida (SRI) *</label>
+               <input id="invEmitNumber" value="${esc(det.numero_factura_emitida || '')}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold" placeholder="Ej. 001-001-000000145" />
+             </div>
+             <div>
+               <label class="font-bold text-rose-700">Archivo de Factura (PDF RIDE o Imagen Obligatorio) *</label>
+               <input id="invEmitFile" type="file" accept="application/pdf,.pdf,image/*" class="w-full border border-rose-300 bg-rose-50/40 rounded-xl p-1.5 mt-0.5" />
+             </div>
+             <label class="flex items-center gap-2 p-2 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] cursor-pointer">
+               <input type="checkbox" id="invRenewCycleChk" ${String(det.origen_modulo || '') !== 'ACTIVACIONES_VENTAS' ? 'checked' : ''} />
+               <span>Renovar también la fecha de próximo corte de la empresa en SaaS</span>
+             </label>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button id="btnSaveIssuedInv" onclick="CRM.submitSaveIssuedInvoice('${tk.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">💾 Guardar Factura en Repositorio</button>`
+        );
+      },
+
+      async submitSaveIssuedInvoice(ticketId) {
+        const tk = this.cachedTickets.find(x => x.id === ticketId);
+        if (!tk) return;
+        const numFact = ($('invEmitNumber')?.value || '').trim();
+        const fileObj = $('invEmitFile')?.files?.[0] || null;
+        const renewCycle = !!$('invRenewCycleChk')?.checked;
+
+        if (!numFact) return toast('⚠️ Ingresa el número de factura emitida.');
+        if (!fileObj && !(tk.detalle && tk.detalle.factura_emitida_url)) {
+          return toast('⚠️ Selecciona el archivo PDF o imagen de la factura emitida.');
+        }
+
+        const btn = $('btnSaveIssuedInv');
+        if (btn) { btn.textContent = 'Guardando factura...'; btn.disabled = true; }
+
+        try {
+          const det = Object.assign({}, tk.detalle || {});
+          let factUrl = det.factura_emitida_url || '';
+          if (fileObj && typeof subirComprobanteOperacionSupabase === 'function') {
+            const up = await subirComprobanteOperacionSupabase(fileObj, 'facturas_emitidas', tk.empresa_ruc);
+            if (up && up.url) factUrl = up.url;
+          }
+
+          const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { email: 'facturacion@vozkora.com' };
+          const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(tk.empresa_ruc || '').trim()) || null;
+
+          if (renewCycle && emp) {
+            const per = String(det.concepto_pago || '').toUpperCase().includes('ANUAL') ? 'ANUAL' : (emp.periodicidad || 'MENSUAL');
+            const nextCorte = calcularProximoCorte(per);
+            await crmActualizarEmpresa(emp.id, {
+              periodicidad: per,
+              fecha_proximo_corte: nextCorte,
+              activa: true
+            });
+          }
+
+          const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
+          hist.push({
+            fecha: nowFormatted(),
+            de_estado: '🟡 Pendiente de Facturar',
+            a_estado: `🟢 Factura Guardada (${numFact})`,
+            motivo: `Factura ${numFact} emitida y archivada por ${ses.email}`,
+            autor: ses.email
+          });
+
+          det.numero_factura_emitida = numFact;
+          det.factura_emitida_url = factUrl;
+          det.facturado_por = ses.email;
+          det.facturado_en = nowFormatted();
+          det.historial = hist;
+
+          await crmActualizarTicket(tk.id, 'APROBADO', det);
+          V.closeModal();
+          toast(`✅ Factura ${numFact} guardada en el repositorio de documentos.`);
+          await this.loadInvoicingTab();
+        } catch (e) {
+          toast('Error guardando factura: ' + e.message);
+        } finally {
+          if (btn) { btn.textContent = '💾 Guardar Factura en Repositorio'; btn.disabled = false; }
+        }
+      },
+
+      sendIssuedInvoiceWhatsApp(ticketId) {
+        const tk = this.cachedTickets.find(x => x.id === ticketId);
+        if (!tk) return;
+        const det = tk.detalle || {};
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(tk.empresa_ruc || '').trim()) || null;
+        const rawPhone = String(det.telefono_contacto || (emp && emp.telefono) || '').replace(/\D/g, '');
+        if (!rawPhone) {
+          return toast('⚠️ Esta empresa no tiene teléfono WhatsApp registrado. Agrégalo en Empresas SaaS.');
+        }
+        const phoneIntl = rawPhone.startsWith('0') && rawPhone.length === 10
+          ? ('593' + rawPhone.slice(1))
+          : rawPhone;
+
+        const lines = [
+          `Hola *${tk.empresa_nombre}* (RUC: ${tk.empresa_ruc}) 👋`,
+          `Te enviamos tu comprobante electrónico de *Vozkora SaaS*:`,
+          `• *Concepto:* ${det.concepto_pago || 'Suscripción Vozkora'}`,
+          det.numero_factura_emitida ? `• *Factura N°:* ${det.numero_factura_emitida}` : '',
+          `• *Valor Total:* $${Number(det.monto_usd || 0).toFixed(2)} USD`,
+          det.factura_emitida_url ? `• *Descarga tu Factura (PDF/Imagen):* ${det.factura_emitida_url}` : '',
+          `¡Gracias por confiar en Vozkora!`
+        ].filter(Boolean).join('
+');
+
+        window.open(`https://wa.me/${phoneIntl}?text=${encodeURIComponent(lines)}`, '_blank');
       },
 
       openPaymentModal(prefillRuc = '') {

@@ -251,7 +251,7 @@ async function registrarInteresModuloVozkora(moduloNombre) {
   });
 }
 
-const VOZKORA_ROLES_INTERNOS = ['SUPERADMIN', 'SOPORTE', 'VENTAS', 'RETENCION', 'COBRANZAS', 'SUPERVISOR', 'AUDITOR'];
+const VOZKORA_ROLES_INTERNOS = ['SUPERADMIN', 'SOPORTE', 'VENTAS', 'RETENCION', 'COBRANZAS', 'FACTURACION', 'SUPERVISOR', 'AUDITOR'];
 
 async function crmListarColaboradoresInternos() {
   const all = await crmListarUsuarios();
@@ -265,6 +265,10 @@ async function subirComprobanteOperacionSupabase(file, carpeta = 'activaciones',
     return await subirPdfRucSupabase(file, `${carpeta}_${prefijo}`);
   }
   return await subirEvidenciaFotoSupabase(file, carpeta, prefijo);
+}
+
+async function subirFacturaEmitidaCrmSupabase(file, empresaRuc = 'FACT') {
+  return await subirComprobanteOperacionSupabase(file, 'facturas_emitidas', empresaRuc);
 }
 
 async function crmAsignarTicketAColaborador(ticketId, colaboradorEmail, colaboradorNombre, detalleActual = {}) {
