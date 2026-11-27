@@ -251,7 +251,7 @@ async function registrarInteresModuloVozkora(moduloNombre) {
   });
 }
 
-const VOZKORA_ROLES_INTERNOS = ['SUPERADMIN', 'SOPORTE', 'VENTAS', 'RETENCION', 'COBRANZAS', 'FACTURACION', 'SUPERVISOR', 'AUDITOR'];
+const VOZKORA_ROLES_INTERNOS = ['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'SOPORTE', 'FACTURACION', 'SUPERVISOR', 'AUDITOR', 'VENTAS', 'RETENCION', 'COBRANZAS'];
 
 async function crmListarColaboradoresInternos() {
   const all = await crmListarUsuarios();

@@ -359,14 +359,15 @@
 
 
     const INTERNAL_ROLES_META = {
-      SUPERADMIN:  { label: 'Súper-Admin', badgeCls: 'bg-[#073e3b] text-[#70d2bd]', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'invoicing', 'billing', 'analytics', 'companies', 'users', 'staff', 'repo'] },
-      VENTAS:      { label: 'Asesor Comercial / Ventas', badgeCls: 'bg-amber-100 text-amber-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations'] },
-      SOPORTE:     { label: 'Ingeniero Soporte Técnico', badgeCls: 'bg-cyan-100 text-cyan-900', readOnly: false, tabs: ['tickets', 'crm360'] },
-      RETENCION:   { label: 'Atención al Cliente / Retención', badgeCls: 'bg-purple-100 text-purple-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations'] },
-      COBRANZAS:   { label: 'Gestor de Cobranzas', badgeCls: 'bg-emerald-100 text-emerald-900', readOnly: false, tabs: ['billing', 'invoicing', 'crm360'] },
-      FACTURACION: { label: 'Facturación y Emisión SRI', badgeCls: 'bg-teal-100 text-teal-900', readOnly: false, tabs: ['invoicing', 'crm360', 'repo'] },
-      SUPERVISOR:  { label: 'Supervisor/a (Solo Lectura)', badgeCls: 'bg-indigo-100 text-indigo-900', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics', 'repo'] },
-      AUDITOR:     { label: 'Auditor/a (Solo Lectura)', badgeCls: 'bg-slate-200 text-slate-800', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics', 'repo'] }
+      SUPERADMIN:          { label: 'Súper-Admin', badgeCls: 'bg-[#073e3b] text-[#70d2bd]', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'invoicing', 'billing', 'analytics', 'companies', 'users', 'staff', 'repo'] },
+      COMERCIAL_COBRANZAS: { label: 'Asesor Comercial, Retención & Cobranzas', badgeCls: 'bg-amber-100 text-amber-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'billing', 'invoicing'] },
+      SOPORTE:             { label: 'Ingeniero Soporte Técnico', badgeCls: 'bg-cyan-100 text-cyan-900', readOnly: false, tabs: ['tickets', 'crm360'] },
+      FACTURACION:         { label: 'Facturación y Emisión SRI', badgeCls: 'bg-teal-100 text-teal-900', readOnly: false, tabs: ['invoicing', 'crm360', 'repo'] },
+      SUPERVISOR:          { label: 'Supervisor/a (Solo Lectura)', badgeCls: 'bg-indigo-100 text-indigo-900', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics', 'repo'] },
+      AUDITOR:             { label: 'Auditor/a (Solo Lectura)', badgeCls: 'bg-slate-200 text-slate-800', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics', 'repo'] },
+      VENTAS:              { label: 'Asesor Comercial, Retención & Cobranzas', badgeCls: 'bg-amber-100 text-amber-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'billing', 'invoicing'] },
+      RETENCION:           { label: 'Asesor Comercial, Retención & Cobranzas', badgeCls: 'bg-amber-100 text-amber-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'billing', 'invoicing'] },
+      COBRANZAS:           { label: 'Asesor Comercial, Retención & Cobranzas', badgeCls: 'bg-amber-100 text-amber-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'billing', 'invoicing'] }
     };
 
     const SALE_OPERATION_TYPES = {
@@ -2255,7 +2256,7 @@
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 class="text-sm font-extrabold text-[#073e3b]">🎧 Equipo Interno · Ventas, Soporte, Retención, Cobranzas, Supervisión y Auditoría (${this.cachedStaff.length})</h3>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🎧 Equipo Interno · Comercial/Cobranzas, Soporte, Facturación, Supervisión y Auditoría (${this.cachedStaff.length})</h3>
                 <p class="text-[11px] text-slate-500">Cada rol accede exclusivamente a las pestañas asignadas a su área.</p>
               </div>
               ${!isRO ? `
@@ -2266,7 +2267,7 @@
             </div>
 
             <div class="space-y-2">
-              ${this.cachedStaff.map(st => {
+              ${this.cachedStaff.map((st, sIdx) => {
                 const rKey = String(st.rol || '').toUpperCase();
                 const meta = INTERNAL_ROLES_META[rKey] || { label: rKey, badgeCls: 'bg-slate-100 text-slate-800' };
                 return `
@@ -2279,6 +2280,9 @@
                   </div>
                   ${!isRO ? `
                   <div class="flex items-center gap-2">
+                    <button onclick="CRM.openEditStaffModal(${sIdx})" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                      ✏️ Modificar
+                    </button>
                     <button onclick="CRM.toggleUserActive('${st.id}', ${!st.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${st.activo ? 'bg-amber-100 text-amber-900' : 'bg-emerald-600 text-white'} cursor-pointer">
                       ${st.activo ? '⏸️ Pausar' : '✅ Activar'}
                     </button>
@@ -2294,6 +2298,20 @@
               }).join('')}
             </div>
           </div>
+        `;
+      },
+
+      getStaffRoleOptionsHtml(selectedRol = 'COMERCIAL_COBRANZAS') {
+        const norm = ['VENTAS', 'RETENCION', 'COBRANZAS'].includes(String(selectedRol).toUpperCase())
+          ? 'COMERCIAL_COBRANZAS'
+          : String(selectedRol || 'COMERCIAL_COBRANZAS').toUpperCase();
+        return `
+          <option value="COMERCIAL_COBRANZAS" ${norm === 'COMERCIAL_COBRANZAS' ? 'selected' : ''}>💼 Asesor Comercial, Retención & Cobranzas (Leads + Tickets + 360° + Ventas + Cobranzas)</option>
+          <option value="SOPORTE" ${norm === 'SOPORTE' ? 'selected' : ''}>🛠️ Ingeniero Soporte Técnico (Leads + Tickets + Hoja de Vida 360°)</option>
+          <option value="FACTURACION" ${norm === 'FACTURACION' ? 'selected' : ''}>🧾 Facturación y Emisión SRI (Facturación Pendientes + Subir Factura + WhatsApp + Repositorio)</option>
+          <option value="SUPERVISOR" ${norm === 'SUPERVISOR' ? 'selected' : ''}>👁️ Supervisor/a (Leads & Tickets + Hoja de Vida 360° + Equipo + Cobranzas · Solo Lectura)</option>
+          <option value="AUDITOR" ${norm === 'AUDITOR' ? 'selected' : ''}>🔍 Auditor/a (Leads & Tickets + Hoja de Vida 360° + Equipo + Cobranzas · Solo Lectura)</option>
+          ${norm === 'SUPERADMIN' ? '<option value="SUPERADMIN" selected>👑 Súper-Administrador Central</option>' : ''}
         `;
       },
 
@@ -2318,19 +2336,69 @@
              <div>
                <label class="font-bold text-[11px]">Rol / Área Asignada *</label>
                <select id="stfRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
-                 <option value="VENTAS">💼 Asesor Comercial / Ventas (Leads + Tickets + Hoja de Vida 360° + Ingresar Venta)</option>
-                 <option value="SOPORTE">🛠️ Ingeniero Soporte Técnico (Leads + Tickets + Hoja de Vida 360°)</option>
-                 <option value="RETENCION">🤝 Atención al Cliente / Retención (Leads + Tickets + Hoja de Vida 360° + Ingresar Venta)</option>
-                 <option value="COBRANZAS">💳 Cobranzas (Cobranzas y Cortes + Hoja de Vida 360° + Facturar/Pago)</option>
-                 <option value="FACTURACION">🧾 Facturación y Emisión SRI (Facturación Pendientes + Subir Factura + WhatsApp + Repositorio)</option>
-                 <option value="SUPERVISOR">👁️ Supervisor/a (Leads & Tickets + Hoja de Vida 360° + Equipo + Cobranzas · Solo Lectura)</option>
-                 <option value="AUDITOR">🔍 Auditor/a (Leads & Tickets + Hoja de Vida 360° + Equipo + Cobranzas · Solo Lectura)</option>
+                 ${this.getStaffRoleOptionsHtml('COMERCIAL_COBRANZAS')}
                </select>
              </div>
            </div>`,
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
            <button onclick="CRM.saveNewStaff()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Crear Colaborador</button>`
         );
+      },
+
+      openEditStaffModal(idx) {
+        const st = this.cachedStaff[idx];
+        if (!st) return;
+        V.openModal(
+          `✏️ Modificar Colaborador · ${st.nombre_completo || st.email}`,
+          `<div class="space-y-2.5">
+             <div>
+               <label class="font-bold text-[11px]">Nombre Completo *</label>
+               <input id="stfEditName" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" value="${esc(st.nombre_completo || '')}" />
+             </div>
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold text-[11px]">Correo Corporativo *</label>
+                 <input id="stfEditEmail" type="email" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" value="${esc(st.email || '')}" />
+               </div>
+               <div>
+                 <label class="font-bold text-[11px]">Contraseña *</label>
+                 <input id="stfEditPass" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" value="${esc(st.clave || '')}" />
+               </div>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Rol / Área Asignada *</label>
+               <select id="stfEditRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 ${this.getStaffRoleOptionsHtml(st.rol)}
+               </select>
+             </div>
+             <div>
+               <label class="font-bold text-[11px]">Estado</label>
+               <select id="stfEditActivo" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 <option value="true" ${st.activo ? 'selected' : ''}>✅ Activo</option>
+                 <option value="false" ${!st.activo ? 'selected' : ''}>⏸️ Pausado</option>
+               </select>
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button onclick="CRM.saveEditedStaff('${st.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">Guardar Cambios</button>`
+        );
+      },
+
+      async saveEditedStaff(id) {
+        const nombre_completo = ($('stfEditName')?.value || '').trim();
+        const email = ($('stfEditEmail')?.value || '').trim().toLowerCase();
+        const clave = ($('stfEditPass')?.value || '').trim();
+        const rol = $('stfEditRol')?.value || 'COMERCIAL_COBRANZAS';
+        const activo = $('stfEditActivo')?.value === 'true';
+        if (!nombre_completo || !email || !clave) return toast('Completa nombre, correo y contraseña.');
+        try {
+          await crmActualizarUsuario(id, { nombre_completo, email, clave, rol, activo });
+          V.closeModal();
+          toast(`✅ Colaborador ${nombre_completo} actualizado.`);
+          await this.loadStaffTab();
+        } catch (e) {
+          toast('Error actualizando colaborador: ' + e.message);
+        }
       },
 
       async saveNewStaff() {
@@ -2475,12 +2543,12 @@
                         const b360 = this.getCompanyStatusBadge(selEmp);
                         return `<span class="px-2.5 py-1 rounded-full text-[10.5px] font-extrabold border ${b360.cls}">${b360.fullLabel}</span>`;
                       })()}
-                      ${['SUPERADMIN', 'VENTAS', 'RETENCION'].includes(this.getSessionRole()) ? `
+                      ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION'].includes(this.getSessionRole()) ? `
                         <button onclick="CRM.openSaleEntryModal('${esc(selEmp.ruc)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-amber-400 hover:bg-amber-300 text-[#073e3b] shadow-xs cursor-pointer">
                           🚀 INGRESAR VENTA
                         </button>
                       ` : ''}
-                      ${['SUPERADMIN', 'COBRANZAS'].includes(this.getSessionRole()) ? `
+                      ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'COBRANZAS'].includes(this.getSessionRole()) ? `
                         <button onclick="CRM.openPaymentModal('${esc(selEmp.ruc)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-emerald-400 hover:bg-emerald-300 text-[#073e3b] shadow-xs cursor-pointer">
                           💳 FACTURAR / PAGO
                         </button>
@@ -2746,7 +2814,7 @@
                   `).join('')}
                 </select>
 
-                ${['SUPERADMIN', 'VENTAS', 'RETENCION'].includes(rolNorm) ? `
+                ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION'].includes(rolNorm) ? `
                   <button onclick="CRM.openSaleEntryModal()" class="ml-1 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                     🚀 + INGRESAR VENTA
                   </button>
@@ -2785,58 +2853,196 @@
         `;
       },
 
-      evaluateSaleBusinessRules(params) {
+      getPlanObject(planId) {
+        return PLANS.find(p => p.id === planId) || PLANS[0];
+      },
+
+      getEffectiveIncludedModulesCount(planId) {
+        const pl = this.getPlanObject(planId);
+        return (pl.id === 'enterprise' || pl.includesComboFull) ? 6 : (Number(pl.includedSVACount) || 0);
+      },
+
+      computeSaleEngineState() {
+        const ruc = ($('saleFormRuc')?.value || '').trim();
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === ruc) || null;
+        const tipoOperacion = $('saleFormTipoOp')?.value || 'VENTA_NUEVA_PLAN';
+        const planNuevoId = $('saleFormPlan')?.value || 'expansion';
+        const periodicidad = $('saleFormPeriod')?.value || 'MENSUAL';
+        const isAnual = periodicidad === 'ANUAL';
+
+        const targetPlan = this.getPlanObject(planNuevoId);
+        const currentPlan = emp ? this.getPlanObject(emp.plan_activo) : null;
+
+        // Estado actual del cliente ("LO QUE TIENE")
+        const currPlanName = currentPlan ? currentPlan.name : 'Ninguno (Cliente Nuevo)';
+        const currPlanPrice = currentPlan ? (isAnual ? currentPlan.annualPrice : currentPlan.monthlyPrice) : 0;
+        const currIncludedUsers = currentPlan ? currentPlan.includedUsers : 0;
+        const currTotalUsers = emp ? (Number(emp.max_usuarios) || currIncludedUsers) : 0;
+        const currPaidExtraUsers = Math.max(0, currTotalUsers - currIncludedUsers);
+        const currPacks = emp && Array.isArray(emp.packs_ia)
+          ? (emp.plan_activo === 'enterprise' ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : emp.packs_ia)
+          : [];
+        const currIncludedModsQuota = currentPlan ? this.getEffectiveIncludedModulesCount(currentPlan.id) : 0;
+        const currPaidExtraModsCount = Math.max(0, currPacks.length - currIncludedModsQuota);
+
+        // Carrito multiproducto (checkboxes + cantidad de usuarios adicionales)
+        const cartChangePlan = !!$('cartChkPlan')?.checked;
+        const cartAddUsers = !!$('cartChkUsersAdd')?.checked;
+        const cartAddMods = !!$('cartChkModsAdd')?.checked;
+        const cartCustomMod = !!$('cartChkCustom')?.checked;
+        const cartDowngrade = !!$('cartChkDowngrade')?.checked;
+        const cartDownUsers = !!$('cartChkUsersDown')?.checked;
+        const cartDownMods = !!$('cartChkModsDown')?.checked;
+
+        const qtyUsersAdd = cartAddUsers ? Math.max(1, parseInt($('saleUsersAddQty')?.value, 10) || 1) : 0;
+        const qtyUsersDown = cartDownUsers ? Math.max(1, parseInt($('saleUsersDownQty')?.value, 10) || 1) : 0;
+
+        // Plan resultante automático
+        const effectivePlan = (cartChangePlan || cartDowngrade || tipoOperacion === 'VENTA_NUEVA_PLAN')
+          ? targetPlan
+          : (currentPlan || targetPlan);
+
+        const newIncludedUsers = effectivePlan.includedUsers;
+        const baseExtraUsersCarry = (emp && effectivePlan.id !== 'piloto') ? currPaidExtraUsers : 0;
+        const newPaidExtraUsers = Math.max(0, baseExtraUsersCarry + qtyUsersAdd - qtyUsersDown);
+        const newTotalUsers = effectivePlan.id === 'piloto' ? 1 : (newIncludedUsers + newPaidExtraUsers);
+
+        // Módulos seleccionados actualmente en los checkboxes
+        const selectedMods = effectivePlan.id === 'enterprise'
+          ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas']
+          : Array.from(document.querySelectorAll('.sale-mod-chk:checked')).map(x => x.value);
+
+        const newIncludedModsQuota = this.getEffectiveIncludedModulesCount(effectivePlan.id);
+        const extraModsOverIncluded = Math.max(0, selectedMods.length - newIncludedModsQuota);
+
+        // Cálculos económicos automáticos
+        const newPlanPrice = isAnual ? effectivePlan.annualPrice : effectivePlan.monthlyPrice;
+        const unitExtraUserPrice = isAnual ? 9.60 : 1.00;
+        const usersAddCost = qtyUsersAdd * unitExtraUserPrice;
+
+        // Módulos nuevos agregados respecto a los que ya tenía
+        const newlyAddedMods = selectedMods.filter(m => !currPacks.includes(m));
+        const freeSlotsAvailable = Math.max(0, newIncludedModsQuota - currPacks.filter(m => selectedMods.includes(m)).length);
+        const chargeableNewMods = newlyAddedMods.slice(freeSlotsAvailable);
+        const modsAddCost = chargeableNewMods.reduce((sum, mId) => {
+          const pk = SVA_PACKS.find(x => x.id === mId);
+          return sum + (pk ? (isAnual ? pk.annualPrice : pk.monthlyPrice) : 0);
+        }, 0);
+
+        const customModPrice = cartCustomMod ? (Math.max(0, parseFloat($('saleCustomPrice')?.value) || 0)) : 0;
+
+        // Cálculos de Downgrade / Bajas (para reporte gerencial y control)
+        const downgradePlanDiff = (cartDowngrade && currentPlan)
+          ? Math.max(0, currPlanPrice - newPlanPrice)
+          : 0;
+        const downgradeUsersDiff = cartDownUsers ? (qtyUsersDown * unitExtraUserPrice) : 0;
+        const removedMods = currPacks.filter(m => !selectedMods.includes(m));
+        const downgradeModsDiff = cartDownMods
+          ? removedMods.reduce((sum, mId) => {
+              const pk = SVA_PACKS.find(x => x.id === mId);
+              return sum + (pk ? (isAnual ? pk.annualPrice : pk.monthlyPrice) : 0);
+            }, 0)
+          : 0;
+        const totalDowngradeValue = Number((downgradePlanDiff + downgradeUsersDiff + downgradeModsDiff).toFixed(2));
+
+        // Valor total sugerido a cobrar al cliente
+        let suggestedCharge = 0;
+        if (tipoOperacion === 'VENTA_NUEVA_PLAN') {
+          suggestedCharge = newPlanPrice + usersAddCost + modsAddCost + customModPrice;
+        } else {
+          if (cartChangePlan) suggestedCharge += newPlanPrice;
+          if (cartAddUsers) suggestedCharge += usersAddCost;
+          if (cartAddMods) suggestedCharge += modsAddCost;
+          if (cartCustomMod) suggestedCharge += customModPrice;
+          if (cartDowngrade && !cartChangePlan) suggestedCharge += newPlanPrice; // En downgrade se cobra el plan al que baja
+        }
+        suggestedCharge = Number(suggestedCharge.toFixed(2));
+
+        // Validaciones estrictas
         const errors = [];
-        const warnings = [];
-        const {
-          tipoOperacion, existingEmp, planNuevoId, usuariosNuevo, modulosFinales, activeUsersInDb
-        } = params;
+        const activeUsersInDb = emp
+          ? this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length
+          : 0;
 
-        const targetPlan = PLANS.find(p => p.id === planNuevoId) || PLANS[0];
-        const currentPlan = existingEmp ? (PLANS.find(p => p.id === existingEmp.plan_activo) || PLANS[0]) : null;
-
-        if (!existingEmp && tipoOperacion !== 'VENTA_NUEVA_PLAN') {
-          errors.push('Este RUC aún no está registrado como empresa SaaS. Debes elegir "Venta Nueva de Plan".');
+        if (!emp && tipoOperacion !== 'VENTA_NUEVA_PLAN') {
+          errors.push('Este RUC aún no existe como empresa SaaS. Selecciona "Venta Nueva de Plan".');
         }
-        if (existingEmp && tipoOperacion === 'VENTA_NUEVA_PLAN') {
-          errors.push(`La empresa ${existingEmp.nombre} ya existe en el sistema (Plan ${currentPlan.name}). Usa Upgrade, Downgrade o Venta Adicional.`);
+        if (emp && tipoOperacion === 'VENTA_NUEVA_PLAN') {
+          errors.push(`La empresa ${emp.nombre} ya existe (Plan ${currPlanName}). Usa Upgrade, Downgrade o Carrito de Adicionales.`);
         }
-
-        if (currentPlan) {
-          if (tipoOperacion === 'UPGRADE_PLAN' && targetPlan.rank <= currentPlan.rank) {
-            errors.push(`No es un Upgrade válido: el plan destino (${targetPlan.name}) es igual o inferior al plan actual (${currentPlan.name}).`);
-          }
-          if (tipoOperacion === 'DOWNGRADE_PLAN' && targetPlan.rank >= currentPlan.rank) {
-            errors.push(`No es un Downgrade válido: el plan destino (${targetPlan.name}) debe ser menor al plan actual (${currentPlan.name}).`);
-          }
+        if (cartChangePlan && currentPlan && effectivePlan.rank <= currentPlan.rank) {
+          errors.push(`Para Upgrade de Plan debes elegir un plan superior a ${currPlanName}.`);
+        }
+        if (cartDowngrade && currentPlan && effectivePlan.rank >= currentPlan.rank) {
+          errors.push(`Para Downgrade de Plan debes elegir un plan inferior a ${currPlanName}.`);
+        }
+        if (effectivePlan.id === 'piloto' && (cartAddUsers || newTotalUsers > 1)) {
+          errors.push('El Plan Piloto es de 1 solo usuario y no admite usuarios adicionales.');
         }
 
-        if (targetPlan.id === 'piloto' && usuariosNuevo > 1) {
-          errors.push(`El Plan Piloto admite máximo 1 usuario y no permite usuarios adicionales (intentas asignar ${usuariosNuevo}).`);
-        }
-        if (usuariosNuevo < targetPlan.includedUsers) {
-          errors.push(`El Plan ${targetPlan.name} incluye ${targetPlan.includedUsers} usuarios base; el cupo total no puede ser menor a ${targetPlan.includedUsers}.`);
-        }
-        if (activeUsersInDb > usuariosNuevo) {
-          errors.push(`La empresa tiene ${activeUsersInDb} usuarios activos en la App; no puedes bajar el cupo a ${usuariosNuevo} sin desactivar primero ${activeUsersInDb - usuariosNuevo} usuario(s).`);
-        }
-
-        if (targetPlan.id === 'enterprise' && modulosFinales.length < 6) {
-          warnings.push('El Plan Enterprise incluye automáticamente los 6 Módulos IA sin costo adicional.');
-        }
-        if (tipoOperacion === 'BAJA_MODULO_IA' && existingEmp) {
-          const prevPacks = Array.isArray(existingEmp.packs_ia) ? existingEmp.packs_ia : [];
-          if (prevPacks.length <= modulosFinales.length) {
-            errors.push('Para una "Baja de Módulos IA" debes desmarcar al menos un módulo que actualmente tenga activo el cliente.');
-          }
-        }
-        if (tipoOperacion === 'BAJA_USUARIOS_EXTRA' && existingEmp) {
-          if (usuariosNuevo >= (Number(existingEmp.max_usuarios) || 1)) {
-            errors.push(`Para una "Baja de Usuarios Adicionales" el nuevo cupo debe ser menor al cupo actual (${existingEmp.max_usuarios}).`);
+        // Regla estricta: El cliente NO puede dar de baja usuarios incluidos gratis del plan
+        if (cartDownUsers) {
+          if (currPaidExtraUsers <= 0) {
+            errors.push(`El cliente tiene ${currIncludedUsers} usuarios incluidos gratis en su plan y 0 usuarios de cobro. No se pueden dar de baja usuarios incluidos para obtener descuento.`);
+          } else if (qtyUsersDown > currPaidExtraUsers) {
+            errors.push(`Solo puedes dar de baja hasta ${currPaidExtraUsers} usuario(s) adicional(es) de cobro (los ${currIncludedUsers} usuarios base son incluidos gratis).`);
           }
         }
 
-        return { ok: errors.length === 0, errors, warnings, targetPlan, currentPlan };
+        // Regla estricta: Si baja de plan o no marca "Agregar Módulo IA Adicional", no puede exceder el cupo incluido del plan
+        if (!cartAddMods && selectedMods.length > newIncludedModsQuota) {
+          errors.push(`Cupo excedido: El Plan ${effectivePlan.name} solo incluye ${newIncludedModsQuota} módulo(s) IA gratis y tienes ${selectedMods.length} marcados. Desmarca ${selectedMods.length - newIncludedModsQuota} módulo(s) o marca en el carrito "+ Módulo Adicional IA".`);
+        }
+        if (cartAddMods && chargeableNewMods.length === 0 && newlyAddedMods.length === 0) {
+          errors.push('Marcaste "+ Módulo Adicional IA" en el carrito: debes marcar con check cuál módulo nuevo contrata el cliente.');
+        }
+        if (cartDownMods && removedMods.length === 0) {
+          errors.push('Marcaste "- Baja de Módulo IA": debes desmarcar el check del módulo que el cliente da de baja.');
+        }
+
+        return {
+          ok: errors.length === 0,
+          errors,
+          emp,
+          tipoOperacion,
+          periodicidad,
+          isAnual,
+          currentPlan,
+          currPlanName,
+          currPlanPrice,
+          currIncludedUsers,
+          currTotalUsers,
+          currPaidExtraUsers,
+          currPacks,
+          effectivePlan,
+          newPlanPrice,
+          newIncludedUsers,
+          newPaidExtraUsers,
+          newTotalUsers,
+          selectedMods,
+          newIncludedModsQuota,
+          qtyUsersAdd,
+          qtyUsersDown,
+          unitExtraUserPrice,
+          usersAddCost,
+          chargeableNewMods,
+          modsAddCost,
+          cartCustomMod,
+          customModPrice,
+          cartChangePlan,
+          cartAddUsers,
+          cartAddMods,
+          cartDowngrade,
+          cartDownUsers,
+          cartDownMods,
+          downgradePlanDiff,
+          downgradeUsersDiff,
+          downgradeModsDiff,
+          totalDowngradeValue,
+          removedMods,
+          suggestedCharge,
+          activeUsersInDb
+        };
       },
 
       openSaleEntryModal(prefillRuc = '') {
@@ -2845,17 +3051,14 @@
         const isPrefilled = !!emp;
         const basePlan = emp ? emp.plan_activo : 'expansion';
         const baseUsers = emp ? (Number(emp.max_usuarios) || 5) : 5;
-        const basePacks = emp && Array.isArray(emp.packs_ia) ? emp.packs_ia : [];
+        const basePacks = emp && Array.isArray(emp.packs_ia)
+          ? (emp.plan_activo === 'enterprise' ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : emp.packs_ia)
+          : [];
 
         V.openModal(
-          isPrefilled ? `🚀 INGRESAR VENTA · ${emp.nombre}` : '🚀 INGRESAR VENTA / MOVIMIENTO COMERCIAL',
-          `<div class="space-y-2.5 max-h-[70vh] overflow-y-auto pr-1 text-[11px]">
-             <div class="p-2.5 rounded-xl ${isPrefilled ? 'bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b]' : 'bg-amber-50 border border-amber-200 text-amber-950'} font-semibold">
-               ${isPrefilled
-                 ? `✓ Datos precargados desde Hoja de Vida 360° (Plan actual: <strong>${esc(emp.plan_activo.toUpperCase())}</strong> · Cupo: <strong>${baseUsers} usu.</strong>)`
-                 : 'Completa los datos del cliente o selecciona una empresa existente por RUC.'}
-             </div>
-
+          isPrefilled ? `🚀 INGRESAR MOVIMIENTO · ${emp.nombre}` : '🚀 INGRESAR VENTA / MOVIMIENTO COMERCIAL',
+          `<div class="space-y-2.5 max-h-[72vh] overflow-y-auto pr-1 text-[11px]">
+             <!-- Datos Cliente -->
              <div class="grid grid-cols-2 gap-2">
                <div>
                  <label class="font-bold">RUC Empresa (13 dígitos) *</label>
@@ -2878,72 +3081,139 @@
                </div>
              </div>
 
-             <div>
-               <label class="font-bold text-[#073e3b]">Tipo de Operación Comercial / Retención *</label>
-               <select id="saleFormTipoOp" onchange="CRM.recheckSaleFormLive()" class="w-full border border-[#087e70] rounded-xl p-2 mt-0.5 bg-white font-extrabold text-[#073e3b]">
-                 ${Object.entries(SALE_OPERATION_TYPES).map(([k, v]) => `
-                   <option value="${k}" ${(!emp && k === 'VENTA_NUEVA_PLAN') || (emp && k === 'UPGRADE_PLAN') ? 'selected' : ''}>${esc(v.label)}</option>
-                 `).join('')}
-               </select>
-             </div>
-
+             <!-- Tipo Principal y Periodicidad -->
              <div class="grid grid-cols-3 gap-2">
-               <div>
-                 <label class="font-bold">Plan Resultante *</label>
-                 <select id="saleFormPlan" onchange="const p=PLANS.find(x=>x.id===this.value); if(p && $('saleFormUsers')) $('saleFormUsers').value=Math.max(p.includedUsers, Number($('saleFormUsers').value)||p.includedUsers); CRM.recheckSaleFormLive();" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
-                   ${PLANS.map(pl => `<option value="${pl.id}" ${basePlan === pl.id ? 'selected' : ''}>${pl.name} (${pl.includedUsers} base)</option>`).join('')}
+               <div class="col-span-2">
+                 <label class="font-bold text-[#073e3b]">Operación Principal *</label>
+                 <select id="saleFormTipoOp" onchange="CRM.onSaleMainOpChange()" class="w-full border border-[#087e70] rounded-xl p-2 mt-0.5 bg-white font-extrabold text-[#073e3b]">
+                   ${Object.entries(SALE_OPERATION_TYPES).map(([k, v]) => `
+                     <option value="${k}" ${(!emp && k === 'VENTA_NUEVA_PLAN') || (emp && k === 'UPGRADE_PLAN') ? 'selected' : ''}>${esc(v.label)}</option>
+                   `).join('')}
                  </select>
                </div>
                <div>
-                 <label class="font-bold">Cupo Total Usuarios *</label>
-                 <input id="saleFormUsers" type="number" min="1" max="500" value="${baseUsers}" oninput="CRM.recheckSaleFormLive()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold" />
-               </div>
-               <div>
                  <label class="font-bold">Periodicidad *</label>
-                 <select id="saleFormPeriod" onchange="CRM.recheckSaleFormLive()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                 <select id="saleFormPeriod" onchange="CRM.recheckSaleFormLive(true)" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
                    <option value="MENSUAL" ${(emp && emp.periodicidad === 'ANUAL') ? '' : 'selected'}>MENSUAL</option>
                    <option value="ANUAL" ${(emp && emp.periodicidad === 'ANUAL') ? 'selected' : ''}>ANUAL (VIP)</option>
                  </select>
                </div>
              </div>
 
+             <!-- CARRITO MULTIPRODUCTO -->
+             <div class="p-2.5 rounded-2xl bg-[#e7f5f1] border border-[#087e70]/40 space-y-1.5">
+               <div class="font-extrabold text-[#073e3b] flex items-center justify-between">
+                 <span>🛒 Carrito Multiproducto (Marca todo lo que incluye esta gestión):</span>
+               </div>
+               <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10.5px]">
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-[#b9d1cd] font-bold cursor-pointer">
+                   <input type="checkbox" id="cartChkPlan" class="accent-[#087e70]" ${(!emp || emp) ? 'checked' : ''} onchange="if(this.checked && $('cartChkDowngrade')) $('cartChkDowngrade').checked=false; CRM.recheckSaleFormLive(true);" />
+                   <span>⬆️ Plan Nuevo / Upgrade</span>
+                 </label>
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-[#b9d1cd] font-bold cursor-pointer">
+                   <input type="checkbox" id="cartChkUsersAdd" class="accent-[#087e70]" onchange="CRM.recheckSaleFormLive(true);" />
+                   <span>👥+ Usuarios Adicionales</span>
+                 </label>
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-[#b9d1cd] font-bold cursor-pointer">
+                   <input type="checkbox" id="cartChkModsAdd" class="accent-[#087e70]" onchange="CRM.recheckSaleFormLive(true);" />
+                   <span>🤖+ Módulo Adicional IA</span>
+                 </label>
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-[#b9d1cd] font-bold cursor-pointer">
+                   <input type="checkbox" id="cartChkCustom" class="accent-[#087e70]" onchange="CRM.recheckSaleFormLive(true);" />
+                   <span>🛠️ Módulo Personalizado</span>
+                 </label>
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-orange-50 border border-orange-300 text-orange-950 font-bold cursor-pointer">
+                   <input type="checkbox" id="cartChkDowngrade" class="accent-orange-600" onchange="if(this.checked && $('cartChkPlan')) $('cartChkPlan').checked=false; CRM.recheckSaleFormLive(true);" />
+                   <span>⬇️ Downgrade Plan</span>
+                 </label>
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-950 font-bold cursor-pointer">
+                   <input type="checkbox" id="cartChkUsersDown" class="accent-rose-600" onchange="CRM.recheckSaleFormLive(true);" />
+                   <span>👥- Baja Usuarios Extra</span>
+                 </label>
+                 <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-950 font-bold cursor-pointer">
+                   <input type="checkbox" id="cartChkModsDown" class="accent-rose-600" onchange="CRM.recheckSaleFormLive(true);" />
+                   <span>🤖- Baja Módulo IA</span>
+                 </label>
+               </div>
+
+               <!-- Controles dinámicos de cantidad de usuarios y módulo personalizado -->
+               <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                 <div id="boxUsersAddQty" class="hidden bg-white p-2 rounded-xl border border-[#b9d1cd]">
+                   <label class="font-bold text-[10px] text-[#087e70] block">Cant. Usuarios Adicionales (+$1/c.u.):</label>
+                   <input id="saleUsersAddQty" type="number" min="1" max="200" value="1" oninput="CRM.recheckSaleFormLive(true)" class="w-full border border-[#d7e1e0] rounded-lg px-2 py-1 mt-0.5 font-mono font-extrabold" />
+                 </div>
+                 <div id="boxUsersDownQty" class="hidden bg-rose-50 p-2 rounded-xl border border-rose-300">
+                   <label class="font-bold text-[10px] text-rose-900 block">Cant. Usuarios Cobro a Dar de Baja:</label>
+                   <input id="saleUsersDownQty" type="number" min="1" max="200" value="1" oninput="CRM.recheckSaleFormLive(true)" class="w-full border border-rose-300 rounded-lg px-2 py-1 mt-0.5 font-mono font-extrabold bg-white" />
+                 </div>
+                 <div id="boxCustomModPrice" class="hidden bg-amber-50 p-2 rounded-xl border border-amber-300">
+                   <label class="font-bold text-[10px] text-amber-950 block">Valor Módulo Personalizado ($):</label>
+                   <input id="saleCustomPrice" type="number" step="0.01" min="0" value="50.00" oninput="CRM.recheckSaleFormLive(true)" class="w-full border border-amber-300 rounded-lg px-2 py-1 mt-0.5 font-mono font-extrabold bg-white" />
+                 </div>
+               </div>
+             </div>
+
+             <!-- Plan y Cupo Total Automático (No editable manualmente para evitar errores) -->
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">Plan Resultante *</label>
+                 <select id="saleFormPlan" onchange="CRM.onSalePlanSelectChange()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                   ${PLANS.map(pl => `<option value="${pl.id}" ${basePlan === pl.id ? 'selected' : ''}>${pl.name} (${pl.includedUsers} base · $${pl.monthlyPrice}/mes)</option>`).join('')}
+                 </select>
+               </div>
+               <div>
+                 <label class="font-bold text-[#073e3b]">Cupo Total Usuarios (Automático) 🔒</label>
+                 <input id="saleFormUsers" type="number" readonly value="${baseUsers}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-black bg-slate-100 text-[#073e3b]" />
+               </div>
+             </div>
+
+             <!-- Módulos IA -->
              <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
-               <label class="font-bold text-[#073e3b] block">Módulos IA que quedarán activos tras esta operación:</label>
+               <div class="flex flex-wrap items-center justify-between gap-1">
+                 <label class="font-bold text-[#073e3b]">Módulos IA del Cliente:</label>
+                 <span id="saleModulesQuotaBanner" class="text-[10.5px] font-extrabold text-[#087e70]">Selecciona los módulos que necesita el cliente</span>
+               </div>
                <div class="grid grid-cols-2 gap-1">
                  ${SVA_PACKS.map(pk => `
                    <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-slate-200 text-[10.5px] cursor-pointer">
-                     <input type="checkbox" class="sale-mod-chk accent-[#087e70]" value="${pk.id}" ${basePacks.includes(pk.id) ? 'checked' : ''} onchange="CRM.recheckSaleFormLive()" />
-                     <span>${pk.icon} ${esc(pk.name.replace('Pack ', '').replace(' IA', ''))}</span>
+                     <input type="checkbox" class="sale-mod-chk accent-[#087e70]" value="${pk.id}" ${basePacks.includes(pk.id) ? 'checked' : ''} onchange="CRM.recheckSaleFormLive(true)" />
+                     <span>${pk.icon} ${esc(pk.name.replace('Pack ', '').replace(' IA', ''))} ($${pk.monthlyPrice})</span>
                    </label>
                  `).join('')}
                </div>
              </div>
 
-             <div id="saleFormCustomBox">
-               <label class="font-bold">Detalle de Módulo Personalizado / Observación Técnica</label>
-               <input id="saleFormCustomDesc" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Integración personalizada o detalle del acuerdo..." />
+             <!-- Detalle Técnico AUTOMÁTICO (No editable) -->
+             <div>
+               <label class="font-bold text-[#073e3b]">Detalle Técnico de la Operación (Automático) 🔒</label>
+               <input id="saleFormCustomDesc" readonly class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-slate-100 font-semibold text-slate-700" />
              </div>
 
+             <!-- COMPARATIVO VISUAL: LO QUE TIENE EL CLIENTE vs LO QUE PASA A TENER -->
+             <div id="saleBeforeAfterBox" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+
+             <!-- BLOQUE DE CÁLCULO NO CONFIGURABLE DE DOWNGRADE / BAJAS (PARA INFORME GERENCIAL) -->
+             <div id="saleDowngradeCalcBox" class="hidden p-2.5 rounded-xl bg-orange-50 border border-orange-300 space-y-1">
+               <label class="font-extrabold text-orange-950 block">📉 Valor Calculado de Downgrade / Bajas (Automático para Informe Gerencial) 🔒</label>
+               <input id="saleDowngradeCalcDisplay" readonly class="w-full border border-orange-300 rounded-lg px-2.5 py-1.5 bg-white font-mono font-black text-orange-900" value="$0.00" />
+             </div>
+
+             <!-- Valor a Cobrar (Calculado de primerazo + editable por asesor) y Referencia Bancaria OBLIGATORIA -->
              <div class="grid grid-cols-2 gap-2">
                <div>
-                 <label class="font-bold">Valor Cobrado / Ajustado (USD) *</label>
-                 <input id="saleFormAmount" type="number" step="0.01" min="0" value="22.99" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-extrabold text-[#087e70]" />
+                 <label class="font-bold text-[#087e70]">Valor a Cobrar / Ajustado (USD) *</label>
+                 <input id="saleFormAmount" type="number" step="0.01" min="0" value="22.99" class="w-full border-2 border-[#087e70] rounded-xl p-2 mt-0.5 font-mono font-black text-[#087e70] bg-[#e7f5f1]/40" />
+                 <div id="saleSuggestedPriceHint" class="text-[10px] font-bold text-slate-500 mt-0.5"></div>
                </div>
                <div>
-                 <label class="font-bold">N° Referencia / Transferencia *</label>
-                 <input id="saleFormRef" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="TRX-998811" />
+                 <label class="font-bold text-rose-700">N° Referencia / Transferencia (Obligatorio) *</label>
+                 <input id="saleFormRef" required class="w-full border border-rose-300 rounded-xl p-2 mt-0.5 font-mono font-bold" placeholder="Ej. TRX-998811" />
                </div>
              </div>
 
              <div>
-               <div class="flex items-center justify-between">
-                 <label class="font-bold text-[#073e3b]">Fórmula de Cálculo / Prorrateo (Obligatorio) *</label>
-                 <div class="flex gap-1">
-                   <button type="button" onclick="$('saleFormFormula').value='Prorrateo por días restantes hasta corte día 01: (Valor Plan / 30) × días = $';" class="px-1.5 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] text-[9.5px] font-bold cursor-pointer">+ Prorrateo</button>
-                   <button type="button" onclick="$('saleFormFormula').value='Plan Anual con 20% descuento aplicado sobre tarifa lista = $';" class="px-1.5 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] text-[9.5px] font-bold cursor-pointer">+ Anual 20%</button>
-                 </div>
-               </div>
-               <textarea id="saleFormFormula" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Explica obligatoriamente la fórmula aplicada: Ej. Plan Expansión $22.99 prorrateado por 18 días restantes hasta el 01 = $13.79"></textarea>
+               <label class="font-bold text-[#073e3b]">Fórmula de Cálculo / Prorrateo (Generada automáticamente — editable) *</label>
+               <textarea id="saleFormFormula" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono text-[10.5px]"></textarea>
              </div>
 
              <div>
@@ -2956,14 +3226,34 @@
           `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
            <button id="btnSubmitSaleEntry" onclick="CRM.submitSaleEntry()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">🚀 Enviar a Activaciones Pendientes</button>`
         );
-        setTimeout(() => this.recheckSaleFormLive(), 30);
+        setTimeout(() => this.onSaleMainOpChange(), 30);
+      },
+
+      onSaleMainOpChange() {
+        const op = $('saleFormTipoOp')?.value || 'VENTA_NUEVA_PLAN';
+        if ($('cartChkPlan')) $('cartChkPlan').checked = (op === 'VENTA_NUEVA_PLAN' || op === 'UPGRADE_PLAN');
+        if ($('cartChkUsersAdd')) $('cartChkUsersAdd').checked = (op === 'VENTA_USUARIOS_EXTRA');
+        if ($('cartChkModsAdd')) $('cartChkModsAdd').checked = (op === 'VENTA_MODULO_IA');
+        if ($('cartChkCustom')) $('cartChkCustom').checked = (op === 'VENTA_MODULO_PERSONALIZADO');
+        if ($('cartChkDowngrade')) $('cartChkDowngrade').checked = (op === 'DOWNGRADE_PLAN');
+        if ($('cartChkUsersDown')) $('cartChkUsersDown').checked = (op === 'BAJA_USUARIOS_EXTRA');
+        if ($('cartChkModsDown')) $('cartChkModsDown').checked = (op === 'BAJA_MODULO_IA');
+        this.recheckSaleFormLive(true);
+      },
+
+      onSalePlanSelectChange() {
+        const planId = $('saleFormPlan')?.value || 'expansion';
+        if (planId === 'enterprise') {
+          document.querySelectorAll('.sale-mod-chk').forEach(chk => { chk.checked = true; });
+        }
+        this.recheckSaleFormLive(true);
       },
 
       autofillSaleModalByRuc(rucVal) {
         const clean = String(rucVal || '').trim();
         const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === clean);
         if (!emp) {
-          this.recheckSaleFormLive();
+          this.recheckSaleFormLive(true);
           return;
         }
         if ($('saleFormNombre')) $('saleFormNombre').value = emp.nombre || '';
@@ -2975,43 +3265,138 @@
         if ($('saleFormTipoOp') && $('saleFormTipoOp').value === 'VENTA_NUEVA_PLAN') {
           $('saleFormTipoOp').value = 'UPGRADE_PLAN';
         }
-        const packs = Array.isArray(emp.packs_ia) ? emp.packs_ia : [];
+        const packs = emp.plan_activo === 'enterprise'
+          ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas']
+          : (Array.isArray(emp.packs_ia) ? emp.packs_ia : []);
         document.querySelectorAll('.sale-mod-chk').forEach(chk => {
           chk.checked = packs.includes(chk.value);
         });
         toast(`✓ Empresa existente detectada: ${emp.nombre}`);
-        this.recheckSaleFormLive();
+        this.onSaleMainOpChange();
       },
 
-      recheckSaleFormLive() {
-        const ruc = ($('saleFormRuc')?.value || '').trim();
-        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === ruc) || null;
-        const tipoOperacion = $('saleFormTipoOp')?.value || 'VENTA_NUEVA_PLAN';
-        const planNuevoId = $('saleFormPlan')?.value || 'expansion';
-        const usuariosNuevo = parseInt($('saleFormUsers')?.value, 10) || 1;
-        const modulosFinales = Array.from(document.querySelectorAll('.sale-mod-chk:checked')).map(x => x.value);
-        const activeUsersInDb = emp
-          ? this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length
-          : 0;
+      recheckSaleFormLive(updateAmounts = false) {
+        const st = this.computeSaleEngineState();
 
-        const check = this.evaluateSaleBusinessRules({
-          tipoOperacion, existingEmp: emp, planNuevoId, usuariosNuevo, modulosFinales, activeUsersInDb
-        });
+        // Mostrar/ocultar cajas de cantidad según carrito
+        if ($('boxUsersAddQty')) $('boxUsersAddQty').classList.toggle('hidden', !st.cartAddUsers);
+        if ($('boxUsersDownQty')) $('boxUsersDownQty').classList.toggle('hidden', !st.cartDownUsers);
+        if ($('boxCustomModPrice')) $('boxCustomModPrice').classList.toggle('hidden', !st.cartCustomMod);
+
+        // Actualizar campo automático de cupo total de usuarios
+        if ($('saleFormUsers')) $('saleFormUsers').value = st.newTotalUsers;
+
+        // Actualizar banner inteligente de módulos incluidos
+        const modBanner = $('saleModulesQuotaBanner');
+        if (modBanner) {
+          if (st.effectivePlan.id === 'enterprise') {
+            modBanner.className = 'text-[10.5px] font-extrabold text-[#087e70]';
+            modBanner.textContent = '⚡ Plan Enterprise: Incluye los 6 Módulos IA gratis';
+          } else if (st.selectedMods.length > st.newIncludedModsQuota && !st.cartAddMods) {
+            modBanner.className = 'text-[10.5px] font-extrabold text-rose-700';
+            modBanner.textContent = `⛔ Cupo excedido (${st.selectedMods.length}/${st.newIncludedModsQuota} incluidos). No tiene más cupo gratis.`;
+          } else {
+            modBanner.className = 'text-[10.5px] font-extrabold text-[#087e70]';
+            modBanner.textContent = `Selecciona qué módulos necesita el cliente (${st.selectedMods.length}/${st.newIncludedModsQuota} incluidos en ${st.effectivePlan.name})`;
+          }
+        }
+
+        // Generar Detalle Técnico Automático (No editable)
+        const partsDesc = [];
+        if (st.tipoOperacion === 'VENTA_NUEVA_PLAN') partsDesc.push(`Alta Plan ${st.effectivePlan.name} (${st.newIncludedUsers} usu. base)`);
+        if (st.cartChangePlan && st.tipoOperacion !== 'VENTA_NUEVA_PLAN') partsDesc.push(`Upgrade a Plan ${st.effectivePlan.name}`);
+        if (st.cartDowngrade) partsDesc.push(`Downgrade a Plan ${st.effectivePlan.name}`);
+        if (st.cartAddUsers) partsDesc.push(`+${st.qtyUsersAdd} Usuario(s) Adicional(es)`);
+        if (st.cartDownUsers) partsDesc.push(`-${st.qtyUsersDown} Usuario(s) de Cobro`);
+        if (st.cartAddMods && st.chargeableNewMods.length > 0) partsDesc.push(`+${st.chargeableNewMods.length} Módulo(s) IA Adicional`);
+        if (st.cartDownMods && st.removedMods.length > 0) partsDesc.push(`-${st.removedMods.length} Módulo(s) IA`);
+        if (st.cartCustomMod) partsDesc.push(`Módulo Personalizado ($${st.customModPrice.toFixed(2)})`);
+        const autoTechDetail = partsDesc.length > 0 ? partsDesc.join(' + ') : `Plan ${st.effectivePlan.name} · ${st.newTotalUsers} usuarios`;
+        if ($('saleFormCustomDesc')) $('saleFormCustomDesc').value = autoTechDetail;
+
+        // Renderizar Comparativo Visual: LO QUE TIENE vs LO QUE PASA A TENER
+        const baBox = $('saleBeforeAfterBox');
+        if (baBox) {
+          const currModNames = st.currPacks.length
+            ? st.currPacks.map(id => (SVA_PACKS.find(p => p.id === id)?.name || id).replace('Pack ', '').replace(' IA', '')).join(', ')
+            : 'Ninguno';
+          const newModNames = st.selectedMods.length
+            ? st.selectedMods.map(id => (SVA_PACKS.find(p => p.id === id)?.name || id).replace('Pack ', '').replace(' IA', '')).join(', ')
+            : 'Ninguno';
+
+          baBox.innerHTML = `
+            <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-300 space-y-1 text-[10.5px]">
+              <div class="font-extrabold text-slate-700 uppercase">📌 LO QUE TIENE EL CLIENTE HOY:</div>
+              <div>• <strong>Plan:</strong> ${esc(st.currPlanName)} ($${st.currPlanPrice.toFixed(2)})</div>
+              <div>• <strong>Usuarios:</strong> ${st.currTotalUsers} total (${st.currIncludedUsers} base + ${st.currPaidExtraUsers} cobro)</div>
+              <div>• <strong>Módulos IA (${st.currPacks.length}):</strong> ${esc(currModNames)}</div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-[#e7f5f1] border border-[#087e70] space-y-1 text-[10.5px]">
+              <div class="font-extrabold text-[#073e3b] uppercase">✨ LO QUE PASA A TENER:</div>
+              <div>• <strong>Plan:</strong> <span class="text-[#087e70] font-black">${esc(st.effectivePlan.name)}</span> ($${st.newPlanPrice.toFixed(2)}/${st.isAnual ? 'año' : 'mes'})</div>
+              <div>• <strong>Usuarios:</strong> <strong>${st.newTotalUsers} total</strong> (${st.newIncludedUsers} base + ${st.newPaidExtraUsers} cobro)</div>
+              <div>• <strong>Módulos IA (${st.selectedMods.length}):</strong> ${esc(newModNames)}</div>
+            </div>
+          `;
+        }
+
+        // Mostrar bloque no configurable de Downgrade / Bajas si aplica
+        const dgBox = $('saleDowngradeCalcBox');
+        const dgInput = $('saleDowngradeCalcDisplay');
+        const hasAnyBaja = st.cartDowngrade || st.cartDownUsers || st.cartDownMods;
+        if (dgBox && dgInput) {
+          dgBox.classList.toggle('hidden', !hasAnyBaja);
+          const dgFormulaParts = [];
+          if (st.cartDowngrade && st.currentPlan) {
+            dgFormulaParts.push(`Plan ${st.currPlanName} ($${st.currPlanPrice.toFixed(2)}) - Plan ${st.effectivePlan.name} ($${st.newPlanPrice.toFixed(2)}) = $${st.downgradePlanDiff.toFixed(2)}`);
+          }
+          if (st.cartDownUsers) {
+            dgFormulaParts.push(`${st.qtyUsersDown} usu. baja × $${st.unitExtraUserPrice.toFixed(2)} = $${st.downgradeUsersDiff.toFixed(2)}`);
+          }
+          if (st.cartDownMods) {
+            dgFormulaParts.push(`Baja ${st.removedMods.length} mód. IA = $${st.downgradeModsDiff.toFixed(2)}`);
+          }
+          dgInput.value = `$${st.totalDowngradeValue.toFixed(2)} USD  |  ${dgFormulaParts.join('  +  ') || 'Sin impacto'}`;
+        }
+
+        // Actualizar valor sugerido a cobrar y fórmula automática de prorrateo/detalle
+        if (updateAmounts) {
+          if ($('saleFormAmount')) $('saleFormAmount').value = st.suggestedCharge.toFixed(2);
+          if ($('saleSuggestedPriceHint')) {
+            $('saleSuggestedPriceHint').textContent = `Tarifa lista calculada: $${st.suggestedCharge.toFixed(2)} USD (puedes ajustar si aplicas prorrateo por días).`;
+          }
+          const fParts = [];
+          if (st.tipoOperacion === 'VENTA_NUEVA_PLAN' || st.cartChangePlan) {
+            fParts.push(`Plan ${st.effectivePlan.name}: $${st.newPlanPrice.toFixed(2)}`);
+          } else if (st.cartDowngrade) {
+            fParts.push(`Cobro nuevo Plan ${st.effectivePlan.name} (Downgrade): $${st.newPlanPrice.toFixed(2)}`);
+          }
+          if (st.cartAddUsers) {
+            fParts.push(`${st.qtyUsersAdd} usuario(s) adicional(es) × $${st.unitExtraUserPrice.toFixed(2)} = $${st.usersAddCost.toFixed(2)}`);
+          }
+          if (st.cartAddMods && st.chargeableNewMods.length > 0) {
+            fParts.push(`${st.chargeableNewMods.length} módulo(s) IA adicional = $${st.modsAddCost.toFixed(2)}`);
+          }
+          if (st.cartCustomMod) {
+            fParts.push(`Módulo personalizado = $${st.customModPrice.toFixed(2)}`);
+          }
+          if (hasAnyBaja) {
+            fParts.push(`[Descuento/Downgrade gerencial: -$${st.totalDowngradeValue.toFixed(2)}]`);
+          }
+          fParts.push(`Total a cobrar = $${st.suggestedCharge.toFixed(2)} USD`);
+          if ($('saleFormFormula')) $('saleFormFormula').value = fParts.join(' | ');
+        }
 
         const box = $('saleFormValidationBox');
-        if (!box) return check;
-        if (!check.ok) {
-          box.innerHTML = check.errors.map(err => `
+        if (!box) return st;
+        if (!st.ok) {
+          box.innerHTML = st.errors.map(err => `
             <div class="p-2 rounded-xl bg-rose-100 border border-rose-300 text-rose-900 font-bold text-[10.5px]">⛔ ${esc(err)}</div>
           `).join('');
-        } else if (check.warnings.length > 0) {
-          box.innerHTML = check.warnings.map(w => `
-            <div class="p-2 rounded-xl bg-amber-100 border border-amber-300 text-amber-950 font-bold text-[10.5px]">⚠️ ${esc(w)}</div>
-          `).join('');
         } else {
-          box.innerHTML = `<div class="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[10.5px]">✓ Validación de reglas comerciales y cupos correcta (${check.targetPlan.name} · ${usuariosNuevo} usu.).</div>`;
+          box.innerHTML = `<div class="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[10.5px]">✓ Validación comercial y de cupos correcta (${st.effectivePlan.name} · ${st.newTotalUsers} usu. · ${st.selectedMods.length} mód. IA).</div>`;
         }
-        return check;
+        return st;
       },
 
       async submitSaleEntry() {
@@ -3019,27 +3404,21 @@
         const nombre = ($('saleFormNombre')?.value || '').trim();
         const tel = ($('saleFormTel')?.value || '').trim();
         const email = ($('saleFormEmail')?.value || '').trim();
-        const tipoOperacion = $('saleFormTipoOp')?.value || 'VENTA_NUEVA_PLAN';
-        const planNuevoId = $('saleFormPlan')?.value || 'expansion';
-        const usuariosNuevo = parseInt($('saleFormUsers')?.value, 10) || 1;
-        const periodicidad = $('saleFormPeriod')?.value || 'MENSUAL';
-        const modulosFinales = Array.from(document.querySelectorAll('.sale-mod-chk:checked')).map(x => x.value);
-        const customDesc = ($('saleFormCustomDesc')?.value || '').trim();
         const montoUsd = parseFloat($('saleFormAmount')?.value);
         const refPago = ($('saleFormRef')?.value || '').trim();
         const formulaCobro = ($('saleFormFormula')?.value || '').trim();
+        const customDesc = ($('saleFormCustomDesc')?.value || '').trim();
         const fileObj = $('saleFormFile')?.files?.[0] || null;
 
-        if (!ruc || !nombre) return toast('Ingresa RUC y Razón Social de la empresa.');
-        if (isNaN(montoUsd) || montoUsd <= 0) return toast('⚠️ Debes ingresar el valor cobrado en USD (en Downgrade/Baja se cobra el plan al que baja el cliente).');
-        if (!formulaCobro) return toast('⚠️ Debes escribir obligatoriamente la fórmula de cálculo / prorrateo utilizada.');
-        if (!fileObj) {
-          return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF) para todas las operaciones.');
-        }
+        if (!ruc || !nombre) return toast('⚠️ Ingresa el RUC y Razón Social de la empresa.');
+        if (!refPago) return toast('⚠️ El campo N° Referencia / Transferencia * es obligatorio. No puedes continuar sin ingresarlo.');
+        if (isNaN(montoUsd) || montoUsd < 0) return toast('⚠️ Ingresa un valor cobrado válido en USD.');
+        if (!formulaCobro) return toast('⚠️ La fórmula de cálculo / prorrateo es obligatoria.');
+        if (!fileObj) return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF).');
 
-        const check = this.recheckSaleFormLive();
-        if (!check.ok) {
-          return toast('⛔ Corrige los errores de validación marcados en rojo antes de guardar.');
+        const st = this.recheckSaleFormLive(false);
+        if (!st.ok) {
+          return toast('⛔ Corrige las alertas en rojo antes de enviar la solicitud.');
         }
 
         const btn = $('btnSubmitSaleEntry');
@@ -3053,38 +3432,48 @@
           }
 
           const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
-          const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === ruc) || null;
-          const prevUsers = emp ? (Number(emp.max_usuarios) || 1) : 0;
-          const opMeta = SALE_OPERATION_TYPES[tipoOperacion] || { label: tipoOperacion };
+          const opMeta = SALE_OPERATION_TYPES[st.tipoOperacion] || { label: st.tipoOperacion };
           const fechaLocal = nowFormatted();
 
           await crearTicketVozkora({
             empresa_ruc: ruc,
             empresa_nombre: nombre,
-            solicitado_por: ses.email || 'ventas@vozkora.com',
+            solicitado_por: ses.email || 'comercial@vozkora.com',
             tipo_solicitud: 'ACTIVACION_VENTA',
             estado: 'PENDIENTE',
             detalle: {
               categoria: opMeta.label,
-              tipo_operacion: tipoOperacion,
-              plan_anterior: emp ? emp.plan_activo : 'NINGUNO',
-              plan_anterior_label: emp ? emp.plan_activo.toUpperCase() : 'Cliente Nuevo',
-              plan_nuevo: planNuevoId,
-              usuarios_anterior: prevUsers,
-              usuarios_nuevo: usuariosNuevo,
-              usuarios_delta: usuariosNuevo - prevUsers,
-              periodicidad,
-              modulos_finales: planNuevoId === 'enterprise' ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : modulosFinales,
+              tipo_operacion: st.tipoOperacion,
+              plan_anterior: st.currentPlan ? st.currentPlan.id : 'NINGUNO',
+              plan_anterior_label: st.currPlanName,
+              plan_nuevo: st.effectivePlan.id,
+              usuarios_anterior: st.currTotalUsers,
+              usuarios_nuevo: st.newTotalUsers,
+              usuarios_delta: st.newTotalUsers - st.currTotalUsers,
+              periodicidad: st.periodicidad,
+              modulos_finales: st.selectedMods,
               descripcion_personalizada: customDesc,
               monto_usd: montoUsd,
-              referencia_pago: refPago || 'N/A',
+              // Desglose exacto para el Informe Gerencial
+              desglose_gerencial: {
+                venta_nueva_usd: st.tipoOperacion === 'VENTA_NUEVA_PLAN' ? st.newPlanPrice : 0,
+                upgrade_plan_usd: (st.cartChangePlan && st.tipoOperacion !== 'VENTA_NUEVA_PLAN') ? st.newPlanPrice : 0,
+                usuarios_extra_usd: st.usersAddCost,
+                modulos_ia_extra_usd: st.modsAddCost,
+                modulo_personalizado_usd: st.customModPrice,
+                downgrade_plan_usd: st.downgradePlanDiff,
+                baja_usuarios_usd: st.downgradeUsersDiff,
+                baja_modulos_usd: st.downgradeModsDiff,
+                total_bajas_downgrade_usd: st.totalDowngradeValue
+              },
+              referencia_pago: refPago,
               formula_cobro: formulaCobro,
               comprobante_url: compUrl,
               telefono_contacto: tel,
               email_contacto: email,
               agente_email: ses.email || '',
               agente_nombre: ses.nombre_completo || ses.email || 'Asesor',
-              agente_rol: ses.rol || 'VENTAS',
+              agente_rol: ses.rol || 'COMERCIAL_COBRANZAS',
               fecha_hora_local: fechaLocal,
               fecha_iso_local: typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10),
               historial: [
@@ -3092,7 +3481,7 @@
                   fecha: fechaLocal,
                   de_estado: 'NUEVO',
                   a_estado: '🟡 Pendiente de Activación',
-                  motivo: `${opMeta.label} por $${montoUsd.toFixed(2)} — Fórmula: ${formulaCobro}`,
+                  motivo: `${customDesc} · Cobro: $${montoUsd.toFixed(2)} (Ref: ${refPago})`,
                   autor: ses.email || 'Asesor'
                 }
               ]
@@ -3100,10 +3489,10 @@
           });
 
           V.closeModal();
-          toast('🚀 Venta enviada a Activaciones Pendientes para validación.');
+          toast('🚀 Solicitud enviada a Activaciones Pendientes.');
           if (this.currentTab === 'activations') await this.loadActivationsTab();
         } catch (e) {
-          toast('Error registrando venta: ' + e.message);
+          toast('Error registrando solicitud: ' + e.message);
         } finally {
           if (btn) { btn.textContent = '🚀 Enviar a Activaciones Pendientes'; btn.disabled = false; }
         }
@@ -3178,6 +3567,7 @@
           : (Array.isArray(det.modulos_finales) ? det.modulos_finales : []);
 
         try {
+          let suspendedUsersMsg = '';
           if (emp) {
             const patch = {
               plan_activo: planId,
@@ -3190,6 +3580,28 @@
               patch.fecha_proximo_corte = calcularProximoCorte(periodicidad);
             }
             await crmActualizarEmpresa(emp.id, patch);
+
+            // Suspensión automática al azar si los usuarios activos superan el nuevo cupo (EXCEPCIÓN: ADMIN_EMPRESA)
+            const empActiveUsers = (this.cachedUsers || []).filter(u =>
+              (u.empresa_id === emp.id || String(u.empresa_ruc || '').trim() === String(emp.ruc || '').trim()) && u.activo
+            );
+            if (empActiveUsers.length > maxUsuarios) {
+              const excessCount = empActiveUsers.length - maxUsuarios;
+              // Excluir ADMIN_EMPRESA y SUPERADMIN de la suspensión automática
+              const nonAdminCandidates = empActiveUsers.filter(u => !['ADMIN_EMPRESA', 'SUPERADMIN'].includes(String(u.rol || '').toUpperCase()));
+              // Mezclar al azar (Fisher-Yates)
+              for (let i = nonAdminCandidates.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [nonAdminCandidates[i], nonAdminCandidates[j]] = [nonAdminCandidates[j], nonAdminCandidates[i]];
+              }
+              const toSuspend = nonAdminCandidates.slice(0, excessCount);
+              for (const uSusp of toSuspend) {
+                await crmActualizarUsuario(uSusp.id, { activo: false, session_token: null, dispositivo_info: 'Suspendido por reducción de cupo' });
+              }
+              if (toSuspend.length > 0) {
+                suspendedUsersMsg = ` · ⚠️ ${toSuspend.length} usuario(s) operador(es) suspendido(s) al azar (Admin protegido): ${toSuspend.map(x => x.email).join(', ')}`;
+              }
+            }
           } else {
             await crmCrearEmpresa({
               nombre: tk.empresa_nombre,
@@ -3211,7 +3623,7 @@
             fecha: nowFormatted(),
             de_estado: '🟡 Pendiente de Activación',
             a_estado: '🟢 Activada en SaaS',
-            motivo: `Activación aprobada y aplicada automáticamente (Plan ${planId.toUpperCase()} · ${maxUsuarios} usu.).`,
+            motivo: `Activación aprobada y aplicada automáticamente (Plan ${planId.toUpperCase()} · ${maxUsuarios} usu.${suspendedUsersMsg}).`,
             autor: ses.email
           });
           det.historial = hist;
@@ -3261,7 +3673,7 @@
           });
 
           V.closeModal();
-          toast(`✅ Activación aplicada a ${tk.empresa_nombre} y enviada automáticamente a 🧾 Facturación Pendientes.`);
+          toast(`✅ Activación aplicada a ${tk.empresa_nombre}${suspendedUsersMsg} y enviada a 🧾 Facturación Pendientes.`);
           await this.loadActivationsTab();
         } catch (e) {
           toast('Error aplicando activación: ' + e.message);
@@ -3450,7 +3862,7 @@
                   <option value="COBRANZAS" ${this.invoicingOriginFilter === 'COBRANZAS' ? 'selected' : ''}>💳 Cobranzas y Cortes</option>
                 </select>
 
-                ${['SUPERADMIN', 'COBRANZAS'].includes(rolNorm) ? `
+                ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'COBRANZAS'].includes(rolNorm) ? `
                   <button onclick="CRM.openPaymentModal()" class="ml-1 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                     💳 + FACTURAR / PAGO
                   </button>
@@ -3880,14 +4292,30 @@
           };
         };
 
-        const kpiNuevas = sumByOp('VENTA_NUEVA_PLAN');
-        const kpiUpgrades = sumByOp('UPGRADE_PLAN');
-        const kpiUsersExtra = sumByOp('VENTA_USUARIOS_EXTRA');
-        const kpiModulosIa = sumByOp('VENTA_MODULO_IA');
-        const kpiPersonalizado = sumByOp('VENTA_MODULO_PERSONALIZADO');
-        const kpiDowngrades = sumByOp('DOWNGRADE_PLAN');
-        const kpiBajaUsers = sumByOp('BAJA_USUARIOS_EXTRA');
-        const kpiBajaMods = sumByOp('BAJA_MODULO_IA');
+        const sumCartField = (fieldKey, fallbackOpKey) => {
+          let count = 0;
+          let total = 0;
+          approvedSales.forEach(t => {
+            const det = t.detalle || {};
+            const dg = det.desglose_gerencial || null;
+            if (dg && typeof dg[fieldKey] === 'number') {
+              if (dg[fieldKey] > 0) { count += 1; total += Number(dg[fieldKey]); }
+            } else if (det.tipo_operacion === fallbackOpKey) {
+              count += 1;
+              total += Number(det.monto_usd || 0);
+            }
+          });
+          return { count, total };
+        };
+
+        const kpiNuevas = sumCartField('venta_nueva_usd', 'VENTA_NUEVA_PLAN');
+        const kpiUpgrades = sumCartField('upgrade_plan_usd', 'UPGRADE_PLAN');
+        const kpiUsersExtra = sumCartField('usuarios_extra_usd', 'VENTA_USUARIOS_EXTRA');
+        const kpiModulosIa = sumCartField('modulos_ia_extra_usd', 'VENTA_MODULO_IA');
+        const kpiPersonalizado = sumCartField('modulo_personalizado_usd', 'VENTA_MODULO_PERSONALIZADO');
+        const kpiDowngrades = sumCartField('downgrade_plan_usd', 'DOWNGRADE_PLAN');
+        const kpiBajaUsers = sumCartField('baja_usuarios_usd', 'BAJA_USUARIOS_EXTRA');
+        const kpiBajaMods = sumCartField('baja_modulos_usd', 'BAJA_MODULO_IA');
         const totalRecaudoCobranzas = approvedPays.reduce((a, x) => a + Number((x.detalle || {}).monto_usd || 0), 0);
 
         const sellersMap = {};
