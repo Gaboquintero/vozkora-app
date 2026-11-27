@@ -72,10 +72,13 @@
     <nav class="bg-[#073e3b] text-white px-4 py-2 flex gap-2 overflow-x-auto shrink-0 text-xs font-bold">
       <button id="crm-tab-tickets" onclick="CRM.setTab('tickets')" class="px-3 py-1.5 rounded-xl bg-[#70d2bd] text-[#073e3b] cursor-pointer shrink-0">🔥 Leads & Tickets</button>
       <button id="crm-tab-crm360" onclick="CRM.setTab('crm360')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🗂️ Hoja de Vida 360° (Vista Dividida)</button>
+      <button id="crm-tab-activations" onclick="CRM.setTab('activations')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🚀 Activaciones Pendientes</button>
+      <button id="crm-tab-invoicing" onclick="CRM.setTab('invoicing')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🧾 Facturación Pendientes</button>
+      <button id="crm-tab-billing" onclick="CRM.setTab('billing')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">💳 Cobranzas y Cortes</button>
+      <button id="crm-tab-analytics" onclick="CRM.setTab('analytics')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">📈 Informe Gerencial & Calidad</button>
       <button id="crm-tab-companies" onclick="CRM.setTab('companies')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🏢 Empresas SaaS</button>
       <button id="crm-tab-users" onclick="CRM.setTab('users')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">👥 Usuarios Empresas</button>
       <button id="crm-tab-staff" onclick="CRM.setTab('staff')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">🎧 Equipo Soporte & Ventas</button>
-      <button id="crm-tab-billing" onclick="CRM.setTab('billing')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">💳 Cobranzas y Cortes</button>
       <button id="crm-tab-repo" onclick="CRM.setTab('repo')" class="px-3 py-1.5 rounded-xl bg-white/10 text-teal-100 cursor-pointer shrink-0">📊 Hojas Auditoría (Excel)</button>
     </nav>
 
@@ -347,6 +350,27 @@
 
 
 
+    const INTERNAL_ROLES_META = {
+      SUPERADMIN: { label: 'Súper-Admin', badgeCls: 'bg-[#073e3b] text-[#70d2bd]', readOnly: false, tabs: ['tickets', 'crm360', 'activations', 'invoicing', 'billing', 'analytics', 'companies', 'users', 'staff', 'repo'] },
+      VENTAS:     { label: 'Asesor Comercial / Ventas', badgeCls: 'bg-amber-100 text-amber-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations'] },
+      SOPORTE:    { label: 'Ingeniero Soporte Técnico', badgeCls: 'bg-cyan-100 text-cyan-900', readOnly: false, tabs: ['tickets', 'crm360'] },
+      RETENCION:  { label: 'Atención al Cliente / Retención', badgeCls: 'bg-purple-100 text-purple-900', readOnly: false, tabs: ['tickets', 'crm360', 'activations'] },
+      COBRANZAS:  { label: 'Gestor de Cobranzas', badgeCls: 'bg-emerald-100 text-emerald-900', readOnly: false, tabs: ['billing', 'invoicing', 'crm360'] },
+      SUPERVISOR: { label: 'Supervisor/a (Solo Lectura)', badgeCls: 'bg-indigo-100 text-indigo-900', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics'] },
+      AUDITOR:    { label: 'Auditor/a (Solo Lectura)', badgeCls: 'bg-slate-200 text-slate-800', readOnly: true, tabs: ['tickets', 'crm360', 'staff', 'billing', 'activations', 'invoicing', 'analytics'] }
+    };
+
+    const SALE_OPERATION_TYPES = {
+      VENTA_NUEVA_PLAN:          { label: '🆕 Venta Nueva de Plan', group: 'ALTA', badgeCls: 'bg-emerald-100 text-emerald-800' },
+      UPGRADE_PLAN:              { label: '⬆️ Upgrade de Plan', group: 'ALTA', badgeCls: 'bg-cyan-100 text-cyan-900' },
+      VENTA_USUARIOS_EXTRA:      { label: '👥+ Venta Usuarios Adicionales', group: 'ALTA', badgeCls: 'bg-teal-100 text-teal-900' },
+      VENTA_MODULO_IA:           { label: '🤖+ Venta Módulo Adicional IA', group: 'ALTA', badgeCls: 'bg-indigo-100 text-indigo-900' },
+      VENTA_MODULO_PERSONALIZADO:{ label: '🛠️ Venta Módulo Personalizado (A medida)', group: 'ALTA', badgeCls: 'bg-amber-100 text-amber-900' },
+      DOWNGRADE_PLAN:            { label: '⬇️ Downgrade de Plan (Exclusivo Plan)', group: 'BAJA', badgeCls: 'bg-orange-100 text-orange-900' },
+      BAJA_USUARIOS_EXTRA:       { label: '👥- Baja de Usuarios Adicionales', group: 'BAJA', badgeCls: 'bg-rose-100 text-rose-800' },
+      BAJA_MODULO_IA:            { label: '🤖- Baja de Módulos Adicionales IA', group: 'BAJA', badgeCls: 'bg-rose-100 text-rose-800' }
+    };
+
     window.CRM = {
       currentTab: 'tickets',
       cachedStaff: [],
@@ -364,6 +388,12 @@
       cachedTickets: [],
       ticketFilterStatus: 'ABIERTOS',
       ticketWaFilter: 'ALL',
+      activationFilter: 'PENDIENTES',
+      selectedActivationId: '',
+      invoicingFilter: 'PENDIENTES',
+      selectedInvoicingId: '',
+      analyticsPeriod: 'month',
+      analyticsDate: new Date().toISOString().slice(0, 10),
       repoTable: 'repo_facturas',
       repoRows: [],
       repoFilterEmpresa: 'ALL',
@@ -372,8 +402,23 @@
       repoFilterHasta: '',
       repoSearch: '',
 
+      getSessionRole() {
+        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        return String((ses && ses.rol) || '').trim().toUpperCase();
+      },
+
       isInternalRole(rol) {
-        return ['SUPERADMIN', 'SOPORTE', 'VENTAS'].includes(String(rol || '').toUpperCase());
+        return Object.prototype.hasOwnProperty.call(INTERNAL_ROLES_META, String(rol || '').trim().toUpperCase());
+      },
+
+      isReadOnlyRole() {
+        const r = this.getSessionRole();
+        return !!(INTERNAL_ROLES_META[r] && INTERNAL_ROLES_META[r].readOnly);
+      },
+
+      getAllowedTabsForCurrentUser() {
+        const r = this.getSessionRole();
+        return (INTERNAL_ROLES_META[r] && INTERNAL_ROLES_META[r].tabs) || ['tickets'];
       },
 
       open() {
@@ -381,41 +426,39 @@
         const rolNorm = String((ses && ses.rol) || '').trim().toUpperCase();
         if (!ses || !this.isInternalRole(rolNorm)) {
           $('crm-overlay').classList.add('hidden');
-          return toast('⛔ Acceso denegado: Solo personal autorizado (Súper-Admin, Soporte o Ventas) puede ingresar.');
+          return toast('⛔ Acceso denegado: Solo personal autorizado puede ingresar.');
         }
-        const isSuper = (rolNorm === 'SUPERADMIN');
-        ['companies', 'users', 'staff', 'billing', 'repo'].forEach(t => {
+        const allowedTabs = this.getAllowedTabsForCurrentUser();
+        const allTabs = ['tickets', 'crm360', 'activations', 'invoicing', 'billing', 'analytics', 'companies', 'users', 'staff', 'repo'];
+        allTabs.forEach(t => {
           const btn = $('crm-tab-' + t);
           if (btn) {
-            if (!isSuper) {
-              btn.classList.add('hidden');
-              btn.style.display = 'none';
-            } else {
-              btn.classList.remove('hidden');
-              btn.style.display = '';
-            }
+            const ok = allowedTabs.includes(t);
+            btn.classList.toggle('hidden', !ok);
+            btn.style.display = ok ? '' : 'none';
           }
         });
         $('crm-overlay').classList.remove('hidden');
-        this.setTab(isSuper ? this.currentTab : 'tickets');
+        const initialTab = allowedTabs.includes(this.currentTab) ? this.currentTab : allowedTabs[0];
+        this.setTab(initialTab);
       },
 
       setTab(tab) {
-        const ses = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
-        const rolNorm = String((ses && ses.rol) || '').trim().toUpperCase();
-        const isSuper = (rolNorm === 'SUPERADMIN');
-        ['companies', 'users', 'staff', 'billing', 'repo'].forEach(t => {
+        const allowedTabs = this.getAllowedTabsForCurrentUser();
+        const allTabs = ['tickets', 'crm360', 'activations', 'invoicing', 'billing', 'analytics', 'companies', 'users', 'staff', 'repo'];
+        allTabs.forEach(t => {
           const btn = $('crm-tab-' + t);
           if (btn) {
-            btn.classList.toggle('hidden', !isSuper);
-            btn.style.display = isSuper ? '' : 'none';
+            const ok = allowedTabs.includes(t);
+            btn.classList.toggle('hidden', !ok);
+            btn.style.display = ok ? '' : 'none';
           }
         });
-        if (!isSuper && !['tickets', 'crm360'].includes(tab)) {
-          tab = 'tickets';
+        if (!allowedTabs.includes(tab)) {
+          tab = allowedTabs[0];
         }
         this.currentTab = tab;
-        ['tickets', 'crm360', 'companies', 'users', 'staff', 'billing', 'repo'].forEach(t => {
+        allTabs.forEach(t => {
           const btn = $('crm-tab-' + t);
           if (btn) {
             btn.className = (t === tab)
@@ -429,9 +472,11 @@
         else if (tab === 'billing') this.loadBillingTab();
         else if (tab === 'tickets') this.loadTickets();
         else if (tab === 'crm360') this.loadCrm360View();
+        else if (tab === 'activations') this.loadActivationsTab();
+        else if (tab === 'invoicing') this.loadInvoicingTab();
+        else if (tab === 'analytics') this.loadAnalyticsTab();
         else if (tab === 'repo') this.loadRepo(this.repoTable);
       },
-
       // -------------------------------------------------------------------
       // PESTAÑA 1: EMPRESAS (REGISTRO PRIVADO DE CLIENTES SAAS VOZKORA)
       // -------------------------------------------------------------------
@@ -977,9 +1022,16 @@
 
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
-            <div>
-              <h3 class="text-sm font-extrabold text-[#073e3b]">💳 Cobranzas Automáticas, Fechas de Corte (Día 01) y Pasarela</h3>
-              <p class="text-[11px] text-slate-500">Regla 1: Días 1–5 tras corte = Aviso rojo en App · Regla 2: +5 días tras corte = Bloqueo total con redirección a pasarela.</p>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">💳 Cobranzas Automáticas, Fechas de Corte (Día 01) y Recaudo</h3>
+                <p class="text-[11px] text-slate-500">Regla 1: Días 1–5 tras corte = Aviso rojo en App · Regla 2: +5 días tras corte = Bloqueo total por mora.</p>
+              </div>
+              ${!this.isReadOnlyRole() ? `
+                <button onclick="CRM.openPaymentModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                  💳 + FACTURAR / PAGO
+                </button>
+              ` : '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-[11px]">👁️ Modo Solo Lectura</span>'}
             </div>
 
             <!-- Canal Oficial de Activación y Renovación -->
@@ -1050,14 +1102,19 @@
                       </div>
                     </div>
 
+                    ${!this.isReadOnlyRole() ? `
                     <div class="flex flex-wrap gap-2 pt-1">
-                      <button onclick="CRM.renewCompanyCycle('${emp.id}', '${esc(emp.periodicidad || 'MENSUAL')}')" class="px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
-                        ✓ Registrar Pago y Renovar Próximo Ciclo
+                      <button onclick="CRM.openPaymentModal('${esc(emp.ruc)}')" class="px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white cursor-pointer">
+                        💳 FACTURAR / PAGO (Con Comprobante)
+                      </button>
+                      <button onclick="CRM.openClient360ByRuc('${esc(emp.ruc)}')" class="px-3.5 py-1.5 rounded-xl text-[11px] font-bold bg-white border border-[#b9d1cd] text-[#073e3b] cursor-pointer">
+                        🗂️ Hoja de Vida 360°
                       </button>
                       <button onclick="const msg=encodeURIComponent('Hola ${esc(emp.nombre)}, te recordamos que tu suscripción Vozkora (${isAnual ? 'Anual' : 'Mensual'}) tiene corte el ${esc(emp.fecha_proximo_corte || 'día 01')}.'); window.open('https://wa.me/${esc((emp.telefono || '').replace(/\D/g,''))}?text='+msg, '_blank');" class="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-100 text-emerald-900 cursor-pointer">
                         💬 Recordatorio WhatsApp
                       </button>
                     </div>
+                    ` : ''}
                   </div>
                 `;
               }).join('')}
@@ -1525,12 +1582,15 @@
         const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
         const rolNorm = String((sesNow && sesNow.rol) || '').trim().toUpperCase();
         const isSuper = (rolNorm === 'SUPERADMIN');
+        const canSeeAllTickets = ['SUPERADMIN', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm);
+        const isReadOnly = this.isReadOnlyRole();
         const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
 
-        // SOPORTE y VENTAS ven únicamente los tickets asignados a su correo
-        const baseTickets = isSuper
-          ? this.cachedTickets
-          : this.cachedTickets.filter(t => {
+        const pureTickets = this.cachedTickets.filter(t => !['ACTIVACION_VENTA', 'FACTURACION_PAGO'].includes(String(t.tipo_solicitud || '').toUpperCase()));
+
+        const baseTickets = canSeeAllTickets
+          ? pureTickets
+          : pureTickets.filter(t => {
               const assigned = String(t.asignado_a || (t.detalle && t.detalle.asignado_a_email) || '').trim().toLowerCase();
               return assigned !== '' && assigned === myEmail;
             });
@@ -1546,7 +1606,7 @@
         else if (this.ticketFilterStatus === 'CERRADOS') listToShow = cerrados;
         else if (this.ticketFilterStatus === 'TODOS') listToShow = baseTickets;
 
-        if (isSuper) {
+        if (canSeeAllTickets) {
           if (this.ticketAssigneeFilter === 'MINE' && sesNow) {
             listToShow = listToShow.filter(t => (t.asignado_a || (t.detalle && t.detalle.asignado_a_email)) === sesNow.email);
           } else if (this.ticketAssigneeFilter === 'UNASSIGNED') {
@@ -1658,7 +1718,8 @@
                 </button>
               </div>
 
-              <!-- Acciones de cambio de estado (Ida y Vuelta) -->
+              <!-- Acciones de cambio de estado (ocultas para Supervisor/Auditor Solo Lectura) -->
+              ${isReadOnly ? `<div class="p-2 rounded-xl bg-slate-100 border border-slate-200 text-[10.5px] font-bold text-slate-600">👁️ Modo Auditoría / Supervisión (Solo Lectura)</div>` : `
               <div class="flex flex-wrap items-center gap-1.5 pt-1">
                 ${selTk.estado !== 'PENDIENTE' ? `
                   <button onclick="CRM.openTicketTransitionModal(${realIdx}, 'PENDIENTE')" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer">
@@ -1684,7 +1745,7 @@
                 <button onclick="CRM.openTicketCommentModal(${realIdx})" class="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
                   💬 Comentar en Bitácora
                 </button>
-              </div>
+              </div>`}
 
               <!-- Bitácora cronológica -->
               <div class="p-3 rounded-xl bg-[#e7f5f1]/60 border border-[#b9d1cd] text-[10.5px] text-[#073e3b] space-y-1.5">
@@ -1729,7 +1790,7 @@
                   <option value="WA_SENT" ${this.ticketWaFilter === 'WA_SENT' ? 'selected' : ''}>🟢 Enviado a WhatsApp (${waSentCount})</option>
                 </select>
 
-                ${isSuper ? `
+                ${canSeeAllTickets ? `
                   <select onchange="CRM.ticketAssigneeFilter=this.value; CRM.renderTicketsView();" class="border border-[#d7e1e0] rounded-xl px-2.5 py-1 bg-[#f5f8f8] text-[11px] font-bold text-[#073e3b]">
                     <option value="ALL" ${this.ticketAssigneeFilter === 'ALL' ? 'selected' : ''}>👤 Todos</option>
                     <option value="MINE" ${this.ticketAssigneeFilter === 'MINE' ? 'selected' : ''}>⭐ Míos</option>
@@ -2118,11 +2179,11 @@
       // -------------------------------------------------------------------
       async loadStaffTab() {
         const body = $('crm-body');
-        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando equipo interno de Soporte y Ventas...</div>';
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando equipo interno...</div>';
         try {
           const allUsers = await crmListarUsuarios();
           this.cachedUsers = allUsers;
-          this.cachedStaff = allUsers.filter(u => ['SUPERADMIN', 'SOPORTE', 'VENTAS'].includes(String(u.rol || '').toUpperCase()));
+          this.cachedStaff = allUsers.filter(u => this.isInternalRole(u.rol));
           this.renderStaffView();
         } catch (e) {
           body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
@@ -2131,39 +2192,48 @@
 
       renderStaffView() {
         const body = $('crm-body');
+        const isRO = this.isReadOnlyRole();
         body.innerHTML = `
           <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 class="text-sm font-extrabold text-[#073e3b]">🎧 Equipo Interno · Soporte Técnico y Ventas (${this.cachedStaff.length})</h3>
-                <p class="text-[11px] text-slate-500">Crea colaboradores con rol <strong>SOPORTE</strong> o <strong>VENTAS</strong>. Ellos ingresan a <code>crm.html</code> viendo únicamente Tickets y Hoja de Vida 360° de clientes.</p>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🎧 Equipo Interno · Ventas, Soporte, Retención, Cobranzas, Supervisión y Auditoría (${this.cachedStaff.length})</h3>
+                <p class="text-[11px] text-slate-500">Cada rol accede exclusivamente a las pestañas asignadas a su área.</p>
               </div>
-              <button onclick="CRM.openNewStaffModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
-                + Crear Empleado Soporte / Ventas
-              </button>
+              ${!isRO ? `
+                <button onclick="CRM.openNewStaffModal()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                  + Crear Colaborador Interno
+                </button>
+              ` : '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-[11px]">👁️ Modo Solo Lectura</span>'}
             </div>
 
             <div class="space-y-2">
-              ${this.cachedStaff.map(st => `
+              ${this.cachedStaff.map(st => {
+                const rKey = String(st.rol || '').toUpperCase();
+                const meta = INTERNAL_ROLES_META[rKey] || { label: rKey, badgeCls: 'bg-slate-100 text-slate-800' };
+                return `
                 <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div class="font-extrabold text-sm text-[#073e3b]">${esc(st.nombre_completo || st.email)}
-                      <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${st.rol === 'SUPERADMIN' ? 'bg-[#073e3b] text-[#70d2bd]' : (st.rol === 'VENTAS' ? 'bg-amber-100 text-amber-900' : 'bg-cyan-100 text-cyan-900')}">${esc(st.rol)}</span>
+                      <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${meta.badgeCls}">${esc(meta.label)}</span>
                     </div>
-                    <div class="text-[11px] font-mono text-slate-600">Correo: <strong>${esc(st.email)}</strong> · Clave: <strong>${esc(st.clave)}</strong></div>
+                    <div class="text-[11px] font-mono text-slate-600">Correo: <strong>${esc(st.email)}</strong> ${!isRO ? `· Clave: <strong>${esc(st.clave)}</strong>` : ''}</div>
                   </div>
+                  ${!isRO ? `
                   <div class="flex items-center gap-2">
                     <button onclick="CRM.toggleUserActive('${st.id}', ${!st.activo})" class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${st.activo ? 'bg-amber-100 text-amber-900' : 'bg-emerald-600 text-white'} cursor-pointer">
                       ${st.activo ? '⏸️ Pausar' : '✅ Activar'}
                     </button>
-                    ${st.rol !== 'SUPERADMIN' ? `
+                    ${rKey !== 'SUPERADMIN' ? `
                       <button onclick="CRM.deleteUserConfirm('${st.id}', '${esc(st.email)}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-100 text-rose-800 cursor-pointer">
                         🗑️ Eliminar
                       </button>
                     ` : ''}
                   </div>
+                  ` : `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${st.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${st.activo ? '● Activo' : '● Pausado'}</span>`}
                 </div>
-              `).join('')}
+              `;
+              }).join('')}
             </div>
           </div>
         `;
@@ -2171,7 +2241,7 @@
 
       openNewStaffModal() {
         V.openModal(
-          '🎧 Crear Colaborador Interno (Soporte / Ventas)',
+          '🎧 Crear Colaborador Interno',
           `<div class="space-y-2.5">
              <div>
                <label class="font-bold text-[11px]">Nombre Completo del Colaborador *</label>
@@ -2190,8 +2260,12 @@
              <div>
                <label class="font-bold text-[11px]">Rol / Área Asignada *</label>
                <select id="stfRol" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
-                 <option value="VENTAS">💼 Asesor Comercial / Ventas (Leads + Hoja de Vida 360°)</option>
-                 <option value="SOPORTE">🛠️ Ingeniero Soporte Técnico (Tickets + Hoja de Vida 360°)</option>
+                 <option value="VENTAS">💼 Asesor Comercial / Ventas (Leads + Tickets + Hoja de Vida 360° + Ingresar Venta)</option>
+                 <option value="SOPORTE">🛠️ Ingeniero Soporte Técnico (Leads + Tickets + Hoja de Vida 360°)</option>
+                 <option value="RETENCION">🤝 Atención al Cliente / Retención (Leads + Tickets + Hoja de Vida 360° + Ingresar Venta)</option>
+                 <option value="COBRANZAS">💳 Cobranzas (Cobranzas y Cortes + Hoja de Vida 360° + Facturar/Pago)</option>
+                 <option value="SUPERVISOR">👁️ Supervisor/a (Leads & Tickets + Hoja de Vida 360° + Equipo + Cobranzas · Solo Lectura)</option>
+                 <option value="AUDITOR">🔍 Auditor/a (Leads & Tickets + Hoja de Vida 360° + Equipo + Cobranzas · Solo Lectura)</option>
                </select>
              </div>
            </div>`,
@@ -2342,6 +2416,16 @@
                         const b360 = this.getCompanyStatusBadge(selEmp);
                         return `<span class="px-2.5 py-1 rounded-full text-[10.5px] font-extrabold border ${b360.cls}">${b360.fullLabel}</span>`;
                       })()}
+                      ${['SUPERADMIN', 'VENTAS', 'RETENCION'].includes(this.getSessionRole()) ? `
+                        <button onclick="CRM.openSaleEntryModal('${esc(selEmp.ruc)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-amber-400 hover:bg-amber-300 text-[#073e3b] shadow-xs cursor-pointer">
+                          🚀 INGRESAR VENTA
+                        </button>
+                      ` : ''}
+                      ${['SUPERADMIN', 'COBRANZAS'].includes(this.getSessionRole()) ? `
+                        <button onclick="CRM.openPaymentModal('${esc(selEmp.ruc)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-emerald-400 hover:bg-emerald-300 text-[#073e3b] shadow-xs cursor-pointer">
+                          💳 FACTURAR / PAGO
+                        </button>
+                      ` : ''}
                       ${selEmp.telefono ? `<button onclick="window.open('https://wa.me/${esc(selEmp.telefono.replace(/\D/g,''))}','_blank')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-[#70d2bd] text-[#073e3b] cursor-pointer">💬 WhatsApp</button>` : ''}
                     </div>
                   </div>
@@ -2417,6 +2501,1223 @@
                   </div>
                 </div>
               `)}
+            </div>
+          </div>
+        `;
+      },
+
+      // ===================================================================
+      // MÓDULO INTELIGENTE: INGRESAR VENTA -> 🚀 ACTIVACIONES PENDIENTES
+      // ===================================================================
+      async loadActivationsTab() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando bandeja de Activaciones Pendientes...</div>';
+        try {
+          const [tks, emps, usrs] = await Promise.all([crmListarTickets(), crmListarEmpresas(), crmListarUsuarios()]);
+          this.cachedTickets = tks;
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.renderActivationsView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderActivationsView() {
+        const body = $('crm-body');
+        const rolNorm = this.getSessionRole();
+        const isSuper = (rolNorm === 'SUPERADMIN');
+        const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
+
+        const allActs = this.cachedTickets.filter(t => String(t.tipo_solicitud || '').toUpperCase() === 'ACTIVACION_VENTA');
+        const visibleActs = (['SUPERADMIN', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm))
+          ? allActs
+          : allActs.filter(t => String(t.solicitado_por || '').trim().toLowerCase() === myEmail);
+
+        const pend = visibleActs.filter(t => t.estado === 'PENDIENTE');
+        const aprob = visibleActs.filter(t => t.estado === 'APROBADO');
+        const rech = visibleActs.filter(t => t.estado === 'RECHAZADO');
+
+        let list = pend;
+        if (this.activationFilter === 'APROBADAS') list = aprob;
+        else if (this.activationFilter === 'RECHAZADAS') list = rech;
+        else if (this.activationFilter === 'TODAS') list = visibleActs;
+
+        if (list.length > 0 && (!this.selectedActivationId || !list.some(x => x.id === this.selectedActivationId))) {
+          this.selectedActivationId = list[0].id;
+        } else if (list.length === 0) {
+          this.selectedActivationId = '';
+        }
+
+        const selAct = list.find(x => x.id === this.selectedActivationId) || null;
+        let detailHtml = `
+          <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
+            <div class="text-3xl">🚀</div>
+            <div class="text-sm font-extrabold text-[#073e3b]">Selecciona una solicitud de activación</div>
+            <p class="text-[11px] max-w-sm">Haz clic a la izquierda para revisar la fórmula de cobro, el comprobante de pago adjunto y aplicar la activación automática en el sistema.</p>
+          </div>
+        `;
+
+        if (selAct) {
+          const det = selAct.detalle || {};
+          const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Venta', badgeCls: 'bg-slate-100 text-slate-800' };
+          const empObj = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(selAct.empresa_ruc || '').trim()) || null;
+          const localTime = det.fecha_hora_local || (selAct.creado_en ? formatLocalDateTimeCrm(selAct.creado_en) : '');
+          const stBadge = selAct.estado === 'APROBADO'
+            ? 'bg-emerald-100 text-emerald-800'
+            : (selAct.estado === 'RECHAZADO' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-900');
+
+          detailHtml = `
+            <div class="space-y-3">
+              <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-1.5">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold ${opMeta.badgeCls}">${esc(opMeta.label)}</span>
+                    <h4 class="text-base font-black mt-1">${esc(selAct.empresa_nombre)}</h4>
+                    <div class="text-[11px] font-mono text-teal-100">RUC: <strong>${esc(selAct.empresa_ruc)}</strong> · Asesor: ${esc(det.agente_nombre || selAct.solicitado_por)}</div>
+                  </div>
+                  <div class="text-right space-y-1">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${stBadge}">
+                      ${selAct.estado === 'APROBADO' ? '🟢 Activada en SaaS' : (selAct.estado === 'RECHAZADO' ? '🔴 Rechazada' : '🟡 Pendiente Activación')}
+                    </span>
+                    <div class="text-lg font-black font-mono text-[#70d2bd]">$${Number(det.monto_usd || 0).toFixed(2)} USD</div>
+                  </div>
+                </div>
+                <div class="text-[10.5px] text-teal-100 pt-1 border-t border-white/15 flex justify-between">
+                  <span>📅 Ingresada: ${esc(localTime)}</span>
+                  <span>Periodicidad: <strong class="text-white">${esc(det.periodicidad || 'MENSUAL')}</strong></span>
+                </div>
+              </div>
+
+              <!-- Resumen Técnico de lo que se aplicará -->
+              <div class="p-3 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5 text-[11px]">
+                <div class="font-extrabold text-[#073e3b]">📋 Detalle Técnico de la Operación:</div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <div>• <strong>Plan Anterior:</strong> ${esc(det.plan_anterior_label || (empObj ? empObj.plan_activo.toUpperCase() : 'Nuevo Cliente'))}</div>
+                  <div>• <strong>Plan Destino:</strong> <span class="text-[#087e70] font-extrabold uppercase">${esc(det.plan_nuevo || 'N/A')}</span></div>
+                  <div>• <strong>Cupo Usuarios:</strong> ${det.usuarios_anterior ?? (empObj ? empObj.max_usuarios : 0)} → <strong>${det.usuarios_nuevo ?? 1} usuarios</strong> (${Number(det.usuarios_delta || 0) >= 0 ? '+' : ''}${Number(det.usuarios_delta || 0)})</div>
+                  <div>• <strong>Módulos IA:</strong> ${Array.isArray(det.modulos_finales) && det.modulos_finales.length ? esc(det.modulos_finales.join(', ')) : 'Ninguno'}</div>
+                </div>
+                ${det.descripcion_personalizada ? `<div class="pt-1 border-t border-slate-200">• <strong>Alcance Personalizado:</strong> ${esc(det.descripcion_personalizada)}</div>` : ''}
+              </div>
+
+              <!-- Fórmula de Cobro / Prorrateo -->
+              <div class="p-3 rounded-xl bg-amber-50/80 border border-amber-200 space-y-1 text-[11px]">
+                <div class="font-extrabold text-amber-950">🧮 Fórmula de Cálculo / Prorrateo Justificada por el Asesor:</div>
+                <div class="text-amber-900 font-medium">${esc(det.formula_cobro || 'Sin fórmula registrada')}</div>
+              </div>
+
+              <!-- Comprobante de Pago Obligatorio -->
+              <div class="p-3 rounded-xl bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div>
+                  <div class="font-extrabold text-[#073e3b]">🧾 Comprobante de Pago Adjunto (Obligatorio)</div>
+                  <div class="text-[10px] text-slate-500">Ref. Bancaria: <strong class="font-mono">${esc(det.referencia_pago || 'N/A')}</strong></div>
+                </div>
+                ${det.comprobante_url ? `
+                  <button onclick="CRM.openEvidencePreviewModal('${esc(det.comprobante_url)}', 'Comprobante · ${esc(selAct.empresa_nombre)}')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] hover:bg-[#087e70] hover:text-white cursor-pointer">
+                    👁️ Ver Comprobante Adjunto
+                  </button>
+                ` : '<span class="text-rose-600 font-bold">⚠️ Sin archivo adjunto</span>'}
+              </div>
+
+              <!-- Botones de Aprobación Inteligente (Solo SUPERADMIN cuando está pendiente) -->
+              ${isSuper && selAct.estado === 'PENDIENTE' ? `
+                <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button onclick="CRM.rejectActivationRequest('${selAct.id}')" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-100 hover:bg-rose-600 text-rose-800 hover:text-white cursor-pointer">
+                    ✕ Rechazar Solicitud
+                  </button>
+                  <button onclick="CRM.openSmartApproveActivationModal('${selAct.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                    ✅ Validar y Activar Automáticamente →
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🚀 Activaciones Pendientes (${visibleActs.length})</h3>
+                <p class="text-[11px] text-slate-500">Bandeja alimentada por <strong>INGRESAR VENTA</strong> (Ventas y Retención) con validación inteligente antes de activar.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button onclick="CRM.activationFilter='PENDIENTES'; CRM.renderActivationsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.activationFilter === 'PENDIENTES' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
+                  🟡 Pendientes (${pend.length})
+                </button>
+                <button onclick="CRM.activationFilter='APROBADAS'; CRM.renderActivationsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.activationFilter === 'APROBADAS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">
+                  🟢 Activadas (${aprob.length})
+                </button>
+                <button onclick="CRM.activationFilter='RECHAZADAS'; CRM.renderActivationsView();" class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer ${this.activationFilter === 'RECHAZADAS' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-800 border border-rose-200'}">
+                  🔴 Rechazadas (${rech.length})
+                </button>
+                ${['SUPERADMIN', 'VENTAS', 'RETENCION'].includes(rolNorm) ? `
+                  <button onclick="CRM.openSaleEntryModal()" class="ml-2 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                    🚀 + INGRESAR VENTA
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <div class="lg:col-span-4 bg-[#f5f8f8] rounded-2xl p-3 border border-[#dce6e5] max-h-[68vh] overflow-y-auto crm-scroll space-y-1.5">
+                ${list.length === 0 ? '<p class="text-slate-500 text-center py-6 text-[11px]">No hay solicitudes en esta bandeja.</p>' : list.map(tk => {
+                  const isSel = tk.id === this.selectedActivationId;
+                  const det = tk.detalle || {};
+                  const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Venta', badgeCls: 'bg-slate-100 text-slate-800' };
+                  const dot = tk.estado === 'APROBADO' ? '🟢' : (tk.estado === 'RECHAZADO' ? '🔴' : '🟡');
+                  return `
+                    <button type="button" onclick="CRM.selectedActivationId='${tk.id}'; CRM.renderActivationsView();" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer space-y-1 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
+                      <div class="flex items-center justify-between gap-1.5">
+                        <span class="font-extrabold text-xs truncate">${dot} ${esc(tk.empresa_nombre)}</span>
+                        <span class="font-mono font-black text-[11px] ${isSel ? 'text-[#70d2bd]' : 'text-[#087e70]'} shrink-0">$${Number(det.monto_usd || 0).toFixed(2)}</span>
+                      </div>
+                      <div class="text-[10.5px] font-semibold truncate ${isSel ? 'text-teal-100' : 'text-slate-600'}">${esc(opMeta.label)}</div>
+                      <div class="text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">Por: ${esc(det.agente_nombre || tk.solicitado_por)}</div>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+              <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] max-h-[68vh] overflow-y-auto crm-scroll">
+                ${detailHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      },
+
+      evaluateSaleBusinessRules(params) {
+        const errors = [];
+        const warnings = [];
+        const {
+          tipoOperacion, existingEmp, planNuevoId, usuariosNuevo, modulosFinales, activeUsersInDb
+        } = params;
+
+        const targetPlan = PLANS.find(p => p.id === planNuevoId) || PLANS[0];
+        const currentPlan = existingEmp ? (PLANS.find(p => p.id === existingEmp.plan_activo) || PLANS[0]) : null;
+
+        if (!existingEmp && tipoOperacion !== 'VENTA_NUEVA_PLAN') {
+          errors.push('Este RUC aún no está registrado como empresa SaaS. Debes elegir "Venta Nueva de Plan".');
+        }
+        if (existingEmp && tipoOperacion === 'VENTA_NUEVA_PLAN') {
+          errors.push(`La empresa ${existingEmp.nombre} ya existe en el sistema (Plan ${currentPlan.name}). Usa Upgrade, Downgrade o Venta Adicional.`);
+        }
+
+        if (currentPlan) {
+          if (tipoOperacion === 'UPGRADE_PLAN' && targetPlan.rank <= currentPlan.rank) {
+            errors.push(`No es un Upgrade válido: el plan destino (${targetPlan.name}) es igual o inferior al plan actual (${currentPlan.name}).`);
+          }
+          if (tipoOperacion === 'DOWNGRADE_PLAN' && targetPlan.rank >= currentPlan.rank) {
+            errors.push(`No es un Downgrade válido: el plan destino (${targetPlan.name}) debe ser menor al plan actual (${currentPlan.name}).`);
+          }
+        }
+
+        if (targetPlan.id === 'piloto' && usuariosNuevo > 1) {
+          errors.push(`El Plan Piloto admite máximo 1 usuario y no permite usuarios adicionales (intentas asignar ${usuariosNuevo}).`);
+        }
+        if (usuariosNuevo < targetPlan.includedUsers) {
+          errors.push(`El Plan ${targetPlan.name} incluye ${targetPlan.includedUsers} usuarios base; el cupo total no puede ser menor a ${targetPlan.includedUsers}.`);
+        }
+        if (activeUsersInDb > usuariosNuevo) {
+          errors.push(`La empresa tiene ${activeUsersInDb} usuarios activos en la App; no puedes bajar el cupo a ${usuariosNuevo} sin desactivar primero ${activeUsersInDb - usuariosNuevo} usuario(s).`);
+        }
+
+        if (targetPlan.id === 'enterprise' && modulosFinales.length < 6) {
+          warnings.push('El Plan Enterprise incluye automáticamente los 6 Módulos IA sin costo adicional.');
+        }
+        if (tipoOperacion === 'BAJA_MODULO_IA' && existingEmp) {
+          const prevPacks = Array.isArray(existingEmp.packs_ia) ? existingEmp.packs_ia : [];
+          if (prevPacks.length <= modulosFinales.length) {
+            errors.push('Para una "Baja de Módulos IA" debes desmarcar al menos un módulo que actualmente tenga activo el cliente.');
+          }
+        }
+        if (tipoOperacion === 'BAJA_USUARIOS_EXTRA' && existingEmp) {
+          if (usuariosNuevo >= (Number(existingEmp.max_usuarios) || 1)) {
+            errors.push(`Para una "Baja de Usuarios Adicionales" el nuevo cupo debe ser menor al cupo actual (${existingEmp.max_usuarios}).`);
+          }
+        }
+
+        return { ok: errors.length === 0, errors, warnings, targetPlan, currentPlan };
+      },
+
+      openSaleEntryModal(prefillRuc = '') {
+        const cleanRuc = String(prefillRuc || '').trim();
+        const emp = cleanRuc ? (this.cachedCompanies.find(c => String(c.ruc || '').trim() === cleanRuc) || null) : null;
+        const isPrefilled = !!emp;
+        const basePlan = emp ? emp.plan_activo : 'expansion';
+        const baseUsers = emp ? (Number(emp.max_usuarios) || 5) : 5;
+        const basePacks = emp && Array.isArray(emp.packs_ia) ? emp.packs_ia : [];
+
+        V.openModal(
+          isPrefilled ? `🚀 INGRESAR VENTA · ${emp.nombre}` : '🚀 INGRESAR VENTA / MOVIMIENTO COMERCIAL',
+          `<div class="space-y-2.5 max-h-[70vh] overflow-y-auto pr-1 text-[11px]">
+             <div class="p-2.5 rounded-xl ${isPrefilled ? 'bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b]' : 'bg-amber-50 border border-amber-200 text-amber-950'} font-semibold">
+               ${isPrefilled
+                 ? `✓ Datos precargados desde Hoja de Vida 360° (Plan actual: <strong>${esc(emp.plan_activo.toUpperCase())}</strong> · Cupo: <strong>${baseUsers} usu.</strong>)`
+                 : 'Completa los datos del cliente o selecciona una empresa existente por RUC.'}
+             </div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">RUC Empresa (13 dígitos) *</label>
+                 <input id="saleFormRuc" maxlength="13" value="${esc(emp ? emp.ruc : '')}" ${isPrefilled ? 'readonly class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold bg-slate-100"' : 'onblur="CRM.autofillSaleModalByRuc(this.value)" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold"'} placeholder="1790012345001" />
+               </div>
+               <div>
+                 <label class="font-bold">Razón Social / Empresa *</label>
+                 <input id="saleFormNombre" value="${esc(emp ? emp.nombre : '')}" ${isPrefilled ? 'readonly class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-bold bg-slate-100"' : 'class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-bold"'} placeholder="Nombre de la empresa" />
+               </div>
+             </div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">Teléfono WhatsApp *</label>
+                 <input id="saleFormTel" value="${esc(emp ? (emp.telefono || '') : '')}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="0991234567" />
+               </div>
+               <div>
+                 <label class="font-bold">Correo Contacto *</label>
+                 <input id="saleFormEmail" type="email" value="${esc(emp ? (emp.email_contacto || '') : '')}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="gerencia@empresa.com" />
+               </div>
+             </div>
+
+             <div>
+               <label class="font-bold text-[#073e3b]">Tipo de Operación Comercial / Retención *</label>
+               <select id="saleFormTipoOp" onchange="CRM.recheckSaleFormLive()" class="w-full border border-[#087e70] rounded-xl p-2 mt-0.5 bg-white font-extrabold text-[#073e3b]">
+                 ${Object.entries(SALE_OPERATION_TYPES).map(([k, v]) => `
+                   <option value="${k}" ${(!emp && k === 'VENTA_NUEVA_PLAN') || (emp && k === 'UPGRADE_PLAN') ? 'selected' : ''}>${esc(v.label)}</option>
+                 `).join('')}
+               </select>
+             </div>
+
+             <div class="grid grid-cols-3 gap-2">
+               <div>
+                 <label class="font-bold">Plan Resultante *</label>
+                 <select id="saleFormPlan" onchange="const p=PLANS.find(x=>x.id===this.value); if(p && $('saleFormUsers')) $('saleFormUsers').value=Math.max(p.includedUsers, Number($('saleFormUsers').value)||p.includedUsers); CRM.recheckSaleFormLive();" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                   ${PLANS.map(pl => `<option value="${pl.id}" ${basePlan === pl.id ? 'selected' : ''}>${pl.name} (${pl.includedUsers} base)</option>`).join('')}
+                 </select>
+               </div>
+               <div>
+                 <label class="font-bold">Cupo Total Usuarios *</label>
+                 <input id="saleFormUsers" type="number" min="1" max="500" value="${baseUsers}" oninput="CRM.recheckSaleFormLive()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold" />
+               </div>
+               <div>
+                 <label class="font-bold">Periodicidad *</label>
+                 <select id="saleFormPeriod" onchange="CRM.recheckSaleFormLive()" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                   <option value="MENSUAL" ${(emp && emp.periodicidad === 'ANUAL') ? '' : 'selected'}>MENSUAL</option>
+                   <option value="ANUAL" ${(emp && emp.periodicidad === 'ANUAL') ? 'selected' : ''}>ANUAL (VIP)</option>
+                 </select>
+               </div>
+             </div>
+
+             <div class="p-2.5 rounded-xl bg-[#f5f8f8] border border-[#dce6e5] space-y-1.5">
+               <label class="font-bold text-[#073e3b] block">Módulos IA que quedarán activos tras esta operación:</label>
+               <div class="grid grid-cols-2 gap-1">
+                 ${SVA_PACKS.map(pk => `
+                   <label class="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-slate-200 text-[10.5px] cursor-pointer">
+                     <input type="checkbox" class="sale-mod-chk accent-[#087e70]" value="${pk.id}" ${basePacks.includes(pk.id) ? 'checked' : ''} onchange="CRM.recheckSaleFormLive()" />
+                     <span>${pk.icon} ${esc(pk.name.replace('Pack ', '').replace(' IA', ''))}</span>
+                   </label>
+                 `).join('')}
+               </div>
+             </div>
+
+             <div id="saleFormCustomBox">
+               <label class="font-bold">Detalle de Módulo Personalizado / Observación Técnica</label>
+               <input id="saleFormCustomDesc" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Integración personalizada o detalle del acuerdo..." />
+             </div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">Valor Cobrado / Ajustado (USD) *</label>
+                 <input id="saleFormAmount" type="number" step="0.01" min="0" value="22.99" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-extrabold text-[#087e70]" />
+               </div>
+               <div>
+                 <label class="font-bold">N° Referencia / Transferencia *</label>
+                 <input id="saleFormRef" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="TRX-998811" />
+               </div>
+             </div>
+
+             <div>
+               <div class="flex items-center justify-between">
+                 <label class="font-bold text-[#073e3b]">Fórmula de Cálculo / Prorrateo (Obligatorio) *</label>
+                 <div class="flex gap-1">
+                   <button type="button" onclick="$('saleFormFormula').value='Prorrateo por días restantes hasta corte día 01: (Valor Plan / 30) × días = $';" class="px-1.5 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] text-[9.5px] font-bold cursor-pointer">+ Prorrateo</button>
+                   <button type="button" onclick="$('saleFormFormula').value='Plan Anual con 20% descuento aplicado sobre tarifa lista = $';" class="px-1.5 py-0.5 rounded bg-[#e7f5f1] text-[#073e3b] text-[9.5px] font-bold cursor-pointer">+ Anual 20%</button>
+                 </div>
+               </div>
+               <textarea id="saleFormFormula" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Explica obligatoriamente la fórmula aplicada: Ej. Plan Expansión $22.99 prorrateado por 18 días restantes hasta el 01 = $13.79"></textarea>
+             </div>
+
+             <div>
+               <label class="font-bold text-rose-700">Comprobante de Pago (Imagen o PDF Obligatorio) *</label>
+               <input id="saleFormFile" type="file" accept="image/*,application/pdf,.pdf" class="w-full border border-rose-300 bg-rose-50/40 rounded-xl p-1.5 mt-0.5" />
+             </div>
+
+             <div id="saleFormValidationBox" class="space-y-1"></div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button id="btnSubmitSaleEntry" onclick="CRM.submitSaleEntry()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">🚀 Enviar a Activaciones Pendientes</button>`
+        );
+        setTimeout(() => this.recheckSaleFormLive(), 30);
+      },
+
+      autofillSaleModalByRuc(rucVal) {
+        const clean = String(rucVal || '').trim();
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === clean);
+        if (!emp) {
+          this.recheckSaleFormLive();
+          return;
+        }
+        if ($('saleFormNombre')) $('saleFormNombre').value = emp.nombre || '';
+        if ($('saleFormTel')) $('saleFormTel').value = emp.telefono || '';
+        if ($('saleFormEmail')) $('saleFormEmail').value = emp.email_contacto || '';
+        if ($('saleFormPlan')) $('saleFormPlan').value = emp.plan_activo || 'expansion';
+        if ($('saleFormUsers')) $('saleFormUsers').value = Number(emp.max_usuarios) || 5;
+        if ($('saleFormPeriod')) $('saleFormPeriod').value = emp.periodicidad || 'MENSUAL';
+        if ($('saleFormTipoOp') && $('saleFormTipoOp').value === 'VENTA_NUEVA_PLAN') {
+          $('saleFormTipoOp').value = 'UPGRADE_PLAN';
+        }
+        const packs = Array.isArray(emp.packs_ia) ? emp.packs_ia : [];
+        document.querySelectorAll('.sale-mod-chk').forEach(chk => {
+          chk.checked = packs.includes(chk.value);
+        });
+        toast(`✓ Empresa existente detectada: ${emp.nombre}`);
+        this.recheckSaleFormLive();
+      },
+
+      recheckSaleFormLive() {
+        const ruc = ($('saleFormRuc')?.value || '').trim();
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === ruc) || null;
+        const tipoOperacion = $('saleFormTipoOp')?.value || 'VENTA_NUEVA_PLAN';
+        const planNuevoId = $('saleFormPlan')?.value || 'expansion';
+        const usuariosNuevo = parseInt($('saleFormUsers')?.value, 10) || 1;
+        const modulosFinales = Array.from(document.querySelectorAll('.sale-mod-chk:checked')).map(x => x.value);
+        const activeUsersInDb = emp
+          ? this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length
+          : 0;
+
+        const check = this.evaluateSaleBusinessRules({
+          tipoOperacion, existingEmp: emp, planNuevoId, usuariosNuevo, modulosFinales, activeUsersInDb
+        });
+
+        const box = $('saleFormValidationBox');
+        if (!box) return check;
+        if (!check.ok) {
+          box.innerHTML = check.errors.map(err => `
+            <div class="p-2 rounded-xl bg-rose-100 border border-rose-300 text-rose-900 font-bold text-[10.5px]">⛔ ${esc(err)}</div>
+          `).join('');
+        } else if (check.warnings.length > 0) {
+          box.innerHTML = check.warnings.map(w => `
+            <div class="p-2 rounded-xl bg-amber-100 border border-amber-300 text-amber-950 font-bold text-[10.5px]">⚠️ ${esc(w)}</div>
+          `).join('');
+        } else {
+          box.innerHTML = `<div class="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[10.5px]">✓ Validación de reglas comerciales y cupos correcta (${check.targetPlan.name} · ${usuariosNuevo} usu.).</div>`;
+        }
+        return check;
+      },
+
+      async submitSaleEntry() {
+        const ruc = ($('saleFormRuc')?.value || '').trim();
+        const nombre = ($('saleFormNombre')?.value || '').trim();
+        const tel = ($('saleFormTel')?.value || '').trim();
+        const email = ($('saleFormEmail')?.value || '').trim();
+        const tipoOperacion = $('saleFormTipoOp')?.value || 'VENTA_NUEVA_PLAN';
+        const planNuevoId = $('saleFormPlan')?.value || 'expansion';
+        const usuariosNuevo = parseInt($('saleFormUsers')?.value, 10) || 1;
+        const periodicidad = $('saleFormPeriod')?.value || 'MENSUAL';
+        const modulosFinales = Array.from(document.querySelectorAll('.sale-mod-chk:checked')).map(x => x.value);
+        const customDesc = ($('saleFormCustomDesc')?.value || '').trim();
+        const montoUsd = parseFloat($('saleFormAmount')?.value);
+        const refPago = ($('saleFormRef')?.value || '').trim();
+        const formulaCobro = ($('saleFormFormula')?.value || '').trim();
+        const fileObj = $('saleFormFile')?.files?.[0] || null;
+
+        if (!ruc || !nombre) return toast('Ingresa RUC y Razón Social de la empresa.');
+        if (isNaN(montoUsd) || montoUsd < 0) return toast('Ingresa el valor cobrado en USD.');
+        if (!formulaCobro) return toast('⚠️ Debes escribir obligatoriamente la fórmula de cálculo / prorrateo utilizada.');
+        if (!fileObj && tipoOperacion !== 'DOWNGRADE_PLAN' && tipoOperacion !== 'BAJA_USUARIOS_EXTRA' && tipoOperacion !== 'BAJA_MODULO_IA') {
+          return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF).');
+        }
+
+        const check = this.recheckSaleFormLive();
+        if (!check.ok) {
+          return toast('⛔ Corrige los errores de validación marcados en rojo antes de guardar.');
+        }
+
+        const btn = $('btnSubmitSaleEntry');
+        if (btn) { btn.textContent = 'Subiendo comprobante...'; btn.disabled = true; }
+
+        try {
+          let compUrl = '';
+          if (fileObj && typeof subirComprobanteOperacionSupabase === 'function') {
+            const up = await subirComprobanteOperacionSupabase(fileObj, 'activaciones', ruc);
+            if (up && up.url) compUrl = up.url;
+          }
+
+          const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+          const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === ruc) || null;
+          const prevUsers = emp ? (Number(emp.max_usuarios) || 1) : 0;
+          const opMeta = SALE_OPERATION_TYPES[tipoOperacion] || { label: tipoOperacion };
+          const fechaLocal = nowFormatted();
+
+          await crearTicketVozkora({
+            empresa_ruc: ruc,
+            empresa_nombre: nombre,
+            solicitado_por: ses.email || 'ventas@vozkora.com',
+            tipo_solicitud: 'ACTIVACION_VENTA',
+            estado: 'PENDIENTE',
+            detalle: {
+              categoria: opMeta.label,
+              tipo_operacion: tipoOperacion,
+              plan_anterior: emp ? emp.plan_activo : 'NINGUNO',
+              plan_anterior_label: emp ? emp.plan_activo.toUpperCase() : 'Cliente Nuevo',
+              plan_nuevo: planNuevoId,
+              usuarios_anterior: prevUsers,
+              usuarios_nuevo: usuariosNuevo,
+              usuarios_delta: usuariosNuevo - prevUsers,
+              periodicidad,
+              modulos_finales: planNuevoId === 'enterprise' ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : modulosFinales,
+              descripcion_personalizada: customDesc,
+              monto_usd: montoUsd,
+              referencia_pago: refPago || 'N/A',
+              formula_cobro: formulaCobro,
+              comprobante_url: compUrl,
+              telefono_contacto: tel,
+              email_contacto: email,
+              agente_email: ses.email || '',
+              agente_nombre: ses.nombre_completo || ses.email || 'Asesor',
+              agente_rol: ses.rol || 'VENTAS',
+              fecha_hora_local: fechaLocal,
+              fecha_iso_local: typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10),
+              historial: [
+                {
+                  fecha: fechaLocal,
+                  de_estado: 'NUEVO',
+                  a_estado: '🟡 Pendiente de Activación',
+                  motivo: `${opMeta.label} por $${montoUsd.toFixed(2)} — Fórmula: ${formulaCobro}`,
+                  autor: ses.email || 'Asesor'
+                }
+              ]
+            }
+          });
+
+          V.closeModal();
+          toast('🚀 Venta enviada a Activaciones Pendientes para validación.');
+          if (this.currentTab === 'activations') await this.loadActivationsTab();
+        } catch (e) {
+          toast('Error registrando venta: ' + e.message);
+        } finally {
+          if (btn) { btn.textContent = '🚀 Enviar a Activaciones Pendientes'; btn.disabled = false; }
+        }
+      },
+
+      openSmartApproveActivationModal(ticketId) {
+        const tk = this.cachedTickets.find(x => x.id === ticketId);
+        if (!tk) return;
+        const det = tk.detalle || {};
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(tk.empresa_ruc || '').trim()) || null;
+        const activeUsersInDb = emp
+          ? this.cachedUsers.filter(u => (u.empresa_id === emp.id || u.empresa_ruc === emp.ruc) && u.activo).length
+          : 0;
+
+        const check = this.evaluateSaleBusinessRules({
+          tipoOperacion: det.tipo_operacion,
+          existingEmp: emp,
+          planNuevoId: det.plan_nuevo,
+          usuariosNuevo: Number(det.usuarios_nuevo) || 1,
+          modulosFinales: Array.isArray(det.modulos_finales) ? det.modulos_finales : [],
+          activeUsersInDb
+        });
+
+        const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion };
+        const planNuevoObj = PLANS.find(p => p.id === det.plan_nuevo) || PLANS[0];
+        const planAnteriorNombre = emp ? (PLANS.find(p => p.id === emp.plan_activo)?.name || emp.plan_activo) : 'Sin plan (Cliente Nuevo)';
+
+        V.openModal(
+          '🧠 Confirmación Inteligente de Activación SaaS',
+          `<div class="space-y-2.5 text-[11px]">
+             <div class="p-3 rounded-2xl bg-[#073e3b] text-white space-y-1.5">
+               <div class="text-[10px] uppercase font-bold text-[#70d2bd]">Diagnóstico Automático del Sistema</div>
+               <p class="leading-relaxed">
+                 Al aceptar, al cliente <strong>${esc(tk.empresa_nombre)}</strong> (RUC: <span class="font-mono">${esc(tk.empresa_ruc)}</span>) se le aplicará:
+               </p>
+               <ul class="space-y-1 text-teal-100 pl-2">
+                 <li>• <strong>Operación:</strong> ${esc(opMeta.label)}</li>
+                 <li>• <strong>Cambio de Plan:</strong> ${esc(planAnteriorNombre)} → <strong class="text-white">${esc(planNuevoObj.name)} (${esc(det.periodicidad || 'MENSUAL')})</strong></li>
+                 <li>• <strong>Cupo de Usuarios:</strong> ${emp ? emp.max_usuarios : 0} → <strong class="text-white">${Number(det.usuarios_nuevo) || 1} usuarios</strong> (Activos actuales: ${activeUsersInDb})</li>
+                 <li>• <strong>Cobro Validado:</strong> <strong class="text-[#70d2bd] font-mono">$${Number(det.monto_usd || 0).toFixed(2)} USD</strong></li>
+               </ul>
+             </div>
+
+             ${!check.ok ? `
+               <div class="p-2.5 rounded-xl bg-rose-100 border border-rose-300 text-rose-900 font-bold space-y-1">
+                 <div>⛔ BLOQUEO INTELIGENTE DETECTADO:</div>
+                 ${check.errors.map(e => `<div>• ${esc(e)}</div>`).join('')}
+               </div>
+             ` : `
+               <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
+                 ✓ Validación superada: No hay conflictos de cupo ni jerarquía de planes.
+               </div>
+             `}
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           ${check.ok ? `<button onclick="CRM.executeSmartActivation('${tk.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white shadow cursor-pointer">✅ Confirmar y Activar Ahora</button>` : ''}`
+        );
+      },
+
+      async executeSmartActivation(ticketId) {
+        const tk = this.cachedTickets.find(x => x.id === ticketId);
+        if (!tk) return;
+        const det = Object.assign({}, tk.detalle || {});
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(tk.empresa_ruc || '').trim()) || null;
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { email: 'admin@vozkora.com' };
+
+        const planId = det.plan_nuevo || 'expansion';
+        const maxUsuarios = Math.max(1, Number(det.usuarios_nuevo) || 1);
+        const periodicidad = det.periodicidad || 'MENSUAL';
+        const packsIa = planId === 'enterprise'
+          ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas']
+          : (Array.isArray(det.modulos_finales) ? det.modulos_finales : []);
+
+        try {
+          if (emp) {
+            const patch = {
+              plan_activo: planId,
+              max_usuarios: maxUsuarios,
+              periodicidad,
+              packs_ia: packsIa,
+              activa: true
+            };
+            if (det.tipo_operacion === 'UPGRADE_PLAN' || det.tipo_operacion === 'VENTA_NUEVA_PLAN') {
+              patch.fecha_proximo_corte = calcularProximoCorte(periodicidad);
+            }
+            await crmActualizarEmpresa(emp.id, patch);
+          } else {
+            await crmCrearEmpresa({
+              nombre: tk.empresa_nombre,
+              ruc: tk.empresa_ruc,
+              telefono: det.telefono_contacto || '',
+              email_contacto: det.email_contacto || tk.solicitado_por,
+              plan_activo: planId,
+              max_usuarios: maxUsuarios,
+              periodicidad,
+              entorno: 'PRODUCCION',
+              activa: true,
+              packs_ia: packsIa,
+              sva_elegidos_fijos: planId === 'enterprise'
+            });
+          }
+
+          const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
+          hist.push({
+            fecha: nowFormatted(),
+            de_estado: '🟡 Pendiente de Activación',
+            a_estado: '🟢 Activada en SaaS',
+            motivo: `Activación aprobada y aplicada automáticamente (Plan ${planId.toUpperCase()} · ${maxUsuarios} usu.).`,
+            autor: ses.email
+          });
+          det.historial = hist;
+          det.activado_en = nowFormatted();
+          det.activado_por = ses.email;
+
+          await crmActualizarTicket(tk.id, 'APROBADO', det);
+          V.closeModal();
+          toast(`✅ Activación aplicada automáticamente a ${tk.empresa_nombre}.`);
+          await this.loadActivationsTab();
+        } catch (e) {
+          toast('Error aplicando activación: ' + e.message);
+        }
+      },
+
+      async rejectActivationRequest(ticketId) {
+        const motivo = prompt('Escribe el motivo del rechazo de esta venta/activación:');
+        if (!motivo || !motivo.trim()) return toast('Debes indicar el motivo del rechazo.');
+        const tk = this.cachedTickets.find(x => x.id === ticketId);
+        if (!tk) return;
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { email: 'admin@vozkora.com' };
+        const det = Object.assign({}, tk.detalle || {});
+        const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
+        hist.push({
+          fecha: nowFormatted(),
+          de_estado: '🟡 Pendiente',
+          a_estado: '🔴 Rechazada',
+          motivo: motivo.trim(),
+          autor: ses.email
+        });
+        det.historial = hist;
+        await crmActualizarTicket(tk.id, 'RECHAZADO', det);
+        toast('Solicitud rechazada y registrada en bitácora.');
+        await this.loadActivationsTab();
+      },
+
+      // ===================================================================
+      // MÓDULO COBRANZAS: FACTURAR/PAGO -> 🧾 FACTURACIÓN PENDIENTES
+      // ===================================================================
+      async loadInvoicingTab() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Cargando bandeja de Facturación Pendientes...</div>';
+        try {
+          const [tks, emps] = await Promise.all([crmListarTickets(), crmListarEmpresas()]);
+          this.cachedTickets = tks;
+          this.cachedCompanies = emps;
+          this.renderInvoicingView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderInvoicingView() {
+        const body = $('crm-body');
+        const rolNorm = this.getSessionRole();
+        const isSuper = (rolNorm === 'SUPERADMIN');
+        const sesNow = typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null;
+        const myEmail = String((sesNow && sesNow.email) || '').trim().toLowerCase();
+
+        const allPays = this.cachedTickets.filter(t => String(t.tipo_solicitud || '').toUpperCase() === 'FACTURACION_PAGO');
+        const visiblePays = (['SUPERADMIN', 'SUPERVISOR', 'AUDITOR'].includes(rolNorm))
+          ? allPays
+          : allPays.filter(t => String(t.solicitado_por || '').trim().toLowerCase() === myEmail);
+
+        const pend = visiblePays.filter(t => t.estado === 'PENDIENTE');
+        const fact = visiblePays.filter(t => t.estado === 'APROBADO');
+
+        let list = pend;
+        if (this.invoicingFilter === 'FACTURADAS') list = fact;
+        else if (this.invoicingFilter === 'TODAS') list = visiblePays;
+
+        if (list.length > 0 && (!this.selectedInvoicingId || !list.some(x => x.id === this.selectedInvoicingId))) {
+          this.selectedInvoicingId = list[0].id;
+        } else if (list.length === 0) {
+          this.selectedInvoicingId = '';
+        }
+
+        const selPay = list.find(x => x.id === this.selectedInvoicingId) || null;
+        let detailHtml = `
+          <div class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400 space-y-2">
+            <div class="text-3xl">🧾</div>
+            <div class="text-sm font-extrabold text-[#073e3b]">Selecciona un reporte de pago / facturación</div>
+            <p class="text-[11px] max-w-sm">Revisa el comprobante bancario reportado por Cobranzas, valida la fórmula y renueva el ciclo SaaS en 1 clic.</p>
+          </div>
+        `;
+
+        if (selPay) {
+          const det = selPay.detalle || {};
+          const localTime = det.fecha_hora_local || (selPay.creado_en ? formatLocalDateTimeCrm(selPay.creado_en) : '');
+          detailHtml = `
+            <div class="space-y-3">
+              <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white space-y-1.5">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-white/15 text-[#70d2bd]">${esc(det.concepto_pago || 'Renovación / Pago')}</span>
+                    <h4 class="text-base font-black mt-1">${esc(selPay.empresa_nombre)}</h4>
+                    <div class="text-[11px] font-mono text-teal-100">RUC: <strong>${esc(selPay.empresa_ruc)}</strong> · Gestor: ${esc(det.agente_nombre || selPay.solicitado_por)}</div>
+                  </div>
+                  <div class="text-right space-y-1">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold ${selPay.estado === 'APROBADO' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">
+                      ${selPay.estado === 'APROBADO' ? '🟢 Facturado y Ciclo Renovado' : '🟡 Pendiente Facturar'}
+                    </span>
+                    <div class="text-lg font-black font-mono text-[#70d2bd]">$${Number(det.monto_usd || 0).toFixed(2)} USD</div>
+                  </div>
+                </div>
+                <div class="text-[10.5px] text-teal-100 pt-1 border-t border-white/15 flex justify-between">
+                  <span>📅 Reportado: ${esc(localTime)}</span>
+                  <span>Banco / Canal: <strong class="text-white">${esc(det.banco_canal || 'Transferencia')}</strong></span>
+                </div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-amber-50/80 border border-amber-200 space-y-1 text-[11px]">
+                <div class="font-extrabold text-amber-950">🧮 Detalle y Fórmula de Cobro Aplicada:</div>
+                <div class="text-amber-900">${esc(det.formula_cobro || 'Pago completo de ciclo')}</div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div>
+                  <div class="font-extrabold text-[#073e3b]">🧾 Comprobante Bancario Adjunto</div>
+                  <div class="text-[10px] text-slate-500">Referencia: <strong class="font-mono">${esc(det.referencia_pago || 'N/A')}</strong></div>
+                </div>
+                ${det.comprobante_url ? `
+                  <button onclick="CRM.openEvidencePreviewModal('${esc(det.comprobante_url)}', 'Voucher · ${esc(selPay.empresa_nombre)}')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-[#073e3b] text-[#70d2bd] cursor-pointer">
+                    👁️ Ver Comprobante
+                  </button>
+                ` : '<span class="text-rose-600 font-bold">Sin comprobante</span>'}
+              </div>
+
+              ${isSuper && selPay.estado === 'PENDIENTE' ? `
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button onclick="CRM.approveInvoicingAndRenew('${selPay.id}')" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                    ✅ Validar Pago, Facturar y Renovar Próximo Ciclo →
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">🧾 Facturación Pendientes (${visiblePays.length})</h3>
+                <p class="text-[11px] text-slate-500">Pagos y renovaciones ingresados desde <strong>FACTURAR/PAGO</strong> por Cobranzas.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button onclick="CRM.invoicingFilter='PENDIENTES'; CRM.renderInvoicingView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.invoicingFilter === 'PENDIENTES' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 border border-amber-200'}">
+                  🟡 Pendientes (${pend.length})
+                </button>
+                <button onclick="CRM.invoicingFilter='FACTURADAS'; CRM.renderInvoicingView();" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold cursor-pointer ${this.invoicingFilter === 'FACTURADAS' ? 'bg-[#087e70] text-white' : 'bg-[#e7f5f1] text-[#073e3b] border border-[#b9d1cd]'}">
+                  🟢 Facturadas (${fact.length})
+                </button>
+                ${['SUPERADMIN', 'COBRANZAS'].includes(rolNorm) ? `
+                  <button onclick="CRM.openPaymentModal()" class="ml-2 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
+                    💳 + FACTURAR / PAGO
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <div class="lg:col-span-4 bg-[#f5f8f8] rounded-2xl p-3 border border-[#dce6e5] max-h-[68vh] overflow-y-auto crm-scroll space-y-1.5">
+                ${list.length === 0 ? '<p class="text-slate-500 text-center py-6 text-[11px]">No hay pagos pendientes en esta bandeja.</p>' : list.map(tk => {
+                  const isSel = tk.id === this.selectedInvoicingId;
+                  const det = tk.detalle || {};
+                  const dot = tk.estado === 'APROBADO' ? '🟢' : '🟡';
+                  return `
+                    <button type="button" onclick="CRM.selectedInvoicingId='${tk.id}'; CRM.renderInvoicingView();" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer space-y-1 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
+                      <div class="flex items-center justify-between gap-1.5">
+                        <span class="font-extrabold text-xs truncate">${dot} ${esc(tk.empresa_nombre)}</span>
+                        <span class="font-mono font-black text-[11px] ${isSel ? 'text-[#70d2bd]' : 'text-[#087e70]'} shrink-0">$${Number(det.monto_usd || 0).toFixed(2)}</span>
+                      </div>
+                      <div class="text-[10.5px] font-semibold truncate ${isSel ? 'text-teal-100' : 'text-slate-600'}">${esc(det.concepto_pago || 'Renovación')}</div>
+                      <div class="text-[9.5px] font-mono ${isSel ? 'text-teal-200/80' : 'text-slate-400'}">Por: ${esc(det.agente_nombre || tk.solicitado_por)}</div>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+              <div class="lg:col-span-8 bg-white rounded-2xl p-4 border border-[#dce6e5] max-h-[68vh] overflow-y-auto crm-scroll">
+                ${detailHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      },
+
+      openPaymentModal(prefillRuc = '') {
+        const cleanRuc = String(prefillRuc || '').trim();
+        const emp = cleanRuc ? (this.cachedCompanies.find(c => String(c.ruc || '').trim() === cleanRuc) || null) : null;
+        const isPrefilled = !!emp;
+        const pl = emp ? (PLANS.find(p => p.id === emp.plan_activo) || PLANS[3]) : PLANS[3];
+        const defaultAmt = emp ? (emp.periodicidad === 'ANUAL' ? pl.annualPrice : pl.monthlyPrice) : 22.99;
+
+        V.openModal(
+          isPrefilled ? `💳 FACTURAR / PAGO · ${emp.nombre}` : '💳 FACTURAR / PAGO (Cobranzas)',
+          `<div class="space-y-2.5 max-h-[70vh] overflow-y-auto pr-1 text-[11px]">
+             <div class="p-2.5 rounded-xl ${isPrefilled ? 'bg-[#e7f5f1] border border-[#b9d1cd] text-[#073e3b]' : 'bg-amber-50 border border-amber-200 text-amber-950'} font-semibold">
+               ${isPrefilled
+                 ? `✓ Cliente precargado: <strong>${esc(emp.nombre)}</strong> (Plan ${esc(pl.name)} · ${esc(emp.periodicidad || 'MENSUAL')})`
+                 : 'Ingresa el RUC de la empresa para cargar sus datos o complétalos manualmente.'}
+             </div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">RUC Empresa *</label>
+                 <input id="payFormRuc" maxlength="13" value="${esc(emp ? emp.ruc : '')}" ${isPrefilled ? 'readonly class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold bg-slate-100"' : 'onblur="const e=CRM.cachedCompanies.find(x=>x.ruc===this.value.trim()); if(e&&$('payFormNombre'))$('payFormNombre').value=e.nombre;" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-bold"'} placeholder="1790012345001" />
+               </div>
+               <div>
+                 <label class="font-bold">Razón Social / Empresa *</label>
+                 <input id="payFormNombre" value="${esc(emp ? emp.nombre : '')}" ${isPrefilled ? 'readonly class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-bold bg-slate-100"' : 'class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-bold"'} placeholder="Empresa S.A." />
+               </div>
+             </div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">Concepto de Recaudación *</label>
+                 <select id="payFormConcept" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                   <option value="Renovación Mensual">Renovación Mensual</option>
+                   <option value="Renovación Anual VIP" ${(emp && emp.periodicidad === 'ANUAL') ? 'selected' : ''}>Renovación Anual VIP</option>
+                   <option value="Pago Saldo en Mora / Reactivación">Pago Saldo en Mora / Reactivación</option>
+                   <option value="Abono / Factura Pendiente">Abono / Factura Pendiente</option>
+                 </select>
+               </div>
+               <div>
+                 <label class="font-bold">Banco / Canal de Pago *</label>
+                 <select id="payFormBank" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 bg-white font-bold">
+                   <option value="Banco Pichincha">Banco Pichincha</option>
+                   <option value="Banco Guayaquil">Banco Guayaquil</option>
+                   <option value="Produbanco">Produbanco</option>
+                   <option value="Deuna / Transferencia">Deuna / Transferencia</option>
+                   <option value="Tarjeta / Pasarela">Tarjeta / Pasarela</option>
+                 </select>
+               </div>
+             </div>
+
+             <div class="grid grid-cols-2 gap-2">
+               <div>
+                 <label class="font-bold">Monto Recaudado (USD) *</label>
+                 <input id="payFormAmount" type="number" step="0.01" min="0.01" value="${defaultAmt.toFixed(2)}" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono font-extrabold text-[#087e70]" />
+               </div>
+               <div>
+                 <label class="font-bold">N° Comprobante / Referencia *</label>
+                 <input id="payFormRef" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5 font-mono" placeholder="COMP-88412" />
+               </div>
+             </div>
+
+             <div>
+               <label class="font-bold text-[#073e3b]">Observación / Fórmula de Cobro (Obligatorio) *</label>
+               <textarea id="payFormFormula" rows="2" class="w-full border border-[#d7e1e0] rounded-xl p-2 mt-0.5" placeholder="Ej. Renovación mensual ciclo diciembre sin recargos = $${defaultAmt.toFixed(2)}"></textarea>
+             </div>
+
+             <div>
+               <label class="font-bold text-rose-700">Comprobante de Pago (Imagen o PDF Obligatorio) *</label>
+               <input id="payFormFile" type="file" accept="image/*,application/pdf,.pdf" class="w-full border border-rose-300 bg-rose-50/40 rounded-xl p-1.5 mt-0.5" />
+             </div>
+           </div>`,
+          `<button onclick="V.closeModal()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 cursor-pointer">Cancelar</button>
+           <button id="btnSubmitPayEntry" onclick="CRM.submitPaymentEntry()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] text-white cursor-pointer">🧾 Enviar a Facturación Pendientes</button>`
+        );
+      },
+
+      async submitPaymentEntry() {
+        const ruc = ($('payFormRuc')?.value || '').trim();
+        const nombre = ($('payFormNombre')?.value || '').trim();
+        const concepto = $('payFormConcept')?.value || 'Renovación Mensual';
+        const banco = $('payFormBank')?.value || 'Transferencia';
+        const montoUsd = parseFloat($('payFormAmount')?.value);
+        const refPago = ($('payFormRef')?.value || '').trim();
+        const formulaCobro = ($('payFormFormula')?.value || '').trim();
+        const fileObj = $('payFormFile')?.files?.[0] || null;
+
+        if (!ruc || !nombre) return toast('Ingresa RUC y Razón Social del cliente.');
+        if (isNaN(montoUsd) || montoUsd <= 0) return toast('Ingresa un monto válido.');
+        if (!formulaCobro) return toast('⚠️ Debes escribir la observación / fórmula de cobro.');
+        if (!fileObj) return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF).');
+
+        const btn = $('btnSubmitPayEntry');
+        if (btn) { btn.textContent = 'Subiendo comprobante...'; btn.disabled = true; }
+
+        try {
+          let compUrl = '';
+          if (typeof subirComprobanteOperacionSupabase === 'function') {
+            const up = await subirComprobanteOperacionSupabase(fileObj, 'cobranzas', ruc);
+            if (up && up.url) compUrl = up.url;
+          }
+          const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || {};
+          const fechaLocal = nowFormatted();
+
+          await crearTicketVozkora({
+            empresa_ruc: ruc,
+            empresa_nombre: nombre,
+            solicitado_por: ses.email || 'cobranzas@vozkora.com',
+            tipo_solicitud: 'FACTURACION_PAGO',
+            estado: 'PENDIENTE',
+            detalle: {
+              categoria: `💳 ${concepto}`,
+              concepto_pago: concepto,
+              banco_canal: banco,
+              monto_usd: montoUsd,
+              referencia_pago: refPago || 'N/A',
+              formula_cobro: formulaCobro,
+              comprobante_url: compUrl,
+              agente_email: ses.email || '',
+              agente_nombre: ses.nombre_completo || ses.email || 'Cobranzas',
+              agente_rol: ses.rol || 'COBRANZAS',
+              fecha_hora_local: fechaLocal,
+              fecha_iso_local: typeof obtenerFechaLocalISO === 'function' ? obtenerFechaLocalISO(0) : new Date().toISOString().slice(0, 10),
+              historial: [
+                {
+                  fecha: fechaLocal,
+                  de_estado: 'NUEVO',
+                  a_estado: '🟡 Pendiente de Facturar',
+                  motivo: `${concepto} por $${montoUsd.toFixed(2)} (${banco}) — ${formulaCobro}`,
+                  autor: ses.email || 'Cobranzas'
+                }
+              ]
+            }
+          });
+
+          V.closeModal();
+          toast('🧾 Pago enviado a Facturación Pendientes.');
+          if (this.currentTab === 'invoicing') await this.loadInvoicingTab();
+        } catch (e) {
+          toast('Error registrando pago: ' + e.message);
+        } finally {
+          if (btn) { btn.textContent = '🧾 Enviar a Facturación Pendientes'; btn.disabled = false; }
+        }
+      },
+
+      async approveInvoicingAndRenew(ticketId) {
+        const tk = this.cachedTickets.find(x => x.id === ticketId);
+        if (!tk) return;
+        const emp = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(tk.empresa_ruc || '').trim()) || null;
+        const det = Object.assign({}, tk.detalle || {});
+        const ses = (typeof obtenerSesionVozkora === 'function' ? obtenerSesionVozkora() : null) || { email: 'admin@vozkora.com' };
+
+        if (!confirm(`¿Confirmas validar el pago de $${Number(det.monto_usd || 0).toFixed(2)} de ${tk.empresa_nombre} y renovar su próximo ciclo de corte?`)) {
+          return;
+        }
+
+        try {
+          if (emp) {
+            const per = String(det.concepto_pago || '').toUpperCase().includes('ANUAL') ? 'ANUAL' : (emp.periodicidad || 'MENSUAL');
+            const nextCorte = calcularProximoCorte(per);
+            await crmActualizarEmpresa(emp.id, {
+              periodicidad: per,
+              fecha_proximo_corte: nextCorte,
+              activa: true
+            });
+          }
+
+          const hist = Array.isArray(det.historial) ? det.historial.slice() : [];
+          hist.push({
+            fecha: nowFormatted(),
+            de_estado: '🟡 Pendiente de Facturar',
+            a_estado: '🟢 Facturado y Renovado',
+            motivo: `Pago validado ($${Number(det.monto_usd || 0).toFixed(2)}) y ciclo renovado.`,
+            autor: ses.email
+          });
+          det.historial = hist;
+          await crmActualizarTicket(tk.id, 'APROBADO', det);
+          toast(`✅ Pago validado y ciclo renovado para ${tk.empresa_nombre}.`);
+          await this.loadInvoicingTab();
+        } catch (e) {
+          toast('Error validando pago: ' + e.message);
+        }
+      },
+
+      openEvidencePreviewModal(url, title) {
+        const isPdf = /\.pdf($|\?)/i.test(url) || url.startsWith('data:application/pdf');
+        V.openModal(
+          title || '🧾 Comprobante de Pago',
+          isPdf
+            ? `<div class="space-y-2 text-center">
+                 <iframe src="${esc(url)}" class="w-full h-72 rounded-xl border border-slate-200"></iframe>
+                 <a href="${esc(url)}" target="_blank" rel="noopener" class="inline-block px-3 py-1.5 rounded-xl bg-[#087e70] text-white font-bold text-xs">Abrir PDF en pestaña nueva ↗</a>
+               </div>`
+            : `<div class="rounded-2xl overflow-hidden border border-[#dce6e5] bg-black">
+                 <img src="${esc(url)}" alt="Comprobante" class="w-full max-h-80 object-contain" />
+               </div>`,
+          `<button onclick="V.closeModal()" class="px-4 py-2 rounded-xl text-xs font-extrabold bg-[#073e3b] text-white cursor-pointer">Cerrar</button>`
+        );
+      },
+
+      // ===================================================================
+      // INFORME GERENCIAL OPERATIVO + CALIDAD DEL EQUIPO (FILTRO DÍA/MES/AÑO)
+      // ===================================================================
+      async loadAnalyticsTab() {
+        const body = $('crm-body');
+        body.innerHTML = '<div class="p-4 bg-white rounded-2xl">Consolidando indicadores gerenciales y métricas de calidad del equipo...</div>';
+        try {
+          const [tks, emps, usrs] = await Promise.all([crmListarTickets(), crmListarEmpresas(), crmListarUsuarios()]);
+          this.cachedTickets = tks;
+          this.cachedCompanies = emps;
+          this.cachedUsers = usrs;
+          this.cachedStaff = usrs.filter(u => this.isInternalRole(u.rol));
+          this.renderAnalyticsView();
+        } catch (e) {
+          body.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-2xl">Error: ${esc(e.message)}</div>`;
+        }
+      },
+
+      renderAnalyticsView() {
+        const body = $('crm-body');
+        const period = this.analyticsPeriod || 'month';
+        const refDate = this.analyticsDate || new Date().toISOString().slice(0, 10);
+        const refYear = refDate.slice(0, 4);
+        const refMonth = refDate.slice(0, 7);
+
+        const matchesDate = (tk) => {
+          const det = tk.detalle || {};
+          const iso = String(det.fecha_iso_local || (tk.creado_en ? formatLocalDateTimeCrm(tk.creado_en).slice(0, 10) : refDate)).slice(0, 10);
+          if (period === 'day') return iso === refDate;
+          if (period === 'year') return iso.slice(0, 4) === refYear;
+          return iso.slice(0, 7) === refMonth;
+        };
+
+        const approvedSales = this.cachedTickets.filter(t => t.tipo_solicitud === 'ACTIVACION_VENTA' && t.estado === 'APROBADO' && matchesDate(t));
+        const approvedPays = this.cachedTickets.filter(t => t.tipo_solicitud === 'FACTURACION_PAGO' && t.estado === 'APROBADO' && matchesDate(t));
+
+        const sumByOp = (opKey) => {
+          const items = approvedSales.filter(t => (t.detalle || {}).tipo_operacion === opKey);
+          return {
+            count: items.length,
+            total: items.reduce((a, x) => a + Number((x.detalle || {}).monto_usd || 0), 0)
+          };
+        };
+
+        const kpiNuevas = sumByOp('VENTA_NUEVA_PLAN');
+        const kpiUpgrades = sumByOp('UPGRADE_PLAN');
+        const kpiUsersExtra = sumByOp('VENTA_USUARIOS_EXTRA');
+        const kpiModulosIa = sumByOp('VENTA_MODULO_IA');
+        const kpiPersonalizado = sumByOp('VENTA_MODULO_PERSONALIZADO');
+        const kpiDowngrades = sumByOp('DOWNGRADE_PLAN');
+        const kpiBajaUsers = sumByOp('BAJA_USUARIOS_EXTRA');
+        const kpiBajaMods = sumByOp('BAJA_MODULO_IA');
+        const totalRecaudoCobranzas = approvedPays.reduce((a, x) => a + Number((x.detalle || {}).monto_usd || 0), 0);
+
+        const sellersMap = {};
+        approvedSales.forEach(t => {
+          const det = t.detalle || {};
+          const k = det.agente_email || t.solicitado_por || 'Sin asignar';
+          if (!sellersMap[k]) sellersMap[k] = { name: det.agente_nombre || k, email: k, count: 0, total: 0 };
+          sellersMap[k].count += 1;
+          sellersMap[k].total += Number(det.monto_usd || 0);
+        });
+        const topSellers = Object.values(sellersMap).sort((a, b) => b.total - a.total);
+
+        const collectorsMap = {};
+        approvedPays.forEach(t => {
+          const det = t.detalle || {};
+          const k = det.agente_email || t.solicitado_por || 'Sin asignar';
+          if (!collectorsMap[k]) collectorsMap[k] = { name: det.agente_nombre || k, email: k, count: 0, total: 0 };
+          collectorsMap[k].count += 1;
+          collectorsMap[k].total += Number(det.monto_usd || 0);
+        });
+        const topCollectors = Object.values(collectorsMap).sort((a, b) => b.total - a.total);
+
+        const staffForQuality = this.cachedStaff.filter(u => String(u.rol || '').toUpperCase() !== 'SUPERADMIN');
+        const demoQualityRows = staffForQuality.length > 0
+          ? staffForQuality.map((u, idx) => {
+              const r = String(u.rol || '').toUpperCase();
+              const area = r === 'COBRANZAS' ? 'Cobranzas' : (r === 'SOPORTE' ? 'Soporte Técnico' : 'Ventas & Retención');
+              const demoScore = [96, 92, 89, 94, 91, 88][idx % 6];
+              return { name: u.nombre_completo || u.email, rol: r, area, score: demoScore, cases: 14 + (idx * 3) };
+            })
+          : [
+              { name: 'Laura Mendoza (Demo)', rol: 'VENTAS', area: 'Ventas & Retención', score: 95, cases: 18 },
+              { name: 'Carlos Paredes (Demo)', rol: 'COBRANZAS', area: 'Cobranzas', score: 92, cases: 24 },
+              { name: 'Andrea Gómez (Demo)', rol: 'RETENCION', area: 'Ventas & Retención', score: 90, cases: 12 }
+            ];
+
+        const avgGeneral = demoQualityRows.length > 0
+          ? (demoQualityRows.reduce((a, x) => a + x.score, 0) / demoQualityRows.length).toFixed(1)
+          : '92.5';
+        const salesQRows = demoQualityRows.filter(x => x.area !== 'Cobranzas');
+        const cobQRows = demoQualityRows.filter(x => x.area === 'Cobranzas');
+        const avgVentasQ = salesQRows.length > 0 ? (salesQRows.reduce((a, x) => a + x.score, 0) / salesQRows.length).toFixed(1) : '93.0';
+        const avgCobranzasQ = cobQRows.length > 0 ? (cobQRows.reduce((a, x) => a + x.score, 0) / cobQRows.length).toFixed(1) : '91.5';
+
+        body.innerHTML = `
+          <div class="bg-white rounded-2xl p-4 border border-[#dce6e5] space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 class="text-sm font-extrabold text-[#073e3b]">📈 Informe Gerencial de Operación SaaS & Calidad</h3>
+                <p class="text-[11px] text-slate-500">Consolidado en vivo de ventas nuevas, upgrades, bajas, recaudación y desempeño del equipo.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5 bg-[#f5f8f8] p-1.5 rounded-xl border border-[#dce6e5]">
+                <button onclick="CRM.analyticsPeriod='day'; CRM.renderAnalyticsView();" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'day' ? 'bg-[#073e3b] text-[#70d2bd]' : 'text-slate-600'}">Por Día</button>
+                <button onclick="CRM.analyticsPeriod='month'; CRM.renderAnalyticsView();" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'month' ? 'bg-[#073e3b] text-[#70d2bd]' : 'text-slate-600'}">Por Mes</button>
+                <button onclick="CRM.analyticsPeriod='year'; CRM.renderAnalyticsView();" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'year' ? 'bg-[#073e3b] text-[#70d2bd]' : 'text-slate-600'}">Por Año</button>
+                ${period === 'day' ? `<input type="date" value="${esc(refDate)}" onchange="CRM.analyticsDate=this.value; CRM.renderAnalyticsView();" class="border border-[#d7e1e0] rounded-lg px-2 py-0.5 text-[11px] font-mono bg-white" />` : ''}
+                ${period === 'month' ? `<input type="month" value="${esc(refMonth)}" onchange="CRM.analyticsDate=this.value+'-01'; CRM.renderAnalyticsView();" class="border border-[#d7e1e0] rounded-lg px-2 py-0.5 text-[11px] font-mono bg-white" />` : ''}
+                ${period === 'year' ? `
+                  <select onchange="CRM.analyticsDate=this.value+'-01-01'; CRM.renderAnalyticsView();" class="border border-[#d7e1e0] rounded-lg px-2 py-0.5 text-[11px] font-mono bg-white">
+                    ${[2025, 2026, 2027].map(y => `<option value="${y}" ${refYear === String(y) ? 'selected' : ''}>Año ${y}</option>`).join('')}
+                  </select>
+                ` : ''}
+              </div>
+            </div>
+
+            <!-- KPIs Segmentados por Movimiento -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div class="p-3 rounded-2xl bg-[#073e3b] text-white">
+                <div class="text-[10px] uppercase font-bold text-teal-200">🆕 Ventas Nuevas Planes</div>
+                <div class="text-lg font-black font-mono text-[#70d2bd] mt-0.5">$${kpiNuevas.total.toFixed(2)}</div>
+                <div class="text-[10px] text-teal-100">${kpiNuevas.count} cliente(s) nuevo(s)</div>
+              </div>
+              <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5]">
+                <div class="text-[10px] uppercase font-bold text-[#087e70]">⬆️ Upgrades de Planes</div>
+                <div class="text-lg font-black font-mono text-[#073e3b] mt-0.5">$${kpiUpgrades.total.toFixed(2)}</div>
+                <div class="text-[10px] text-slate-500">${kpiUpgrades.count} ascenso(s) de plan</div>
+              </div>
+              <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5]">
+                <div class="text-[10px] uppercase font-bold text-indigo-800">🤖+ Módulos Adicionales IA</div>
+                <div class="text-lg font-black font-mono text-[#073e3b] mt-0.5">$${(kpiModulosIa.total + kpiPersonalizado.total).toFixed(2)}</div>
+                <div class="text-[10px] text-slate-500">${kpiModulosIa.count} IA · ${kpiPersonalizado.count} a medida</div>
+              </div>
+              <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5]">
+                <div class="text-[10px] uppercase font-bold text-teal-800">👥+ Usuarios Adicionales</div>
+                <div class="text-lg font-black font-mono text-[#073e3b] mt-0.5">$${kpiUsersExtra.total.toFixed(2)}</div>
+                <div class="text-[10px] text-slate-500">${kpiUsersExtra.count} ampliación(es) cupo</div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div class="p-3 rounded-2xl bg-orange-50 border border-orange-200">
+                <div class="text-[10px] uppercase font-bold text-orange-900">⬇️ Downgrades de Planes</div>
+                <div class="text-base font-black font-mono text-orange-800 mt-0.5">${kpiDowngrades.count} caso(s) · $${kpiDowngrades.total.toFixed(2)}</div>
+              </div>
+              <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200">
+                <div class="text-[10px] uppercase font-bold text-rose-900">📉 Bajas Usuarios / Módulos</div>
+                <div class="text-base font-black font-mono text-rose-800 mt-0.5">${kpiBajaUsers.count} baja usu. · ${kpiBajaMods.count} baja mód.</div>
+              </div>
+              <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
+                <div class="text-[10px] uppercase font-bold text-emerald-900">💳 Recaudo Cobranzas</div>
+                <div class="text-base font-black font-mono text-emerald-800 mt-0.5">$${totalRecaudoCobranzas.toFixed(2)} (${approvedPays.length} pagos)</div>
+              </div>
+            </div>
+
+            <!-- Rankings: Top Vendedores y Top Cobranzas -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                <div class="font-extrabold text-[#073e3b]">🥇 Top Vendedores / Retención</div>
+                ${topSellers.length === 0 ? '<p class="text-[11px] text-slate-500">Sin activaciones aprobadas en este período.</p>' : topSellers.map((s, i) => `
+                  <div class="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
+                    <span><strong>#${i + 1} ${esc(s.name)}</strong> <span class="text-[10px] text-slate-500">(${s.count} op.)</span></span>
+                    <strong class="font-mono text-[#087e70]">$${s.total.toFixed(2)}</strong>
+                  </div>
+                `).join('')}
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
+                <div class="font-extrabold text-[#073e3b]">🥇 Top Gestores de Cobranzas</div>
+                ${topCollectors.length === 0 ? '<p class="text-[11px] text-slate-500">Sin pagos conciliados en este período.</p>' : topCollectors.map((c, i) => `
+                  <div class="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
+                    <span><strong>#${i + 1} ${esc(c.name)}</strong> <span class="text-[10px] text-slate-500">(${c.count} cobros)</span></span>
+                    <strong class="font-mono text-[#087e70]">$${c.total.toFixed(2)}</strong>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- Bloque de Calidad del Equipo (Datos Ficticios Provisionales hasta definir rúbrica con Auditor) -->
+            <div class="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="font-extrabold text-indigo-950 text-xs">⭐ Indicadores de Calidad del Equipo (Vista Preliminar)</div>
+                  <div class="text-[10.5px] text-indigo-800">Datos referenciales provisionales listos para conectar con la rúbrica de Auditoría.</div>
+                </div>
+                <span class="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-900 font-extrabold text-[10px]">Escala 0 – 100 pts</span>
+              </div>
+
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="p-2.5 rounded-xl bg-white border border-indigo-200">
+                  <div class="text-[10px] text-slate-500 font-bold">Calidad General Equipo</div>
+                  <div class="text-lg font-black font-mono text-indigo-900">${avgGeneral}%</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-white border border-indigo-200">
+                  <div class="text-[10px] text-slate-500 font-bold">Nota Calidad Ventas</div>
+                  <div class="text-lg font-black font-mono text-[#087e70]">${avgVentasQ}%</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-white border border-indigo-200">
+                  <div class="text-[10px] text-slate-500 font-bold">Nota Calidad Cobranzas</div>
+                  <div class="text-lg font-black font-mono text-[#073e3b]">${avgCobranzasQ}%</div>
+                </div>
+              </div>
+
+              <div class="space-y-1.5">
+                ${demoQualityRows.map(q => `
+                  <div class="p-2.5 rounded-xl bg-white border border-indigo-100 flex items-center justify-between gap-2 text-[11px]">
+                    <div>
+                      <strong class="text-[#073e3b]">${esc(q.name)}</strong>
+                      <span class="ml-1.5 px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[9.5px] font-bold">${esc(q.area)}</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <span class="text-[10px] text-slate-500">${q.cases} casos rev.</span>
+                      <span class="px-2.5 py-0.5 rounded-full font-mono font-extrabold ${q.score >= 92 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">${q.score} / 100</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
             </div>
           </div>
         `;

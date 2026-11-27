@@ -248,9 +248,20 @@ async function registrarInteresModuloVozkora(moduloNombre) {
   });
 }
 
+const VOZKORA_ROLES_INTERNOS = ['SUPERADMIN', 'SOPORTE', 'VENTAS', 'RETENCION', 'COBRANZAS', 'SUPERVISOR', 'AUDITOR'];
+
 async function crmListarColaboradoresInternos() {
   const all = await crmListarUsuarios();
-  return all.filter(u => ['SUPERADMIN', 'SOPORTE', 'VENTAS'].includes(String(u.rol || '').toUpperCase()));
+  return all.filter(u => VOZKORA_ROLES_INTERNOS.includes(String(u.rol || '').toUpperCase()));
+}
+
+async function subirComprobanteOperacionSupabase(file, carpeta = 'activaciones', prefijo = 'COMP') {
+  if (!file) return { ok: false, url: '' };
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  if (isPdf) {
+    return await subirPdfRucSupabase(file, `${carpeta}_${prefijo}`);
+  }
+  return await subirEvidenciaFotoSupabase(file, carpeta, prefijo);
 }
 
 async function crmAsignarTicketAColaborador(ticketId, colaboradorEmail, colaboradorNombre, detalleActual = {}) {
