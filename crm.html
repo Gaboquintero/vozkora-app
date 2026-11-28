@@ -3270,7 +3270,7 @@
           if (String(d.concepto_pago || '').includes('Recuperación cliente mayor a 60 días')) {
             formula = `Recuperación >60d: 100% de $${monto.toFixed(2)} = +$${vacCob.toFixed(2)}`;
           } else if (vacCob < 0) {
-            formula = `Cobranza con Downgrade/Baja: -10% de $${monto.toFixed(2)} = -$${Math.abs(vacCob).toFixed(2)}`;
+            formula = `Diferencia negativa por Downgrade/Baja = -$${Math.abs(vacCob).toFixed(2)}`;
           } else {
             formula = `Renovación / Upgrade sin bajas: +10% de $${monto.toFixed(2)} = +$${vacCob.toFixed(2)}`;
           }
@@ -5001,13 +5001,27 @@
 
         const suggestedCobro = Number((newPlanPrice + extraUsersCharge + extraModsCharge).toFixed(2));
 
-        // Cálculo exacto del VAC de Cobranza basado en JERARQUÍA DE PLAN:
-        // - Recuperación cliente mayor a 60 días -> +100% del valor cobrado (igual que venta nueva)
-        // - Mismo plan (ej. Anual -> Mensual mismo plan) o Upgrade de plan (ej. Anual Plan X -> Mensual Plan Y) sin bajas -> +10% POSITIVO
-        // - Downgrade de plan (baja a plan inferior), baja de usuarios o baja de módulos -> -10% NEGATIVO
+        // Diferencia real de downgrade/bajas (comparando ciclo anterior vs ciclo nuevo)
+        const currPeriodicity = emp ? String(emp.periodicidad || 'MENSUAL').toUpperCase() : 'MENSUAL';
+        const currRealCyclePrice = currPeriodicity === 'ANUAL' ? currentPlan.annualPrice : currentPlan.monthlyPrice;
+        const downgradePlanDiff = isPlanDowngrade ? Math.max(0, currRealCyclePrice - newPlanPrice) : 0;
+        const downgradeUsersDiff = payDownUsers ? (qtyUsersDown * unitExtraUserPrice) : 0;
+        const removedModsList = currPacks.filter(m => !selectedMods.includes(m));
+        const downgradeModsDiff = payDownMods
+          ? removedModsList.reduce((sum, mId) => {
+              const pk = SVA_PACKS.find(x => x.id === mId);
+              return sum + (pk ? (isAnual ? pk.annualPrice : pk.monthlyPrice) : 0);
+            }, 0)
+          : 0;
+        const totalDowngradeDiff = Number((downgradePlanDiff + downgradeUsersDiff + downgradeModsDiff).toFixed(2));
+
+        // Cálculo exacto del VAC de Cobranza:
+        // - Recuperación cliente mayor a 60 días -> +100% del valor cobrado
+        // - Downgrade/Baja -> resta la diferencia real del downgrade (-totalDowngradeDiff)
+        // - Mismo plan o Upgrade sin bajas -> +10% POSITIVO
         const vacCobranza = concepto === 'Recuperación cliente mayor a 60 días'
           ? suggestedCobro
-          : (hasDowngrade ? Number((-suggestedCobro * 0.10).toFixed(2)) : Number((suggestedCobro * 0.10).toFixed(2)));
+          : (hasDowngrade ? Number((-totalDowngradeDiff).toFixed(2)) : Number((suggestedCobro * 0.10).toFixed(2)));
 
         // Validaciones
         const errors = [];
@@ -5060,6 +5074,7 @@
           isPlanDowngrade,
           isPlanUpgrade,
           hasDowngrade,
+          totalDowngradeDiff,
           suggestedCobro,
           vacCobranza
         };
@@ -5172,7 +5187,7 @@
              <div class="grid grid-cols-2 gap-2">
                <div>
                  <label class="font-bold text-[#087e70]">Monto Recaudado (USD) *</label>
-                 <input id="payFormAmount" type="number" step="0.01" min="0.01" value="${defaultAmt.toFixed(2)}" oninput="CRM.recheckPaymentFormLive(false)" class="w-full border-2 border-[#087e70] rounded-xl p-2 mt-0.5 font-mono font-black text-[#087e70] bg-[#e7f5f1]/40" />
+                 <input id="payFormAmount" type="number" step="0.01" min="0" value="${defaultAmt.toFixed(2)}" oninput="CRM.recheckPaymentFormLive(false)" class="w-full border-2 border-[#087e70] rounded-xl p-2 mt-0.5 font-mono font-black text-[#087e70] bg-[#e7f5f1]/40" />
                  <div id="payVacHint" class="text-[10px] font-extrabold mt-0.5"></div>
                </div>
                <div>
@@ -5229,7 +5244,7 @@
           : (st.isPlanUpgrade ? 'UPGRADE DE PLAN' : 'MISMO PLAN');
 
         if (updateAmounts) {
-          if ($('payFormAmount')) $('payFormAmount').value = st.suggestedCobro.toFixed(2);
+          if ($('payFormAmount')) $('payFormAmount').value = st.hasDowngrade ? '0.00' : st.suggestedCobro.toFixed(2);
         }
         const liveMontoCobrado = Math.max(0, parseFloat($('payFormAmount')?.value) || 0);
         const liveVacCobranza = st.concepto === 'Recuperación cliente mayor a 60 días'
@@ -5287,12 +5302,15 @@
 
         if (!ruc || !nombre) return toast('Ingresa RUC y Razón Social del cliente.');
         if (!refPago) return toast('⚠️ El campo N° Comprobante / Referencia * es obligatorio.');
-        if (isNaN(montoUsd) || montoUsd <= 0) return toast('Ingresa un monto válido.');
-        if (!formulaCobro) return toast('⚠️ Debes escribir la fórmula de cobro.');
-        if (!fileObj) return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF).');
+        if (isNaN(montoUsd) || montoUsd < 0) return toast('Ingresa un monto válido.');
 
         const st = this.recheckPaymentFormLive(false);
         if (!st.ok) return toast('⛔ Corrige los errores marcados en rojo antes de continuar.');
+        if (montoUsd === 0 && !st.hasDowngrade) {
+          return toast('⚠️ El monto $0.00 solo está permitido cuando marcas un Downgrade o Baja.');
+        }
+        if (!formulaCobro) return toast('⚠️ Debes escribir la fórmula de cobro.');
+        if (!fileObj) return toast('⚠️ Debes adjuntar obligatoriamente el comprobante de pago (imagen o PDF).');
 
         const btn = $('btnSubmitPayEntry');
         if (btn) { btn.textContent = 'Enviando a Activaciones...'; btn.disabled = true; }
@@ -5308,7 +5326,7 @@
 
           const vacFinal = st.concepto === 'Recuperación cliente mayor a 60 días'
             ? Number(montoUsd.toFixed(2))
-            : (st.hasDowngrade ? Number((-montoUsd * 0.10).toFixed(2)) : Number((montoUsd * 0.10).toFixed(2)));
+            : (st.hasDowngrade ? Number((-st.totalDowngradeDiff).toFixed(2)) : Number((montoUsd * 0.10).toFixed(2)));
 
           const condTag = st.hasDowngrade ? ' (Con Downgrade)' : (st.isPlanUpgrade ? ' (Upgrade de Plan)' : ' (Mismo Plan)');
           const accionLabel = `${st.concepto}${condTag}`;
