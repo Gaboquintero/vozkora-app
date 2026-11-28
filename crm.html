@@ -3293,10 +3293,15 @@
         }
         if (Number(dg.upgrade_plan_usd) > 0) {
           const v = Number(dg.upgrade_plan_usd);
+          const isSamePlanVip = String(d.plan_anterior || '').toLowerCase() === String(d.plan_nuevo || '').toLowerCase() && String(d.periodicidad || '').toUpperCase() === 'ANUAL';
           addPart(
-            `Upgrade de Plan (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()})`,
+            isSamePlanVip
+              ? `Upgrade Plan ${String(d.plan_nuevo || '').toUpperCase()} (Mensual → Anual VIP)`
+              : `Upgrade de Plan (${String(d.plan_anterior_label || '')} → ${String(d.plan_nuevo || '').toUpperCase()})`,
             v,
-            `100% Upgrade a ${String(d.plan_nuevo || '').toUpperCase()} = +$${v.toFixed(2)}`
+            isSamePlanVip
+              ? `100% Upgrade Periodicidad Anual VIP (${String(d.plan_nuevo || '').toUpperCase()}) = +$${v.toFixed(2)}`
+              : `100% Upgrade a ${String(d.plan_nuevo || '').toUpperCase()} = +$${v.toFixed(2)}`
           );
         }
         if (Number(dg.usuarios_extra_usd) > 0) {
@@ -3627,6 +3632,7 @@
         const currentPlan = emp ? this.getPlanObject(emp.plan_activo) : null;
 
         // Estado actual del cliente ("LO QUE TIENE")
+        const currPeriodicity = emp ? String(emp.periodicidad || 'MENSUAL').toUpperCase() : 'MENSUAL';
         const currPlanName = currentPlan ? currentPlan.name : 'Ninguno (Cliente Nuevo)';
         const currPlanPrice = currentPlan ? (isAnual ? currentPlan.annualPrice : currentPlan.monthlyPrice) : 0;
         const currIncludedUsers = currentPlan ? currentPlan.includedUsers : 0;
@@ -3724,8 +3730,9 @@
         if (emp && tipoOperacion === 'VENTA_NUEVA_PLAN') {
           errors.push(`La empresa ${emp.nombre} ya existe (Plan ${currPlanName}). Usa Upgrade, Downgrade o Carrito de Adicionales.`);
         }
-        if (cartChangePlan && currentPlan && effectivePlan.rank <= currentPlan.rank) {
-          errors.push(`Para Upgrade de Plan debes elegir un plan superior a ${currPlanName}.`);
+        const isSamePlanMonthlyToAnnual = !!(emp && currentPlan && effectivePlan.id === currentPlan.id && currPeriodicity === 'MENSUAL' && periodicidad === 'ANUAL');
+        if (cartChangePlan && currentPlan && effectivePlan.rank <= currentPlan.rank && !isSamePlanMonthlyToAnnual) {
+          errors.push(`Para Upgrade de Plan debes elegir un plan superior a ${currPlanName}, o cambiar el mismo plan de Mensual a Anual (VIP).`);
         }
         if (cartDowngrade && currentPlan && effectivePlan.rank >= currentPlan.rank) {
           errors.push(`Para Downgrade de Plan debes elegir un plan inferior a ${currPlanName}.`);
@@ -3761,6 +3768,8 @@
           tipoOperacion,
           periodicidad,
           isAnual,
+          currPeriodicity,
+          isSamePlanMonthlyToAnnual,
           currentPlan,
           currPlanName,
           currPlanPrice,
@@ -4066,7 +4075,11 @@
         // Generar Detalle Técnico Automático (No editable)
         const partsDesc = [];
         if (st.tipoOperacion === 'VENTA_NUEVA_PLAN') partsDesc.push(`Alta Plan ${st.effectivePlan.name} (${st.newIncludedUsers} usu. base)`);
-        if (st.cartChangePlan && st.tipoOperacion !== 'VENTA_NUEVA_PLAN') partsDesc.push(`Upgrade a Plan ${st.effectivePlan.name}`);
+        if (st.cartChangePlan && st.tipoOperacion !== 'VENTA_NUEVA_PLAN') {
+          partsDesc.push(st.isSamePlanMonthlyToAnnual
+            ? `Upgrade Periodicidad: Plan ${st.effectivePlan.name} (Mensual → Anual VIP)`
+            : `Upgrade a Plan ${st.effectivePlan.name}`);
+        }
         if (st.cartDowngrade) partsDesc.push(`Downgrade a Plan ${st.effectivePlan.name}`);
         if (st.cartAddUsers) partsDesc.push(`+${st.qtyUsersAdd} Usuario(s) Adicional(es)`);
         if (st.cartDownUsers) partsDesc.push(`-${st.qtyUsersDown} Usuario(s) de Cobro`);
