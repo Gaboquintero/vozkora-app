@@ -3385,6 +3385,56 @@
         return { totalVac, items, explanation };
       },
 
+      getTicketOperationSummary(tk) {
+        const det = (tk && tk.detalle) || {};
+        const dg = det.desglose_gerencial || {};
+        const actions = [];
+
+        if (det.es_cobranza) {
+          actions.push(det.concepto_pago || det.categoria || 'Cobranza / Renovación');
+        } else {
+          const op = String(det.tipo_operacion || '').toUpperCase();
+          if (op === 'VENTA_NUEVA_PLAN' || Number(dg.venta_nueva_usd || 0) > 0) {
+            actions.push('🆕 Venta Nueva de Plan');
+          }
+          if (Number(dg.upgrade_plan_usd || 0) > 0) {
+            actions.push('⬆️ Upgrade de Plan');
+          }
+          if (Number(dg.usuarios_extra_usd || 0) > 0 || (op === 'VENTA_USUARIOS_EXTRA' && Number(det.usuarios_delta || 0) > 0)) {
+            actions.push('👥+ Venta Usuarios Adicionales');
+          }
+          if (Number(dg.modulos_ia_extra_usd || 0) > 0 || op === 'VENTA_MODULO_IA') {
+            actions.push('🤖+ Venta Módulo Adicional IA');
+          }
+          if (Number(dg.modulo_personalizado_usd || 0) > 0 || op === 'VENTA_MODULO_PERSONALIZADO') {
+            actions.push('🛠️ Venta Módulo Personalizado');
+          }
+          if (Number(dg.downgrade_plan_usd || 0) > 0 || op === 'DOWNGRADE_PLAN') {
+            actions.push('⬇️ Downgrade de Plan');
+          }
+          if (Number(dg.baja_usuarios_usd || 0) > 0 || op === 'BAJA_USUARIOS_EXTRA') {
+            actions.push('👥- Baja de Usuarios Adicionales');
+          }
+          if (Number(dg.baja_modulos_usd || 0) > 0 || op === 'BAJA_MODULO_IA') {
+            actions.push('🤖- Baja de Módulos Adicionales IA');
+          }
+        }
+
+        if (actions.length === 0) {
+          const fallbackMeta = SALE_OPERATION_TYPES[det.tipo_operacion];
+          actions.push(fallbackMeta ? fallbackMeta.label : (det.categoria || det.tipo_operacion || 'Movimiento Comercial'));
+        }
+
+        const primaryLabel = actions.join(' + ');
+        const isBajaOnly = actions.every(a => /Downgrade|Baja/i.test(a));
+        const hasAnyBaja = actions.some(a => /Downgrade|Baja/i.test(a));
+        const badgeCls = isBajaOnly
+          ? 'bg-rose-100 text-rose-800'
+          : (hasAnyBaja ? 'bg-orange-100 text-orange-900' : 'bg-emerald-100 text-emerald-800');
+
+        return { actions, primaryLabel, isBajaOnly, hasAnyBaja, badgeCls };
+      },
+
       renderActivationsView() {
         const body = $('crm-body');
         const rolNorm = this.getSessionRole();
@@ -3445,8 +3495,9 @@
 
         if (selAct) {
           const det = selAct.detalle || {};
-          const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Venta', badgeCls: 'bg-slate-100 text-slate-800', group: 'ALTA' };
-          const isDowngradeOrBaja = ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(String(det.tipo_operacion || ''));
+          const opSum = this.getTicketOperationSummary(selAct);
+          const opMeta = { label: opSum.primaryLabel, badgeCls: opSum.badgeCls };
+          const isDowngradeOrBaja = opSum.hasAnyBaja;
           const empObj = this.cachedCompanies.find(c => String(c.ruc || '').trim() === String(selAct.empresa_ruc || '').trim()) || null;
           const localTime = det.fecha_hora_local || (selAct.creado_en ? formatLocalDateTimeCrm(selAct.creado_en) : '');
           const stBadge = selAct.estado === 'APROBADO'
@@ -3589,8 +3640,9 @@
                 ${list.length === 0 ? '<p class="text-slate-500 text-center py-6 text-[11px]">No hay solicitudes en esta bandeja.</p>' : list.map(tk => {
                   const isSel = tk.id === this.selectedActivationId;
                   const det = tk.detalle || {};
-                  const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Venta', badgeCls: 'bg-slate-100 text-slate-800' };
-                  const isBaja = ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(String(det.tipo_operacion || ''));
+                  const opSumLeft = this.getTicketOperationSummary(tk);
+                  const opMeta = { label: opSumLeft.primaryLabel, badgeCls: opSumLeft.badgeCls };
+                  const isBaja = opSumLeft.hasAnyBaja;
                   const dot = tk.estado === 'APROBADO' ? '🟢' : (tk.estado === 'RECHAZADO' ? '🔴' : '🟡');
                   return `
                     <button type="button" onclick="CRM.selectedActivationId='${tk.id}'; CRM.renderActivationsView();" class="w-full text-left p-2.5 rounded-xl border transition cursor-pointer space-y-1 ${isSel ? 'bg-[#073e3b] text-white border-[#073e3b] shadow-sm' : 'bg-white hover:bg-[#e7f5f1]/60 text-[#17343a] border-[#dce6e5]'}">
@@ -4228,8 +4280,15 @@
             tipo_solicitud: 'ACTIVACION_VENTA',
             estado: 'PENDIENTE',
             detalle: {
-              categoria: opMeta.label,
-              tipo_operacion: st.tipoOperacion,
+              categoria: (() => {
+                const effOp = (!st.cartChangePlan && st.tipoOperacion === 'UPGRADE_PLAN')
+                  ? (st.cartDowngrade ? 'DOWNGRADE_PLAN' : (st.cartDownMods ? 'BAJA_MODULO_IA' : (st.cartDownUsers ? 'BAJA_USUARIOS_EXTRA' : (st.cartAddMods ? 'VENTA_MODULO_IA' : (st.cartAddUsers ? 'VENTA_USUARIOS_EXTRA' : (st.cartCustomMod ? 'VENTA_MODULO_PERSONALIZADO' : st.tipoOperacion))))))
+                  : st.tipoOperacion;
+                return (SALE_OPERATION_TYPES[effOp] || opMeta).label;
+              })(),
+              tipo_operacion: (!st.cartChangePlan && st.tipoOperacion === 'UPGRADE_PLAN')
+                ? (st.cartDowngrade ? 'DOWNGRADE_PLAN' : (st.cartDownMods ? 'BAJA_MODULO_IA' : (st.cartDownUsers ? 'BAJA_USUARIOS_EXTRA' : (st.cartAddMods ? 'VENTA_MODULO_IA' : (st.cartAddUsers ? 'VENTA_USUARIOS_EXTRA' : (st.cartCustomMod ? 'VENTA_MODULO_PERSONALIZADO' : st.tipoOperacion))))))
+                : st.tipoOperacion,
               plan_anterior: st.currentPlan ? st.currentPlan.id : 'NINGUNO',
               plan_anterior_label: st.currPlanName,
               plan_nuevo: st.effectivePlan.id,
@@ -4324,8 +4383,12 @@
           }
         }
 
-        const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.concepto_pago || det.categoria || det.tipo_operacion || 'Activación SaaS' };
+        const opSumModal = this.getTicketOperationSummary(tk);
+        const vacModal = this.computeTicketVacBreakdown(tk);
         const planAnteriorNombre = currentPlan ? currentPlan.name : 'Sin plan (Cliente Nuevo)';
+        const modulosAnteriores = emp && Array.isArray(emp.packs_ia)
+          ? (emp.plan_activo === 'enterprise' ? ['voz', 'cobranza', 'ventas', 'gerencia', 'operaciones', 'finanzas'] : emp.packs_ia)
+          : [];
 
         V.openModal(
           '🧠 Confirmación Inteligente de Activación SaaS',
@@ -4336,11 +4399,12 @@
                  Al aceptar, al cliente <strong>${esc(tk.empresa_nombre)}</strong> (RUC: <span class="font-mono">${esc(tk.empresa_ruc)}</span>) se le aplicará:
                </p>
                <ul class="space-y-1 text-teal-100 pl-2">
-                 <li>• <strong>Operación:</strong> ${esc(opMeta.label)}</li>
+                 <li>• <strong>Operación Real:</strong> <strong class="text-white">${esc(opSumModal.primaryLabel)}</strong></li>
+                 ${det.descripcion_personalizada ? `<li>• <strong>Detalle / Alcance:</strong> <strong class="text-amber-300">${esc(det.descripcion_personalizada)}</strong></li>` : ''}
                  <li>• <strong>Plan Resultante:</strong> ${esc(planAnteriorNombre)} → <strong class="text-white">${esc(targetPlan.name)} (${esc(det.periodicidad || 'MENSUAL')})</strong></li>
                  <li>• <strong>Cupo de Usuarios:</strong> ${emp ? emp.max_usuarios : 0} → <strong class="text-white">${usuariosNuevo} usuarios</strong> (Activos actuales: ${activeUsersInDb})</li>
-                 <li>• <strong>Módulos IA:</strong> ${modulosFinales.length > 0 ? esc(modulosFinales.join(', ')) : 'Ninguno'}</li>
-                 <li>• <strong>Cobro Validado:</strong> <strong class="text-[#70d2bd] font-mono">$${Number(det.monto_usd || 0).toFixed(2)} USD</strong></li>
+                 <li>• <strong>Módulos IA:</strong> ${modulosAnteriores.length > 0 ? esc(modulosAnteriores.join(', ')) : 'Ninguno'} → <strong class="text-white">${modulosFinales.length > 0 ? esc(modulosFinales.join(', ')) : 'Ninguno'}</strong></li>
+                 <li>• <strong>Cobro Validado:</strong> <strong class="text-[#70d2bd] font-mono">$${Number(det.monto_usd || 0).toFixed(2)} USD</strong> · <strong>VAC:</strong> <span class="font-mono ${vacModal.totalVac < 0 ? 'text-rose-300' : 'text-[#70d2bd]'}">${vacModal.totalVac >= 0 ? '+' : '-'}$${Math.abs(vacModal.totalVac).toFixed(2)}</span></li>
                </ul>
              </div>
 
@@ -4447,7 +4511,8 @@
           await crmActualizarTicket(tk.id, 'APROBADO', det);
 
           // Puente automático hacia 🧾 Facturación Pendientes (para emisión de factura SRI y envío WhatsApp)
-          const opMeta = SALE_OPERATION_TYPES[det.tipo_operacion] || { label: det.tipo_operacion || 'Activación SaaS' };
+          const opSumExec = this.getTicketOperationSummary(tk);
+          const opMeta = { label: opSumExec.primaryLabel || 'Activación SaaS' };
           const fechaFact = nowFormatted();
           await crearTicketVozkora({
             empresa_ruc: tk.empresa_ruc,
