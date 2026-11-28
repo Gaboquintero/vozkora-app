@@ -3149,12 +3149,10 @@
                         const b360 = this.getCompanyStatusBadge(selEmp);
                         return `<span class="px-2.5 py-1 rounded-full text-[10.5px] font-extrabold border ${b360.cls}">${b360.fullLabel}</span>`;
                       })()}
-                      ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION'].includes(this.getSessionRole()) ? `
+                      ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION', 'COBRANZAS'].includes(this.getSessionRole()) ? `
                         <button onclick="CRM.openSaleEntryModal('${esc(selEmp.ruc)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-amber-400 hover:bg-amber-300 text-[#073e3b] shadow-xs cursor-pointer">
                           🚀 INGRESAR VENTA
                         </button>
-                      ` : ''}
-                      ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'COBRANZAS'].includes(this.getSessionRole()) ? `
                         <button onclick="CRM.openPaymentModal('${esc(selEmp.ruc)}')" class="px-3 py-1.5 rounded-xl text-[11px] font-extrabold bg-emerald-400 hover:bg-emerald-300 text-[#073e3b] shadow-xs cursor-pointer">
                           💳 FACTURAR / PAGO
                         </button>
@@ -3578,7 +3576,7 @@
                   `).join('')}
                 </select>
 
-                ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION'].includes(rolNorm) ? `
+                ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION', 'COBRANZAS'].includes(rolNorm) ? `
                   <button onclick="CRM.openSaleEntryModal()" class="ml-1 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                     🚀 + INGRESAR VENTA
                   </button>
@@ -4687,7 +4685,7 @@
                   <option value="COBRANZAS" ${this.invoicingOriginFilter === 'COBRANZAS' ? 'selected' : ''}>💳 Cobranzas y Cortes</option>
                 </select>
 
-                ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'COBRANZAS'].includes(rolNorm) ? `
+                ${['SUPERADMIN', 'COMERCIAL_COBRANZAS', 'VENTAS', 'RETENCION', 'COBRANZAS'].includes(rolNorm) ? `
                   <button onclick="CRM.openPaymentModal()" class="ml-1 px-4 py-2 rounded-xl text-xs font-extrabold bg-[#087e70] hover:bg-[#073e3b] text-white shadow cursor-pointer">
                     💳 + FACTURAR / PAGO
                   </button>
