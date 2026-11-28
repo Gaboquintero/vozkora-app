@@ -2831,8 +2831,17 @@
           const allTks = await crmListarTickets();
           const userTks = allTks.filter(t => {
             if (String(t.tipo_solicitud || '').toUpperCase() !== 'ACTIVACION_VENTA') return false;
-            if (t.estado !== 'APROBADO') return false;
+            if (t.estado === 'RECHAZADO') return false;
             const d = t.detalle || {};
+            const dg = d.desglose_gerencial || {};
+            const op = String(d.tipo_operacion || '').toUpperCase();
+            const isDowngradeOrBaja = ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(op) ||
+              Number(dg.downgrade_plan_usd || 0) > 0 ||
+              Number(dg.baja_usuarios_usd || 0) > 0 ||
+              Number(dg.baja_modulos_usd || 0) > 0 ||
+              Number(dg.cobranza_vac_usd || 0) < 0 ||
+              Number(d.vac_cobranza_usd || 0) < 0;
+            if (!isDowngradeOrBaja && t.estado !== 'APROBADO') return false;
             const agent = String(d.agente_email || t.solicitado_por || '').trim().toLowerCase();
             if (agent !== cleanEmail) return false;
             const iso = String(d.fecha_iso_local || (t.creado_en ? formatLocalDateTimeCrm(t.creado_en).slice(0, 10) : '')).slice(0, 7);
@@ -5388,47 +5397,75 @@
           return iso.slice(0, 7) === refMonth;
         };
 
-        // Fuente única de verdad: Activaciones aprobadas del período (sin duplicar con FACTURACION_PAGO)
-        const allApprovedActs = this.cachedTickets.filter(t => t.tipo_solicitud === 'ACTIVACION_VENTA' && t.estado === 'APROBADO' && matchesDate(t));
-        const commercialActs = allApprovedActs.filter(t => !(t.detalle && t.detalle.es_cobranza));
-        const collectionActs = allApprovedActs.filter(t => !!(t.detalle && t.detalle.es_cobranza));
+        const isDowngradeOrBajaTicket = (tk) => {
+          const det = (tk && tk.detalle) || {};
+          const dg = det.desglose_gerencial || {};
+          const op = String(det.tipo_operacion || '').toUpperCase();
+          return ['DOWNGRADE_PLAN', 'BAJA_USUARIOS_EXTRA', 'BAJA_MODULO_IA'].includes(op) ||
+                 Number(dg.downgrade_plan_usd || 0) > 0 ||
+                 Number(dg.baja_usuarios_usd || 0) > 0 ||
+                 Number(dg.baja_modulos_usd || 0) > 0 ||
+                 Number(dg.cobranza_vac_usd || 0) < 0 ||
+                 Number(det.vac_cobranza_usd || 0) < 0;
+        };
+
+        // REGLA GERENCIAL CRÍTICA:
+        // - Los Downgrades y Bajas cuentan en el MISMO MES en que se solicitan (PENDIENTE o APROBADO, excluyendo RECHAZADO).
+        // - Las Ventas Nuevas, Upgrades y Cobranzas sin baja cuentan al estar APROBADO (activadas).
+        const allPeriodActs = this.cachedTickets.filter(t => {
+          if (t.tipo_solicitud !== 'ACTIVACION_VENTA') return false;
+          if (!matchesDate(t)) return false;
+          if (t.estado === 'RECHAZADO') return false;
+          if (isDowngradeOrBajaTicket(t)) {
+            return t.estado === 'PENDIENTE' || t.estado === 'APROBADO';
+          }
+          return t.estado === 'APROBADO';
+        });
+
+        const commercialActs = allPeriodActs.filter(t => !(t.detalle && t.detalle.es_cobranza));
+        const collectionActs = allPeriodActs.filter(t => !!(t.detalle && t.detalle.es_cobranza));
         const issuedInvoices = this.cachedTickets.filter(t => t.tipo_solicitud === 'FACTURACION_PAGO' && t.estado === 'APROBADO' && matchesDate(t));
 
-        // Distribuye proporcionalmente el monto real cobrado (monto_usd) sobre los conceptos positivos de cada operación comercial
-        // para que la suma de las tarjetas cuadre al centavo con el dinero real ingresado a caja.
         const kpiNuevas = { count: 0, total: 0 };
         const kpiUpgrades = { count: 0, total: 0 };
         const kpiUsersExtra = { count: 0, total: 0 };
         const kpiModulosIa = { count: 0, total: 0 };
         const kpiPersonalizado = { count: 0, total: 0 };
-        const kpiDowngrades = { count: 0, cobrado: 0, impacto: 0 };
-        const kpiBajaUsers = { count: 0, impacto: 0 };
-        const kpiBajaMods = { count: 0, impacto: 0 };
+        const kpiDowngrades = { count: 0, cobrado: 0, impacto: 0, pendientes: 0 };
+        const kpiBajaUsers = { count: 0, impacto: 0, pendientes: 0 };
+        const kpiBajaMods = { count: 0, impacto: 0, pendientes: 0 };
 
+        // Procesar Ventas / Upgrades / Downgrades Comerciales
         commercialActs.forEach(t => {
           const det = t.detalle || {};
           const dg = det.desglose_gerencial || {};
           const realPaid = Number(det.monto_usd || 0);
-          const op = String(det.tipo_operacion || '');
+          const op = String(det.tipo_operacion || '').toUpperCase();
+          const isPend = t.estado === 'PENDIENTE';
 
-          // Registrar impacto de bajas/downgrades si existen
           const dgPlanImp = Number(dg.downgrade_plan_usd || 0);
           const dgUsuImp = Number(dg.baja_usuarios_usd || 0);
           const dgModImp = Number(dg.baja_modulos_usd || 0);
+
           if (op === 'DOWNGRADE_PLAN' || dgPlanImp > 0) {
             kpiDowngrades.count += 1;
-            kpiDowngrades.impacto += dgPlanImp;
+            if (isPend) kpiDowngrades.pendientes += 1;
+            const calcImp = dgPlanImp > 0 ? dgPlanImp : Math.abs(this.computeTicketVacBreakdown(t).totalVac);
+            kpiDowngrades.impacto = Number((kpiDowngrades.impacto + calcImp).toFixed(2));
           }
           if (op === 'BAJA_USUARIOS_EXTRA' || dgUsuImp > 0) {
             kpiBajaUsers.count += 1;
-            kpiBajaUsers.impacto += dgUsuImp;
+            if (isPend) kpiBajaUsers.pendientes += 1;
+            const calcImp = dgUsuImp > 0 ? dgUsuImp : Math.abs(this.computeTicketVacBreakdown(t).totalVac);
+            kpiBajaUsers.impacto = Number((kpiBajaUsers.impacto + calcImp).toFixed(2));
           }
           if (op === 'BAJA_MODULO_IA' || dgModImp > 0) {
             kpiBajaMods.count += 1;
-            kpiBajaMods.impacto += dgModImp;
+            if (isPend) kpiBajaMods.pendientes += 1;
+            const calcImp = dgModImp > 0 ? dgModImp : Math.abs(this.computeTicketVacBreakdown(t).totalVac);
+            kpiBajaMods.impacto = Number((kpiBajaMods.impacto + calcImp).toFixed(2));
           }
 
-          // Clasificar ingreso real cobrado (realPaid)
           const rawBuckets = [
             { target: kpiNuevas, val: Number(dg.venta_nueva_usd || 0) },
             { target: kpiUpgrades, val: Number(dg.upgrade_plan_usd || 0) },
@@ -5470,13 +5507,36 @@
           }
         });
 
+        // Procesar también los Downgrades y Bajas originados desde Cobranzas (es_cobranza === true)
+        collectionActs.forEach(t => {
+          const det = t.detalle || {};
+          const op = String(det.tipo_operacion || '').toUpperCase();
+          const isPend = t.estado === 'PENDIENTE';
+          const vacInfo = this.computeTicketVacBreakdown(t);
+
+          if (op === 'DOWNGRADE_PLAN') {
+            kpiDowngrades.count += 1;
+            if (isPend) kpiDowngrades.pendientes += 1;
+            kpiDowngrades.cobrado = Number((kpiDowngrades.cobrado + Number(det.monto_usd || 0)).toFixed(2));
+            kpiDowngrades.impacto = Number((kpiDowngrades.impacto + Math.abs(vacInfo.totalVac)).toFixed(2));
+          } else if (op === 'BAJA_USUARIOS_EXTRA') {
+            kpiBajaUsers.count += 1;
+            if (isPend) kpiBajaUsers.pendientes += 1;
+            kpiBajaUsers.impacto = Number((kpiBajaUsers.impacto + Math.abs(vacInfo.totalVac)).toFixed(2));
+          } else if (op === 'BAJA_MODULO_IA') {
+            kpiBajaMods.count += 1;
+            if (isPend) kpiBajaMods.pendientes += 1;
+            kpiBajaMods.impacto = Number((kpiBajaMods.impacto + Math.abs(vacInfo.totalVac)).toFixed(2));
+          }
+        });
+
         const totalVentasYUpgrades = Number((
           kpiNuevas.total +
           kpiUpgrades.total +
           kpiUsersExtra.total +
           kpiModulosIa.total +
           kpiPersonalizado.total +
-          kpiDowngrades.cobrado
+          (commercialActs.filter(t => String((t.detalle || {}).tipo_operacion || '').toUpperCase() === 'DOWNGRADE_PLAN').reduce((s, t) => s + Number((t.detalle || {}).monto_usd || 0), 0))
         ).toFixed(2));
 
         const totalRecaudoCobranzas = Number(collectionActs.reduce((a, x) => a + Number((x.detalle || {}).monto_usd || 0), 0).toFixed(2));
@@ -5583,7 +5643,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <h3 class="text-sm font-extrabold text-[#073e3b]">📈 Informe Gerencial de Operación SaaS & Calidad</h3>
-                <p class="text-[11px] text-slate-500">Cuadre exacto de caja real, ventas nuevas, upgrades, cobranzas y VAC comisionable sin duplicidades.</p>
+                <p class="text-[11px] text-slate-500">Cuadre exacto de caja real, ventas nuevas, upgrades, cobranzas y VAC comisionable (los downgrades/bajas cuentan en el mes solicitado).</p>
               </div>
               <div class="flex flex-wrap items-center gap-1.5 bg-[#f5f8f8] p-1.5 rounded-xl border border-[#dce6e5]">
                 <button onclick="CRM.analyticsPeriod='day'; CRM.renderAnalyticsView();" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'day' ? 'bg-[#073e3b] text-[#70d2bd]' : 'text-slate-600'}">Por Día</button>
@@ -5644,14 +5704,14 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div class="p-3 rounded-2xl bg-orange-50 border border-orange-200">
-                <div class="text-[10px] uppercase font-bold text-orange-900">⬇️ Downgrades de Planes</div>
+                <div class="text-[10px] uppercase font-bold text-orange-900">⬇️ Downgrades de Planes (Mes Solicitud)</div>
                 <div class="text-base font-black font-mono text-orange-800 mt-0.5">${kpiDowngrades.count} caso(s) · Cobrado: $${kpiDowngrades.cobrado.toFixed(2)}</div>
-                <div class="text-[10px] text-orange-800 font-semibold">Reducción tarifa: -$${kpiDowngrades.impacto.toFixed(2)}</div>
+                <div class="text-[10px] text-orange-800 font-semibold">Impacto reducción: -$${kpiDowngrades.impacto.toFixed(2)}${kpiDowngrades.pendientes > 0 ? ` (${kpiDowngrades.pendientes} pend. ventana 01-05)` : ''}</div>
               </div>
               <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200">
-                <div class="text-[10px] uppercase font-bold text-rose-900">📉 Bajas Usuarios / Módulos</div>
+                <div class="text-[10px] uppercase font-bold text-rose-900">📉 Bajas Usuarios / Módulos (Mes Solicitud)</div>
                 <div class="text-base font-black font-mono text-rose-800 mt-0.5">${kpiBajaUsers.count} baja usu. · ${kpiBajaMods.count} baja mód.</div>
-                <div class="text-[10px] text-rose-800 font-semibold">Impacto reducción: -$${(kpiBajaUsers.impacto + kpiBajaMods.impacto).toFixed(2)}</div>
+                <div class="text-[10px] text-rose-800 font-semibold">Impacto reducción: -$${(kpiBajaUsers.impacto + kpiBajaMods.impacto).toFixed(2)}${(kpiBajaUsers.pendientes + kpiBajaMods.pendientes) > 0 ? ` (${kpiBajaUsers.pendientes + kpiBajaMods.pendientes} pend. ventana 01-05)` : ''}</div>
               </div>
               <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
                 <div class="text-[10px] uppercase font-bold text-emerald-900">💳 Recaudo Cobranzas (Cartera)</div>
@@ -5665,14 +5725,14 @@
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div class="font-extrabold text-[#073e3b] text-xs">🎯 Cuadro Consolidado de VAC (Valor Acción Comercial) por Asesor</div>
-                  <div class="text-[10.5px] text-slate-600">Ventas/Upgrades/Recup. &gt;60d acreditan <strong>100%</strong> · Renovaciones acreditan <strong>+10%</strong> · Downgrades/Bajas restan según regla.</div>
+                  <div class="text-[10.5px] text-slate-600">Ventas/Upgrades/Recup. &gt;60d acreditan <strong>100%</strong> · Renovaciones acreditan <strong>+10%</strong> · Downgrades/Bajas restan en el mismo mes de solicitud.</div>
                 </div>
                 <span class="px-3 py-1 rounded-xl bg-[#073e3b] text-[#70d2bd] font-mono font-black text-xs">
                   VAC Total Neto: ${totalVacNetoGlobal >= 0 ? '+' : '-'}$${Math.abs(totalVacNetoGlobal).toFixed(2)}
                 </span>
               </div>
 
-              ${vacRanking.length === 0 ? '<p class="text-[11px] text-slate-500">Sin movimientos con VAC aprobado en este período.</p>' : `
+              ${vacRanking.length === 0 ? '<p class="text-[11px] text-slate-500">Sin movimientos con VAC en este período.</p>' : `
                 <div class="overflow-x-auto border border-[#dce6e5] rounded-xl bg-white">
                   <table class="w-full text-left border-collapse text-[11px]">
                     <thead class="bg-[#073e3b] text-white">
@@ -5700,7 +5760,7 @@
                       `).join('')}
                       <tr class="bg-[#e7f5f1] font-black text-[#073e3b]">
                         <td class="p-2.5">TOTAL CONSOLIDADO DEL PERÍODO</td>
-                        <td class="p-2.5 text-center font-mono">${allApprovedActs.length}</td>
+                        <td class="p-2.5 text-center font-mono">${allPeriodActs.length}</td>
                         <td class="p-2.5 text-right font-mono">$${totalIngresoCajaNeto.toFixed(2)}</td>
                         <td class="p-2.5 text-right font-mono text-[#087e70]">+$${vacRanking.reduce((s, x) => s + x.vacVentas, 0).toFixed(2)}</td>
                         <td class="p-2.5 text-right font-mono text-emerald-700">+$${vacRanking.reduce((s, x) => s + x.vacCobranzas, 0).toFixed(2)}</td>
@@ -5720,7 +5780,7 @@
                   <span class="font-extrabold text-[#073e3b]">🥇 Top Vendedores / Retención</span>
                   <span class="font-mono font-extrabold text-[11px] text-[#087e70]">Total: $${totalVentasYUpgrades.toFixed(2)}</span>
                 </div>
-                ${topSellers.length === 0 ? '<p class="text-[11px] text-slate-500">Sin ventas/upgrades aprobados en este período.</p>' : topSellers.map((s, i) => `
+                ${topSellers.length === 0 ? '<p class="text-[11px] text-slate-500">Sin ventas/upgrades en este período.</p>' : topSellers.map((s, i) => `
                   <div class="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
                     <span><strong>#${i + 1} ${esc(s.name)}</strong> <span class="text-[10px] text-slate-500">(${s.count} op.)</span></span>
                     <strong class="font-mono text-[#087e70]">$${s.total.toFixed(2)}</strong>
@@ -5733,7 +5793,7 @@
                   <span class="font-extrabold text-[#073e3b]">🥇 Top Gestores de Cobranzas</span>
                   <span class="font-mono font-extrabold text-[11px] text-[#087e70]">Total: $${totalRecaudoCobranzas.toFixed(2)}</span>
                 </div>
-                ${topCollectors.length === 0 ? '<p class="text-[11px] text-slate-500">Sin cobros de cartera aprobados en este período.</p>' : topCollectors.map((c, i) => `
+                ${topCollectors.length === 0 ? '<p class="text-[11px] text-slate-500">Sin cobros de cartera en este período.</p>' : topCollectors.map((c, i) => `
                   <div class="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
                     <span><strong>#${i + 1} ${esc(c.name)}</strong> <span class="text-[10px] text-slate-500">(${c.count} cobros)</span></span>
                     <strong class="font-mono text-[#087e70]">$${c.total.toFixed(2)}</strong>
