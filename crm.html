@@ -3691,9 +3691,12 @@
 
         const customModPrice = cartCustomMod ? (Math.max(0, parseFloat($('saleCustomPrice')?.value) || 0)) : 0;
 
-        // Cálculos de Downgrade / Bajas (para reporte gerencial y control)
+        // Cálculos de Downgrade / Bajas (comparando tarifa real anterior según su periodicidad vs nueva tarifa)
+        const currRealCyclePrice = currentPlan
+          ? (currPeriodicity === 'ANUAL' ? currentPlan.annualPrice : currentPlan.monthlyPrice)
+          : 0;
         const downgradePlanDiff = (cartDowngrade && currentPlan)
-          ? Math.max(0, currPlanPrice - newPlanPrice)
+          ? Math.max(0, currRealCyclePrice - newPlanPrice)
           : 0;
         const downgradeUsersDiff = cartDownUsers ? (qtyUsersDown * unitExtraUserPrice) : 0;
         const removedMods = currPacks.filter(m => !selectedMods.includes(m));
@@ -4123,7 +4126,8 @@
           dgBox.classList.toggle('hidden', !hasAnyBaja);
           const dgFormulaParts = [];
           if (st.cartDowngrade && st.currentPlan) {
-            dgFormulaParts.push(`Plan ${st.currPlanName} ($${st.currPlanPrice.toFixed(2)}) - Plan ${st.effectivePlan.name} ($${st.newPlanPrice.toFixed(2)}) = $${st.downgradePlanDiff.toFixed(2)}`);
+            const prevCycleP = st.currPeriodicity === 'ANUAL' ? st.currentPlan.annualPrice : st.currentPlan.monthlyPrice;
+            dgFormulaParts.push(`Plan ${st.currPlanName} (${st.currPeriodicity} $${prevCycleP.toFixed(2)}) - Plan ${st.effectivePlan.name} (${st.periodicidad} $${st.newPlanPrice.toFixed(2)}) = $${st.downgradePlanDiff.toFixed(2)}`);
           }
           if (st.cartDownUsers) {
             dgFormulaParts.push(`${st.qtyUsersDown} usu. baja × $${st.unitExtraUserPrice.toFixed(2)} = $${st.downgradeUsersDiff.toFixed(2)}`);
@@ -5384,62 +5388,173 @@
           return iso.slice(0, 7) === refMonth;
         };
 
-        const approvedSales = this.cachedTickets.filter(t => t.tipo_solicitud === 'ACTIVACION_VENTA' && t.estado === 'APROBADO' && matchesDate(t));
-        const approvedPays = this.cachedTickets.filter(t => t.tipo_solicitud === 'FACTURACION_PAGO' && t.estado === 'APROBADO' && matchesDate(t));
+        // Fuente única de verdad: Activaciones aprobadas del período (sin duplicar con FACTURACION_PAGO)
+        const allApprovedActs = this.cachedTickets.filter(t => t.tipo_solicitud === 'ACTIVACION_VENTA' && t.estado === 'APROBADO' && matchesDate(t));
+        const commercialActs = allApprovedActs.filter(t => !(t.detalle && t.detalle.es_cobranza));
+        const collectionActs = allApprovedActs.filter(t => !!(t.detalle && t.detalle.es_cobranza));
+        const issuedInvoices = this.cachedTickets.filter(t => t.tipo_solicitud === 'FACTURACION_PAGO' && t.estado === 'APROBADO' && matchesDate(t));
 
-        const sumByOp = (opKey) => {
-          const items = approvedSales.filter(t => (t.detalle || {}).tipo_operacion === opKey);
-          return {
-            count: items.length,
-            total: items.reduce((a, x) => a + Number((x.detalle || {}).monto_usd || 0), 0)
-          };
-        };
+        // Distribuye proporcionalmente el monto real cobrado (monto_usd) sobre los conceptos positivos de cada operación comercial
+        // para que la suma de las tarjetas cuadre al centavo con el dinero real ingresado a caja.
+        const kpiNuevas = { count: 0, total: 0 };
+        const kpiUpgrades = { count: 0, total: 0 };
+        const kpiUsersExtra = { count: 0, total: 0 };
+        const kpiModulosIa = { count: 0, total: 0 };
+        const kpiPersonalizado = { count: 0, total: 0 };
+        const kpiDowngrades = { count: 0, cobrado: 0, impacto: 0 };
+        const kpiBajaUsers = { count: 0, impacto: 0 };
+        const kpiBajaMods = { count: 0, impacto: 0 };
 
-        const sumCartField = (fieldKey, fallbackOpKey) => {
-          let count = 0;
-          let total = 0;
-          approvedSales.forEach(t => {
-            const det = t.detalle || {};
-            const dg = det.desglose_gerencial || null;
-            if (dg && typeof dg[fieldKey] === 'number') {
-              if (dg[fieldKey] > 0) { count += 1; total += Number(dg[fieldKey]); }
-            } else if (det.tipo_operacion === fallbackOpKey) {
-              count += 1;
-              total += Number(det.monto_usd || 0);
-            }
-          });
-          return { count, total };
-        };
+        commercialActs.forEach(t => {
+          const det = t.detalle || {};
+          const dg = det.desglose_gerencial || {};
+          const realPaid = Number(det.monto_usd || 0);
+          const op = String(det.tipo_operacion || '');
 
-        const kpiNuevas = sumCartField('venta_nueva_usd', 'VENTA_NUEVA_PLAN');
-        const kpiUpgrades = sumCartField('upgrade_plan_usd', 'UPGRADE_PLAN');
-        const kpiUsersExtra = sumCartField('usuarios_extra_usd', 'VENTA_USUARIOS_EXTRA');
-        const kpiModulosIa = sumCartField('modulos_ia_extra_usd', 'VENTA_MODULO_IA');
-        const kpiPersonalizado = sumCartField('modulo_personalizado_usd', 'VENTA_MODULO_PERSONALIZADO');
-        const kpiDowngrades = sumCartField('downgrade_plan_usd', 'DOWNGRADE_PLAN');
-        const kpiBajaUsers = sumCartField('baja_usuarios_usd', 'BAJA_USUARIOS_EXTRA');
-        const kpiBajaMods = sumCartField('baja_modulos_usd', 'BAJA_MODULO_IA');
-        const totalRecaudoCobranzas = approvedPays.reduce((a, x) => a + Number((x.detalle || {}).monto_usd || 0), 0);
+          // Registrar impacto de bajas/downgrades si existen
+          const dgPlanImp = Number(dg.downgrade_plan_usd || 0);
+          const dgUsuImp = Number(dg.baja_usuarios_usd || 0);
+          const dgModImp = Number(dg.baja_modulos_usd || 0);
+          if (op === 'DOWNGRADE_PLAN' || dgPlanImp > 0) {
+            kpiDowngrades.count += 1;
+            kpiDowngrades.impacto += dgPlanImp;
+          }
+          if (op === 'BAJA_USUARIOS_EXTRA' || dgUsuImp > 0) {
+            kpiBajaUsers.count += 1;
+            kpiBajaUsers.impacto += dgUsuImp;
+          }
+          if (op === 'BAJA_MODULO_IA' || dgModImp > 0) {
+            kpiBajaMods.count += 1;
+            kpiBajaMods.impacto += dgModImp;
+          }
 
+          // Clasificar ingreso real cobrado (realPaid)
+          const rawBuckets = [
+            { target: kpiNuevas, val: Number(dg.venta_nueva_usd || 0) },
+            { target: kpiUpgrades, val: Number(dg.upgrade_plan_usd || 0) },
+            { target: kpiUsersExtra, val: Number(dg.usuarios_extra_usd || 0) },
+            { target: kpiModulosIa, val: Number(dg.modulos_ia_extra_usd || 0) },
+            { target: kpiPersonalizado, val: Number(dg.modulo_personalizado_usd || 0) }
+          ].filter(b => b.val > 0);
+
+          if (rawBuckets.length > 0) {
+            const rawSum = rawBuckets.reduce((s, b) => s + b.val, 0);
+            let distributed = 0;
+            rawBuckets.forEach((b, idx) => {
+              b.target.count += 1;
+              if (idx === rawBuckets.length - 1) {
+                b.target.total = Number((b.target.total + (realPaid - distributed)).toFixed(2));
+              } else {
+                const share = Number(((b.val / rawSum) * realPaid).toFixed(2));
+                distributed = Number((distributed + share).toFixed(2));
+                b.target.total = Number((b.target.total + share).toFixed(2));
+              }
+            });
+          } else if (op === 'DOWNGRADE_PLAN') {
+            kpiDowngrades.cobrado = Number((kpiDowngrades.cobrado + realPaid).toFixed(2));
+          } else if (op === 'VENTA_NUEVA_PLAN') {
+            kpiNuevas.count += 1;
+            kpiNuevas.total = Number((kpiNuevas.total + realPaid).toFixed(2));
+          } else if (op === 'UPGRADE_PLAN') {
+            kpiUpgrades.count += 1;
+            kpiUpgrades.total = Number((kpiUpgrades.total + realPaid).toFixed(2));
+          } else if (op === 'VENTA_USUARIOS_EXTRA') {
+            kpiUsersExtra.count += 1;
+            kpiUsersExtra.total = Number((kpiUsersExtra.total + realPaid).toFixed(2));
+          } else if (op === 'VENTA_MODULO_IA') {
+            kpiModulosIa.count += 1;
+            kpiModulosIa.total = Number((kpiModulosIa.total + realPaid).toFixed(2));
+          } else if (op === 'VENTA_MODULO_PERSONALIZADO') {
+            kpiPersonalizado.count += 1;
+            kpiPersonalizado.total = Number((kpiPersonalizado.total + realPaid).toFixed(2));
+          }
+        });
+
+        const totalVentasYUpgrades = Number((
+          kpiNuevas.total +
+          kpiUpgrades.total +
+          kpiUsersExtra.total +
+          kpiModulosIa.total +
+          kpiPersonalizado.total +
+          kpiDowngrades.cobrado
+        ).toFixed(2));
+
+        const totalRecaudoCobranzas = Number(collectionActs.reduce((a, x) => a + Number((x.detalle || {}).monto_usd || 0), 0).toFixed(2));
+        const totalIngresoCajaNeto = Number((totalVentasYUpgrades + totalRecaudoCobranzas).toFixed(2));
+        const totalFacturadoSri = Number(issuedInvoices.reduce((a, x) => a + Number((x.detalle || {}).monto_usd || 0), 0).toFixed(2));
+
+        // Rankings limpios y consolidado de VAC por asesor
         const sellersMap = {};
-        approvedSales.forEach(t => {
-          const det = t.detalle || {};
-          const k = det.agente_email || t.solicitado_por || 'Sin asignar';
-          if (!sellersMap[k]) sellersMap[k] = { name: det.agente_nombre || k, email: k, count: 0, total: 0 };
-          sellersMap[k].count += 1;
-          sellersMap[k].total += Number(det.monto_usd || 0);
-        });
-        const topSellers = Object.values(sellersMap).sort((a, b) => b.total - a.total);
-
         const collectorsMap = {};
-        approvedPays.forEach(t => {
+        const vacByAgentMap = {};
+
+        const ensureVacAgent = (email, name, rol) => {
+          const key = String(email || 'sin_asignar').trim().toLowerCase();
+          if (!vacByAgentMap[key]) {
+            vacByAgentMap[key] = {
+              email: key,
+              name: name || email || 'Sin asignar',
+              rol: rol || 'ASESOR',
+              opsCount: 0,
+              cobradoTotal: 0,
+              vacVentas: 0,
+              vacCobranzas: 0,
+              vacPenalizacion: 0,
+              vacNeto: 0
+            };
+          }
+          return vacByAgentMap[key];
+        };
+
+        commercialActs.forEach(t => {
           const det = t.detalle || {};
-          const k = det.agente_email || t.solicitado_por || 'Sin asignar';
-          if (!collectorsMap[k]) collectorsMap[k] = { name: det.agente_nombre || k, email: k, count: 0, total: 0 };
-          collectorsMap[k].count += 1;
-          collectorsMap[k].total += Number(det.monto_usd || 0);
+          const k = String(det.agente_email || t.solicitado_por || 'Sin asignar').trim().toLowerCase();
+          const agName = det.agente_nombre || det.agente_email || t.solicitado_por || 'Sin asignar';
+          const monto = Number(det.monto_usd || 0);
+          if (!sellersMap[k]) sellersMap[k] = { name: agName, email: k, count: 0, total: 0 };
+          sellersMap[k].count += 1;
+          sellersMap[k].total = Number((sellersMap[k].total + monto).toFixed(2));
+
+          const vacInfo = this.computeTicketVacBreakdown(t);
+          const ag = ensureVacAgent(k, agName, det.agente_rol);
+          ag.opsCount += 1;
+          ag.cobradoTotal = Number((ag.cobradoTotal + monto).toFixed(2));
+          if (vacInfo.totalVac >= 0) {
+            ag.vacVentas = Number((ag.vacVentas + vacInfo.totalVac).toFixed(2));
+          } else {
+            ag.vacPenalizacion = Number((ag.vacPenalizacion + vacInfo.totalVac).toFixed(2));
+          }
+          ag.vacNeto = Number((ag.vacNeto + vacInfo.totalVac).toFixed(2));
         });
+
+        collectionActs.forEach(t => {
+          const det = t.detalle || {};
+          const k = String(det.agente_email || t.solicitado_por || 'Sin asignar').trim().toLowerCase();
+          const agName = det.agente_nombre || det.agente_email || t.solicitado_por || 'Sin asignar';
+          const monto = Number(det.monto_usd || 0);
+          if (!collectorsMap[k]) collectorsMap[k] = { name: agName, email: k, count: 0, total: 0 };
+          collectorsMap[k].count += 1;
+          collectorsMap[k].total = Number((collectorsMap[k].total + monto).toFixed(2));
+
+          const vacInfo = this.computeTicketVacBreakdown(t);
+          const ag = ensureVacAgent(k, agName, det.agente_rol);
+          ag.opsCount += 1;
+          ag.cobradoTotal = Number((ag.cobradoTotal + monto).toFixed(2));
+          if (vacInfo.totalVac >= 0) {
+            ag.vacCobranzas = Number((ag.vacCobranzas + vacInfo.totalVac).toFixed(2));
+          } else {
+            ag.vacPenalizacion = Number((ag.vacPenalizacion + vacInfo.totalVac).toFixed(2));
+          }
+          ag.vacNeto = Number((ag.vacNeto + vacInfo.totalVac).toFixed(2));
+        });
+
+        const topSellers = Object.values(sellersMap).sort((a, b) => b.total - a.total);
         const topCollectors = Object.values(collectorsMap).sort((a, b) => b.total - a.total);
+        const vacRanking = Object.values(vacByAgentMap).sort((a, b) => b.vacNeto - a.vacNeto);
+
+        const totalVacPositivo = Number(vacRanking.reduce((s, a) => s + a.vacVentas + a.vacCobranzas, 0).toFixed(2));
+        const totalVacNegativo = Number(vacRanking.reduce((s, a) => s + a.vacPenalizacion, 0).toFixed(2));
+        const totalVacNetoGlobal = Number((totalVacPositivo + totalVacNegativo).toFixed(2));
 
         const staffForQuality = this.cachedStaff.filter(u => String(u.rol || '').toUpperCase() !== 'SUPERADMIN');
         const demoQualityRows = staffForQuality.length > 0
@@ -5468,7 +5583,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <h3 class="text-sm font-extrabold text-[#073e3b]">📈 Informe Gerencial de Operación SaaS & Calidad</h3>
-                <p class="text-[11px] text-slate-500">Consolidado en vivo de ventas nuevas, upgrades, bajas, recaudación y desempeño del equipo.</p>
+                <p class="text-[11px] text-slate-500">Cuadre exacto de caja real, ventas nuevas, upgrades, cobranzas y VAC comisionable sin duplicidades.</p>
               </div>
               <div class="flex flex-wrap items-center gap-1.5 bg-[#f5f8f8] p-1.5 rounded-xl border border-[#dce6e5]">
                 <button onclick="CRM.analyticsPeriod='day'; CRM.renderAnalyticsView();" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer ${period === 'day' ? 'bg-[#073e3b] text-[#70d2bd]' : 'text-slate-600'}">Por Día</button>
@@ -5484,7 +5599,26 @@
               </div>
             </div>
 
-            <!-- KPIs Segmentados por Movimiento -->
+            <!-- RESUMEN EJECUTIVO DE CUADRE DE CAJA Y FACTURACIÓN SRI -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#073e3b] to-[#0a524e] text-white">
+                <div class="text-[10px] uppercase font-bold text-[#70d2bd]">💰 Ingreso Total Caja Real (Sin Duplicar)</div>
+                <div class="text-xl font-black font-mono text-white mt-0.5">$${totalIngresoCajaNeto.toFixed(2)}</div>
+                <div class="text-[10px] text-teal-100 mt-0.5">Ventas/Upgrades ($${totalVentasYUpgrades.toFixed(2)}) + Cobranzas ($${totalRecaudoCobranzas.toFixed(2)})</div>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-[#e7f5f1] border border-[#087e70]">
+                <div class="text-[10px] uppercase font-bold text-[#073e3b]">🎯 VAC Neto Comisionable del Período</div>
+                <div class="text-xl font-black font-mono ${totalVacNetoGlobal < 0 ? 'text-rose-700' : 'text-[#087e70]'} mt-0.5">${totalVacNetoGlobal >= 0 ? '+' : '-'}$${Math.abs(totalVacNetoGlobal).toFixed(2)}</div>
+                <div class="text-[10px] text-[#073e3b] mt-0.5">Bruto: +$${totalVacPositivo.toFixed(2)} · Penalizaciones: -$${Math.abs(totalVacNegativo).toFixed(2)}</div>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5]">
+                <div class="text-[10px] uppercase font-bold text-slate-600">🧾 Facturas SRI Emitidas y Enviadas</div>
+                <div class="text-xl font-black font-mono text-[#073e3b] mt-0.5">$${totalFacturadoSri.toFixed(2)}</div>
+                <div class="text-[10px] text-slate-500 mt-0.5">${issuedInvoices.length} factura(s) cerradas · Pendientes: $${Math.max(0, totalIngresoCajaNeto - totalFacturadoSri).toFixed(2)}</div>
+              </div>
+            </div>
+
+            <!-- KPIs Segmentados por Movimiento (Suma = totalVentasYUpgrades al centavo) -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <div class="p-3 rounded-2xl bg-[#073e3b] text-white">
                 <div class="text-[10px] uppercase font-bold text-teal-200">🆕 Ventas Nuevas Planes</div>
@@ -5494,12 +5628,12 @@
               <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5]">
                 <div class="text-[10px] uppercase font-bold text-[#087e70]">⬆️ Upgrades de Planes</div>
                 <div class="text-lg font-black font-mono text-[#073e3b] mt-0.5">$${kpiUpgrades.total.toFixed(2)}</div>
-                <div class="text-[10px] text-slate-500">${kpiUpgrades.count} ascenso(s) de plan</div>
+                <div class="text-[10px] text-slate-500">${kpiUpgrades.count} ascenso(s) de plan / VIP</div>
               </div>
               <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5]">
                 <div class="text-[10px] uppercase font-bold text-indigo-800">🤖+ Módulos Adicionales IA</div>
                 <div class="text-lg font-black font-mono text-[#073e3b] mt-0.5">$${(kpiModulosIa.total + kpiPersonalizado.total).toFixed(2)}</div>
-                <div class="text-[10px] text-slate-500">${kpiModulosIa.count} IA · ${kpiPersonalizado.count} a medida</div>
+                <div class="text-[10px] text-slate-500">${kpiModulosIa.count} IA ($${kpiModulosIa.total.toFixed(2)}) · ${kpiPersonalizado.count} a medida ($${kpiPersonalizado.total.toFixed(2)})</div>
               </div>
               <div class="p-3 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5]">
                 <div class="text-[10px] uppercase font-bold text-teal-800">👥+ Usuarios Adicionales</div>
@@ -5511,23 +5645,82 @@
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div class="p-3 rounded-2xl bg-orange-50 border border-orange-200">
                 <div class="text-[10px] uppercase font-bold text-orange-900">⬇️ Downgrades de Planes</div>
-                <div class="text-base font-black font-mono text-orange-800 mt-0.5">${kpiDowngrades.count} caso(s) · $${kpiDowngrades.total.toFixed(2)}</div>
+                <div class="text-base font-black font-mono text-orange-800 mt-0.5">${kpiDowngrades.count} caso(s) · Cobrado: $${kpiDowngrades.cobrado.toFixed(2)}</div>
+                <div class="text-[10px] text-orange-800 font-semibold">Reducción tarifa: -$${kpiDowngrades.impacto.toFixed(2)}</div>
               </div>
               <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200">
                 <div class="text-[10px] uppercase font-bold text-rose-900">📉 Bajas Usuarios / Módulos</div>
                 <div class="text-base font-black font-mono text-rose-800 mt-0.5">${kpiBajaUsers.count} baja usu. · ${kpiBajaMods.count} baja mód.</div>
+                <div class="text-[10px] text-rose-800 font-semibold">Impacto reducción: -$${(kpiBajaUsers.impacto + kpiBajaMods.impacto).toFixed(2)}</div>
               </div>
               <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
-                <div class="text-[10px] uppercase font-bold text-emerald-900">💳 Recaudo Cobranzas</div>
-                <div class="text-base font-black font-mono text-emerald-800 mt-0.5">$${totalRecaudoCobranzas.toFixed(2)} (${approvedPays.length} pagos)</div>
+                <div class="text-[10px] uppercase font-bold text-emerald-900">💳 Recaudo Cobranzas (Cartera)</div>
+                <div class="text-base font-black font-mono text-emerald-800 mt-0.5">$${totalRecaudoCobranzas.toFixed(2)} (${collectionActs.length} cobros)</div>
+                <div class="text-[10px] text-emerald-800 font-semibold">Exclusivo renovaciones y recuperaciones</div>
               </div>
             </div>
 
-            <!-- Rankings: Top Vendedores y Top Cobranzas -->
+            <!-- CUADRO DE VAC (VALOR DE ACCIÓN COMERCIAL) POR ASESOR -->
+            <div class="p-4 rounded-2xl bg-[#f5f8f8] border border-[#087e70]/40 space-y-2.5">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="font-extrabold text-[#073e3b] text-xs">🎯 Cuadro Consolidado de VAC (Valor Acción Comercial) por Asesor</div>
+                  <div class="text-[10.5px] text-slate-600">Ventas/Upgrades/Recup. &gt;60d acreditan <strong>100%</strong> · Renovaciones acreditan <strong>+10%</strong> · Downgrades/Bajas restan según regla.</div>
+                </div>
+                <span class="px-3 py-1 rounded-xl bg-[#073e3b] text-[#70d2bd] font-mono font-black text-xs">
+                  VAC Total Neto: ${totalVacNetoGlobal >= 0 ? '+' : '-'}$${Math.abs(totalVacNetoGlobal).toFixed(2)}
+                </span>
+              </div>
+
+              ${vacRanking.length === 0 ? '<p class="text-[11px] text-slate-500">Sin movimientos con VAC aprobado en este período.</p>' : `
+                <div class="overflow-x-auto border border-[#dce6e5] rounded-xl bg-white">
+                  <table class="w-full text-left border-collapse text-[11px]">
+                    <thead class="bg-[#073e3b] text-white">
+                      <tr>
+                        <th class="p-2.5 font-bold">Asesor / Gestor</th>
+                        <th class="p-2.5 font-bold text-center">Ops.</th>
+                        <th class="p-2.5 font-bold text-right">Cobrado Real</th>
+                        <th class="p-2.5 font-bold text-right">VAC Ventas (100%)</th>
+                        <th class="p-2.5 font-bold text-right">VAC Cobranza (+10%)</th>
+                        <th class="p-2.5 font-bold text-right">Bajas / Downgrade</th>
+                        <th class="p-2.5 font-bold text-right">VAC Neto Final</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${vacRanking.map((a, idx) => `
+                        <tr class="border-b border-slate-100 hover:bg-[#f5f8f8]">
+                          <td class="p-2.5 font-extrabold text-[#073e3b]">#${idx + 1} ${esc(a.name)}</td>
+                          <td class="p-2.5 text-center font-mono">${a.opsCount}</td>
+                          <td class="p-2.5 text-right font-mono text-slate-700">$${a.cobradoTotal.toFixed(2)}</td>
+                          <td class="p-2.5 text-right font-mono text-[#087e70] font-bold">+$${a.vacVentas.toFixed(2)}</td>
+                          <td class="p-2.5 text-right font-mono text-emerald-700 font-bold">+$${a.vacCobranzas.toFixed(2)}</td>
+                          <td class="p-2.5 text-right font-mono ${a.vacPenalizacion < 0 ? 'text-rose-700 font-bold' : 'text-slate-400'}">${a.vacPenalizacion < 0 ? '-$' + Math.abs(a.vacPenalizacion).toFixed(2) : '$0.00'}</td>
+                          <td class="p-2.5 text-right font-mono font-black ${a.vacNeto < 0 ? 'text-rose-700' : 'text-[#073e3b]'}">${a.vacNeto >= 0 ? '+' : '-'}$${Math.abs(a.vacNeto).toFixed(2)}</td>
+                        </tr>
+                      `).join('')}
+                      <tr class="bg-[#e7f5f1] font-black text-[#073e3b]">
+                        <td class="p-2.5">TOTAL CONSOLIDADO DEL PERÍODO</td>
+                        <td class="p-2.5 text-center font-mono">${allApprovedActs.length}</td>
+                        <td class="p-2.5 text-right font-mono">$${totalIngresoCajaNeto.toFixed(2)}</td>
+                        <td class="p-2.5 text-right font-mono text-[#087e70]">+$${vacRanking.reduce((s, x) => s + x.vacVentas, 0).toFixed(2)}</td>
+                        <td class="p-2.5 text-right font-mono text-emerald-700">+$${vacRanking.reduce((s, x) => s + x.vacCobranzas, 0).toFixed(2)}</td>
+                        <td class="p-2.5 text-right font-mono text-rose-700">${totalVacNegativo < 0 ? '-$' + Math.abs(totalVacNegativo).toFixed(2) : '$0.00'}</td>
+                        <td class="p-2.5 text-right font-mono text-sm ${totalVacNetoGlobal < 0 ? 'text-rose-700' : 'text-[#073e3b]'}">${totalVacNetoGlobal >= 0 ? '+' : '-'}$${Math.abs(totalVacNetoGlobal).toFixed(2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              `}
+            </div>
+
+            <!-- Rankings: Top Vendedores y Top Cobranzas (100% separados y cuadrados al centavo) -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
-                <div class="font-extrabold text-[#073e3b]">🥇 Top Vendedores / Retención</div>
-                ${topSellers.length === 0 ? '<p class="text-[11px] text-slate-500">Sin activaciones aprobadas en este período.</p>' : topSellers.map((s, i) => `
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-[#073e3b]">🥇 Top Vendedores / Retención</span>
+                  <span class="font-mono font-extrabold text-[11px] text-[#087e70]">Total: $${totalVentasYUpgrades.toFixed(2)}</span>
+                </div>
+                ${topSellers.length === 0 ? '<p class="text-[11px] text-slate-500">Sin ventas/upgrades aprobados en este período.</p>' : topSellers.map((s, i) => `
                   <div class="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
                     <span><strong>#${i + 1} ${esc(s.name)}</strong> <span class="text-[10px] text-slate-500">(${s.count} op.)</span></span>
                     <strong class="font-mono text-[#087e70]">$${s.total.toFixed(2)}</strong>
@@ -5536,8 +5729,11 @@
               </div>
 
               <div class="p-3.5 rounded-2xl bg-[#f5f8f8] border border-[#dce6e5] space-y-2">
-                <div class="font-extrabold text-[#073e3b]">🥇 Top Gestores de Cobranzas</div>
-                ${topCollectors.length === 0 ? '<p class="text-[11px] text-slate-500">Sin pagos conciliados en este período.</p>' : topCollectors.map((c, i) => `
+                <div class="flex items-center justify-between">
+                  <span class="font-extrabold text-[#073e3b]">🥇 Top Gestores de Cobranzas</span>
+                  <span class="font-mono font-extrabold text-[11px] text-[#087e70]">Total: $${totalRecaudoCobranzas.toFixed(2)}</span>
+                </div>
+                ${topCollectors.length === 0 ? '<p class="text-[11px] text-slate-500">Sin cobros de cartera aprobados en este período.</p>' : topCollectors.map((c, i) => `
                   <div class="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
                     <span><strong>#${i + 1} ${esc(c.name)}</strong> <span class="text-[10px] text-slate-500">(${c.count} cobros)</span></span>
                     <strong class="font-mono text-[#087e70]">$${c.total.toFixed(2)}</strong>
