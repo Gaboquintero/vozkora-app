@@ -5702,16 +5702,21 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
               <div class="p-3 rounded-2xl bg-orange-50 border border-orange-200">
                 <div class="text-[10px] uppercase font-bold text-orange-900">⬇️ Downgrades de Planes (Mes Solicitud)</div>
                 <div class="text-base font-black font-mono text-orange-800 mt-0.5">${kpiDowngrades.count} caso(s) · Cobrado: $${kpiDowngrades.cobrado.toFixed(2)}</div>
-                <div class="text-[10px] text-orange-800 font-semibold">Impacto reducción: -$${kpiDowngrades.impacto.toFixed(2)}${kpiDowngrades.pendientes > 0 ? ` (${kpiDowngrades.pendientes} pend. ventana 01-05)` : ''}</div>
+                <div class="text-[10px] text-orange-800 font-semibold">Impacto reducción: -$${kpiDowngrades.impacto.toFixed(2)}${kpiDowngrades.pendientes > 0 ? ` (${kpiDowngrades.pendientes} pend. 01-05)` : ''}</div>
               </div>
               <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200">
-                <div class="text-[10px] uppercase font-bold text-rose-900">📉 Bajas Usuarios / Módulos (Mes Solicitud)</div>
-                <div class="text-base font-black font-mono text-rose-800 mt-0.5">${kpiBajaUsers.count} baja usu. · ${kpiBajaMods.count} baja mód.</div>
-                <div class="text-[10px] text-rose-800 font-semibold">Impacto reducción: -$${(kpiBajaUsers.impacto + kpiBajaMods.impacto).toFixed(2)}${(kpiBajaUsers.pendientes + kpiBajaMods.pendientes) > 0 ? ` (${kpiBajaUsers.pendientes + kpiBajaMods.pendientes} pend. ventana 01-05)` : ''}</div>
+                <div class="text-[10px] uppercase font-bold text-rose-900">👥- Bajas de Usuarios (Mes Solicitud)</div>
+                <div class="text-base font-black font-mono text-rose-800 mt-0.5">${kpiBajaUsers.count} baja(s) de usuarios</div>
+                <div class="text-[10px] text-rose-800 font-semibold">Impacto reducción: -$${kpiBajaUsers.impacto.toFixed(2)}${kpiBajaUsers.pendientes > 0 ? ` (${kpiBajaUsers.pendientes} pend. 01-05)` : ''}</div>
+              </div>
+              <div class="p-3 rounded-2xl bg-pink-50 border border-pink-200">
+                <div class="text-[10px] uppercase font-bold text-pink-900">🤖- Bajas de Módulos IA (Mes Solicitud)</div>
+                <div class="text-base font-black font-mono text-pink-800 mt-0.5">${kpiBajaMods.count} baja(s) de módulos</div>
+                <div class="text-[10px] text-pink-800 font-semibold">Impacto reducción: -$${kpiBajaMods.impacto.toFixed(2)}${kpiBajaMods.pendientes > 0 ? ` (${kpiBajaMods.pendientes} pend. 01-05)` : ''}</div>
               </div>
               <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
                 <div class="text-[10px] uppercase font-bold text-emerald-900">💳 Recaudo Cobranzas (Cartera)</div>
